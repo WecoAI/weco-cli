@@ -69,3 +69,5 @@ etc/
 # AI generated files
 digest.txt
 .runs/
+
+*.pyc

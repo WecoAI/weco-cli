@@ -2,8 +2,7 @@ from pathlib import Path
 import pandas as pd
 
 
-def predict(train: Path, test: Path, save: Path):
-    train_data = pd.read_csv(train)
+def predict(test: Path, save: Path):
     # TODO: Add a model here
 
     test_data = pd.read_csv(test)

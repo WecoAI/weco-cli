@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - dev
+  pull_request:  # Run on any pull request
 
 jobs:
   lint:
@@ -12,9 +13,7 @@ jobs:
 
     steps:
     - name: Checkout code
-      uses: actions/checkout@v3
-      with:
-        ref: ${{ github.head_ref }}
+      uses: actions/checkout@v4
 
     - name: Set up Python
       uses: actions/setup-python@v3
@@ -26,15 +25,19 @@ jobs:
         python -m pip install --upgrade pip
         pip install ruff
 
-    - name: Run linter
+    - name: Run Linter (PR Check)
+      if: github.event_name == 'pull_request'
+      run: |
+        ruff check .
+
+    - name: Run Linter & Formatter (Push)
+      if: github.event_name == 'push'
       run: |
         ruff check . --fix
-      
-    - name: Run formatter
-      run: |
         ruff format .
 
     - name: Commit changes
+      if: github.event_name == 'push'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
