@@ -61,6 +61,6 @@ python submit.py
 *   `--maximize true`: Weco aims to increase the accuracy.
 *   `--steps 15`: The number of optimization iterations.
 *   `--model gemini-2.5-pro-exp-03-25`: The LLM driving the optimization.
-*   `--additional-instructions README.md`: A single instruction for model improvement or you can use the [`comptition_description.md`](./competition_description.md) within the repo.
+*   `--additional-instructions "Improve feature engineering, model choice and hyper-parameters."`: A simple instruction for model improvement or you can use the [`comptition_description.md`](./competition_description.md) within the repo.
 
 Weco will iteratively modify the feature engineering or modeling code within `evaluate.py`, run the evaluation pipeline, and use the resulting `accuracy` to guide further improvements.

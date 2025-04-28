@@ -2,8 +2,12 @@ import argparse
 import kaggle
 from pathlib import Path
 
+
 def submit_submission(submission_path: Path):
-    kaggle.api.competition_submit(submission_path, "My first submission with weco", "spaceship-titanic")
+    kaggle.api.competition_submit(
+        submission_path, "My first submission with weco", "spaceship-titanic"
+    )
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

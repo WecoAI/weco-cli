@@ -11,5 +11,6 @@ def get_data():
     # remove the zip file
     os.remove("spaceship-titanic.zip")
 
-if __name__ == "__main__":    
+
+if __name__ == "__main__":
     get_data()
