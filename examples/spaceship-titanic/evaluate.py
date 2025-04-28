@@ -4,10 +4,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score
-import joblib
+import joblib, warnings
 
+warnings.filterwarnings("ignore", category=UserWarning)  # keep Weco's panel tidy
 
-def train(df: pd.DataFrame, random_state: int = 0) -> float:
+def train(df: pd.DataFrame, test_df: pd.DataFrame, random_state: int = 0) -> float:
     train_df, val_df = train_test_split(
         df, test_size=0.10, random_state=random_state, stratify=df["Transported"]
     )
@@ -20,29 +21,25 @@ def train(df: pd.DataFrame, random_state: int = 0) -> float:
     preds = model.predict(val_df)
     acc = accuracy_score(y_val, preds)
 
-    # Persist the model so that other scripts / graders can reuse it -----------
+    # **Important**: Keep this step!!!
+    # Save the model and generate a submission file on test
     joblib.dump(model, "model.joblib")
+    test_preds = model.predict(test_df)
+    submission_df = pd.DataFrame(
+        {"PassengerId": test_df["PassengerId"], "Transported": test_preds.astype(bool)}
+    )
+    submission_df.to_csv("submission.csv", index=False)
 
-    return acc
-
-
-def predict_and_score(input_df: pd.DataFrame) -> float:
-    model = joblib.load("model.joblib")
-    preds = model.predict(input_df)
-    y_test = input_df.pop("Transported")
-    acc = accuracy_score(y_test, preds)
     return acc
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--data-dir", type=Path, default=Path("./public/"))
+    p.add_argument("--data-dir", type=Path, default=Path("./data/"))
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
     train_df = pd.read_csv(args.data_dir / "train.csv")
-    test_df = pd.read_csv("./private/test.csv")
-    train_acc = train(train_df, random_state=args.seed)
-    print(f"[info] Train accuracy: {train_acc:.6f}")
-    acc = predict_and_score(test_df)
+    test_df = pd.read_csv(args.data_dir / "test.csv")
+    acc = train(train_df, test_df, random_state=args.seed)
     print(f"accuracy: {acc:.6f}")
