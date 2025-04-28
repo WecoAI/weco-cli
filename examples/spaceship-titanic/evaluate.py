@@ -4,9 +4,11 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score
-import joblib, warnings
+import joblib
+import warnings
 
 warnings.filterwarnings("ignore", category=UserWarning)  # keep Weco's panel tidy
+
 
 def train(df: pd.DataFrame, test_df: pd.DataFrame, random_state: int = 0) -> float:
     train_df, val_df = train_test_split(
