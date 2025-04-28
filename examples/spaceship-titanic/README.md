@@ -1,8 +1,6 @@
 # Example: Optimizing a Kaggle Classification Model (Spaceship Titanic)
 
-This example demonstrates using Weco to optimize a Python script designed for the [Spaceship Titanic Kaggle competition](https://www.kaggle.com/competitions/spaceship-titanic/overview). The goal is to improve the model's `accuracy` metric by modifying the feature engineering and modeling steps within the `optimize.py` script.
-
-This example uses the `README.md` file (this file) to provide additional instructions to the LLM.
+This example demonstrates using Weco to optimize a Python script designed for the [Spaceship Titanic Kaggle competition](https://www.kaggle.com/competitions/spaceship-titanic/overview). The goal is to improve the model's `accuracy` metric by directly optimizing the evaluate.py
 
 ## Setup
 
@@ -12,25 +10,22 @@ This example uses the `README.md` file (this file) to provide additional instruc
     ```bash
     pip install -r requirements-test.txt
     ```
-4.  **Prepare Data:** Run the utility script once to download the dataset from Kaggle and place it in the expected `public/` and `private/` subdirectories:
+4.  **Prepare Data:** Run the utility script once to download the dataset from Kaggle and place it in the expected `./data/` subdirectories:
     ```bash
-    python utils.py
+    python get_data.py
     ```
-    After running `utils.py`, your directory structure should look like this:
+    After running `get_data.py`, your directory structure should look like this:
     ```
     .
-    ├── baseline.py
-    ├── evaluate.py
-    ├── optimize.py
-    ├── private
-    │   └── test.csv
-    ├── public
+    ├── data
     │   ├── sample_submission.csv
     │   ├── test.csv
     │   └── train.csv
-    ├── README.md  # This file
+    ├── evaluate.py
+    ├── get_data.py
+    ├── README.md
     ├── requirements-test.txt
-    └── utils.py
+    └── submit.py
     ```
 
 ## Optimization Command
@@ -38,25 +33,34 @@ This example uses the `README.md` file (this file) to provide additional instruc
 Run the following command to start optimizing the model:
 
 ```bash
-weco run --source optimize.py \
-         --eval-command "python optimize.py && python evaluate.py" \
+weco run --source evaluate.py \
+         --eval-command "python evaluate.py --data-dir ./data" \
          --metric accuracy \
          --maximize true \
-         --steps 10 \
+         --steps 15 \
          --model gemini-2.5-pro-exp-03-25 \
-         --additional-instructions README.md
+         --additional-instructions "Improve feature engineering, model choice and hyper-parameters."
+         --log-dir .runs/spaceship-titanic
+```
+
+## Submit the solution
+
+Once the optimization finished, you can submit your predictions to kaggle to see the results. Make sure `submission.csv` is present and then simple run the command.
+
+```bash
+python submit.py
 ```
 
 ### Explanation
 
-*   `--source optimize.py`: The script containing the model training and prediction logic to be optimized. It starts identical to `baseline.py`.
-*   `--eval-command "python optimize.py && python evaluate.py"`: This is a multi-step evaluation.
-    *   `python optimize.py`: Runs the modified script to generate predictions (`submission.csv`).
-    *   `python evaluate.py`: Compares the generated `submission.csv` against the ground truth (using the training data as a proxy evaluation set in this example) and prints the `accuracy` metric.
+*   `--source evaluate.py`: The script provides a baseline as root node and directly optimize the evaluate.py
+*   `--eval-command "python evaluate.py --data-dir ./data/"`: This is a multi-step evaluation.
+    *   [optional] `--data-dir`: path to the train and test data.
+    *   [optional] `--seed`: Seed for reproduce the experiment.
 *   `--metric accuracy`: The target metric Weco should optimize.
 *   `--maximize true`: Weco aims to increase the accuracy.
-*   `--steps 10`: The number of optimization iterations.
+*   `--steps 15`: The number of optimization iterations.
 *   `--model gemini-2.5-pro-exp-03-25`: The LLM driving the optimization.
-*   `--additional-instructions README.md`: Provides this file as context to the LLM, which might include hints about feature engineering techniques, model types to try, or specific data columns to focus on (you can add such instructions to this file if desired).
+*   `--additional-instructions README.md`: A single instruction for model improvement or you can use the [`comptition_description.md`](./competition_description.md) within the repo.
 
-Weco will iteratively modify the feature engineering or modeling code within `optimize.py`, run the evaluation pipeline, and use the resulting `accuracy` to guide further improvements. The `baseline.py` file is provided as a reference starting point.
+Weco will iteratively modify the feature engineering or modeling code within `evaluate.py`, run the evaluation pipeline, and use the resulting `accuracy` to guide further improvements.
