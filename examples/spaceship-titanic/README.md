@@ -17,6 +17,7 @@ This example demonstrates using Weco to optimize a Python script designed for th
     After running `get_data.py`, your directory structure should look like this:
     ```
     .
+    ├── competition_description.md
     ├── data
     │   ├── sample_submission.csv
     │   ├── test.csv
