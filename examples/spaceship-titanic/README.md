@@ -46,7 +46,7 @@ weco run --source evaluate.py \
 
 ## Submit the solution
 
-Once the optimization finished, you can submit your predictions to kaggle to see the results. Make sure `submission.csv` is present and then simple run the command.
+Once the optimization finished, you can submit your predictions to kaggle to see the results. Make sure `submission.csv` is present and then simply run the following command.
 
 ```bash
 python submit.py
