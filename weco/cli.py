@@ -306,6 +306,15 @@ def main() -> None:
                 session_id = session_response["session_id"]
                 runs_dir = pathlib.Path(args.log_dir) / session_id
                 runs_dir.mkdir(parents=True, exist_ok=True)
+                # Update the evaluation output panel
+                def _update_eval_panel(text: str) -> None:
+                    eval_output_panel.update(text)
+                    smooth_update(
+                        live=live,
+                        layout=layout,
+                        sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                        transition_delay=0.1,
+                    )
 
                 # Write the initial code string to the logs
                 write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=session_response["code"])
@@ -365,15 +374,10 @@ def main() -> None:
                 )
 
                 # Run evaluation on the initial solution
-                term_out = run_evaluation(eval_command=args.eval_command)
-
-                # Update the evaluation output panel
-                eval_output_panel.update(output=term_out)
-                smooth_update(
-                    live=live,
-                    layout=layout,
-                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                    transition_delay=0.1,
+                term_out = run_evaluation(
+                    args.eval_command,
+                    log_path=runs_dir / "step_0_output.txt",
+                    on_update=_update_eval_panel,
                 )
 
                 # Starting from step 1 to steps (inclusive) because the baseline solution is step 0, so we want to optimize for steps worth of steps
@@ -467,15 +471,10 @@ def main() -> None:
                     )
 
                     # Run evaluation on the current solution
-                    term_out = run_evaluation(eval_command=args.eval_command)
-                    eval_output_panel.update(output=term_out)
-
-                    # Update evaluation output with a smooth transition
-                    smooth_update(
-                        live=live,
-                        layout=layout,
-                        sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                        transition_delay=0.1,  # Slightly longer delay for evaluation results
+                    term_out = run_evaluation(
+                        args.eval_command,
+                        log_path=runs_dir / f"step_{step}_output.txt",
+                        on_update=_update_eval_panel,
                     )
 
                 # Re-read instructions from the original source (file path or string) BEFORE each suggest call
