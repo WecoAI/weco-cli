@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import Any, Dict, List, Tuple, Union, Callable
 import json
 import os
 import time
@@ -96,16 +96,55 @@ def smooth_update(
 
 
 # Other helper functions
-def run_evaluation(eval_command: str) -> str:
-    """Run the evaluation command on the code and return the output."""
+def run_evaluation(
+    eval_command: str,
+    *,
+    log_path: pathlib.Path | None = None,
+    on_update: Callable[[str], None] | None = None,
+) -> str:
+    """
+    Run `eval_command` and stream *combined* stdout+stderr.
 
-    # Run the eval command as is
-    result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False)
+    Parameters
+    ----------
+    eval_command : str
+        Shell command to execute.
+    log_path : pathlib.Path | None
+        If given, write the full output to this file when finished.
+    on_update : Callable[[str], None] | None
+        Callback that receives the *current* accumulated output every time
+        a new line arrives – handy for updating the Rich panel live.
 
-    # Combine stdout and stderr for complete output
-    output = result.stderr if result.stderr else ""
-    if result.stdout:
-        if len(output) > 0:
-            output += "\n"
-        output += result.stdout
-    return output
+    Returns
+    -------
+    str
+        The complete output after the process exits.
+    """
+    proc = subprocess.Popen(
+        eval_command,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1, # line-buffered
+    )
+
+    lines: List[str] = []
+    assert proc.stdout is not None # for type-checkers
+    with proc.stdout:
+        for line in iter(proc.stdout.readline, ""):
+            lines.append(line)
+            if on_update:
+                on_update("".join(lines))
+
+    proc.wait()
+
+    full_output = "".join(lines)
+    if log_path:
+        log_path.write_text(full_output, encoding="utf-8")
+
+    # If the eval script crashed, surface it
+    if proc.returncode and proc.returncode != 0:
+        full_output += f"\n\n[Process exited with code {proc.returncode}]"
+
+    return full_output
