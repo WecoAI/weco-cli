@@ -7,14 +7,22 @@ from rich.console import Console
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: rich.console.Console) -> None:
-    """Extract and display error messages from API responses in a structured format."""
+    """Extract and display error messages from API responses in a structured format. Does not exit."""
     try:
-        detail = e.response.json()["detail"]
+        error_data = e.response.json()
+        # Handle structured detail from FastAPI (which can be a dict or string)
+        detail = error_data.get("detail", e.response.text)
+        if isinstance(detail, dict) and "message" in detail:
+            detail_message = detail["message"]
+        elif isinstance(detail, str):
+            detail_message = detail
+        else:  # Fallback for unexpected detail structure
+            detail_message = e.response.text
     except (ValueError, KeyError):  # Handle cases where response is not JSON or detail key is missing
-        detail = f"HTTP {e.response.status_code} Error: {e.response.text}"
-    console.print(f"[bold red]{detail}[/]")
-    # Avoid exiting here, let the caller decide if the error is fatal
-    # sys.exit(1)
+        detail_message = f"HTTP {e.response.status_code} Error: {e.response.text}"
+
+    console.print(f"[bold red]Error: {detail_message}[/]")
+    # Removed sys.exit(1) - let caller handle control flow.
 
 
 def start_optimization_run(
@@ -82,15 +90,27 @@ def evaluate_feedback_then_suggest_next_solution(
             headers=auth_headers,  # Add headers
             timeout=timeout,
         )
-        response.raise_for_status()
+        # Check for 402 explicitly BEFORE raise_for_status
+        if response.status_code == 402:
+            try:
+                # Return the JSON error payload for the CLI to inspect
+                return response.json()
+            except ValueError:  # Not JSON, though our backend should send JSON
+                return {
+                    "error": "api_key_required_unknown_format",
+                    "status_code": response.status_code,
+                    "detail": response.text,
+                }
+
+        response.raise_for_status()  # For other errors (4xx, 5xx)
         return response.json()
     except requests.exceptions.HTTPError as e:
-        # Allow caller to handle suggest errors, maybe retry or terminate
-        handle_api_error(e, Console())  # Use default console if none passed
-        raise  # Re-raise the exception
+        handle_api_error(e, Console())  # Print the error
+        raise  # Re-raise HTTPError to be caught by cli.py's main handler
     except requests.exceptions.RequestException as e:
-        print(f"Network Error during suggest: {e}")  # Use print as console might not be available
-        raise  # Re-raise the exception
+        console = Console()  # Create a console instance if not passed
+        console.print(f"[bold red]Network Error during suggest: {e}[/]")
+        raise  # Re-raise RequestException to be caught by cli.py's main handler
 
 
 def get_optimization_run_status(
@@ -99,10 +119,7 @@ def get_optimization_run_status(
     """Get the current status of the optimization run."""
     try:
         response = requests.get(
-            f"{__base_url__}/runs/{run_id}",
-            params={"include_history": include_history},
-            headers=auth_headers,
-            timeout=timeout,
+            f"{__base_url__}/runs/{run_id}", params={"include_history": include_history}, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
         return response.json()
@@ -114,11 +131,7 @@ def get_optimization_run_status(
         raise  # Re-raise
 
 
-def send_heartbeat(
-    run_id: str,
-    auth_headers: dict = {},
-    timeout: int = 10,
-) -> bool:
+def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: int = 10) -> bool:
     """Send a heartbeat signal to the backend."""
     try:
         response = requests.put(f"{__base_url__}/runs/{run_id}/heartbeat", headers=auth_headers, timeout=timeout)
@@ -136,12 +149,7 @@ def send_heartbeat(
 
 
 def report_termination(
-    run_id: str,
-    status_update: str,
-    reason: str,
-    details: Optional[str] = None,
-    auth_headers: dict = {},
-    timeout: int = 30,
+    run_id: str, status_update: str, reason: str, details: Optional[str] = None, auth_headers: dict = {}, timeout: int = 30
 ) -> bool:
     """Report the termination reason to the backend."""
     try:

@@ -76,9 +76,7 @@ class HeartbeatSender(threading.Thread):
                 self.stop_event.wait(self.interval)
 
         except Exception as e:
-            print(
-                f"[ERROR HeartbeatSender] Unhandled exception in run loop for run {self.run_id}: {e}", file=sys.stderr
-            )
+            print(f"[ERROR HeartbeatSender] Unhandled exception in run loop for run {self.run_id}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
 
@@ -200,12 +198,14 @@ def perform_login(console: Console):
         console.print(f"\n[bold red]An unexpected error occurred during login:[/] {e}")
         return False
 
+
 def main() -> None:
     """Main function for the Weco CLI."""
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
     from . import __pkg_version__
+
     check_for_cli_updates(__pkg_version__)
 
     parser = argparse.ArgumentParser(
@@ -354,11 +354,7 @@ def main() -> None:
                 tree_panel.set_unevaluated_node(node_id=run_response["solution_id"])
                 solution_panels.update(
                     current_node=Node(
-                        id=run_response["solution_id"],
-                        parent_id=None,
-                        code=run_response["code"],
-                        metric=None,
-                        is_buggy=False,
+                        id=run_response["solution_id"], parent_id=None, code=run_response["code"], metric=None, is_buggy=False
                     ),
                     best_node=None,
                 )
@@ -393,10 +389,7 @@ def main() -> None:
                     if run_id:
                         try:
                             current_status_response = get_optimization_run_status(
-                                run_id=run_id,
-                                include_history=False,
-                                timeout=30,
-                                auth_headers=auth_headers,
+                                run_id=run_id, include_history=False, timeout=30, auth_headers=auth_headers
                             )
                             current_run_status_val = current_status_response.get("status")
                             if current_run_status_val == "stopping":
@@ -412,14 +405,110 @@ def main() -> None:
                                 f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]"
                             )
 
-                    eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                        run_id=run_id,
-                        execution_output=term_out,
-                        additional_instructions=current_additional_instructions,
-                        api_keys=llm_api_keys,
-                        auth_headers=auth_headers,
-                        timeout=timeout,
-                    )
+                    api_keys_for_current_call = llm_api_keys.copy()  # Use a copy for the current attempt
+
+                    for _attempt in range(2):  # Allow one retry after prompting for keys
+                        eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                            run_id=run_id,
+                            execution_output=term_out,
+                            additional_instructions=current_additional_instructions,
+                            api_keys=api_keys_for_current_call,  # Pass current keys
+                            auth_headers=auth_headers,
+                            timeout=timeout,
+                        )
+
+                        if (
+                            isinstance(eval_and_next_solution_response, dict)
+                            and eval_and_next_solution_response.get("error") == "api_key_required"
+                        ):
+                            if _attempt == 0:  # First attempt failed, now prompt for keys
+                                console.print("\n[bold yellow]API Key Required:[/]")
+                                console.print(
+                                    f"[yellow]{eval_and_next_solution_response.get('message', 'Please provide your LLM API keys to continue.')}[/]"
+                                )
+
+                                user_provided_keys = {}
+                                key_vars = {
+                                    "OPENAI_API_KEY": "OpenAI API Key",
+                                    "ANTHROPIC_API_KEY": "Anthropic API Key",
+                                    "GEMINI_API_KEY": "Gemini API Key",
+                                }
+                                for key_var, key_name in key_vars.items():
+                                    user_key = Prompt.ask(f"Enter your {key_name} (or press Enter to skip)", default="")
+                                    if user_key.strip():
+                                        user_provided_keys[key_var] = user_key.strip()
+
+                                if not user_provided_keys:
+                                    console.print("[bold red]No API keys provided. Terminating run.[/]")
+                                    if run_id:
+                                        report_termination(
+                                            run_id=run_id,
+                                            status_update="terminated",
+                                            reason="api_key_not_provided_after_prompt",
+                                            details="User did not provide API keys after free steps exhausted.",
+                                            auth_headers=auth_headers,
+                                        )
+                                    sys.exit(1)
+
+                                api_keys_for_current_call.update(user_provided_keys)
+                                llm_api_keys.update(user_provided_keys)
+
+                                console.print("[cyan]Retrying current step with provided API keys...[/]")
+                                continue
+                            else:
+                                console.print(
+                                    f"[bold red]Failed to proceed even after attempting to use provided API keys. Error: {eval_and_next_solution_response.get('detail', 'Unknown error')}[/]"
+                                )
+                                if run_id:
+                                    report_termination(
+                                        run_id=run_id,
+                                        status_update="error",
+                                        reason="api_error_after_key_prompt",
+                                        auth_headers=auth_headers,
+                                    )
+                                sys.exit(1)
+
+                        break  # Successful response or different error, break from retry loop
+
+                    # Check if it's still an error (e.g. user provided bad keys that didn't result in 402 but another error)
+                    if isinstance(eval_and_next_solution_response, dict) and eval_and_next_solution_response.get("error"):
+                        # This assumes evaluate_feedback_then_suggest_next_solution might return other error structures
+                        # that aren't caught by its internal HTTPError handling (which calls sys.exit).
+                        # Or, if the 402 was handled, but then a subsequent non-402 error occurred on retry.
+                        error_detail_msg = "Unknown error"
+                        if isinstance(eval_and_next_solution_response.get("detail"), str):
+                            error_detail_msg = eval_and_next_solution_response["detail"]
+                        elif (
+                            isinstance(eval_and_next_solution_response.get("detail"), dict)
+                            and "message" in eval_and_next_solution_response["detail"]
+                        ):
+                            error_detail_msg = eval_and_next_solution_response["detail"]["message"]
+
+                        console.print(f"[bold red]An error occurred: {error_detail_msg}[/]")
+                        if run_id:
+                            report_termination(
+                                run_id=run_id,
+                                status_update="error",
+                                reason="general_api_error_in_suggest_loop",
+                                auth_headers=auth_headers,
+                            )
+                        sys.exit(1)
+
+                    # If we are here, eval_and_next_solution_response should be a valid successful response dictionary
+                    # Ensure it's not None and is a dict before proceeding with key access
+                    if not isinstance(eval_and_next_solution_response, dict) or "code" not in eval_and_next_solution_response:
+                        console.print(
+                            f"[bold red]Unexpected response structure from API after suggest call: {eval_and_next_solution_response}[/]"
+                        )
+                        if run_id:
+                            report_termination(
+                                run_id=run_id,
+                                status_update="error",
+                                reason="unexpected_api_response_structure_loop",
+                                auth_headers=auth_headers,
+                            )
+                        sys.exit(1)
+
                     write_to_path(
                         fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"]
                     )
@@ -430,7 +519,7 @@ def main() -> None:
                     summary_panel.set_step(step=step)
                     summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
                     plan_panel.update(plan=eval_and_next_solution_response["plan"])
-                    
+
                     nodes_list_from_status = status_response.get("nodes")
                     tree_panel.build_metric_tree(nodes=nodes_list_from_status if nodes_list_from_status is not None else [])
                     tree_panel.set_unevaluated_node(node_id=eval_and_next_solution_response["solution_id"])
@@ -459,7 +548,7 @@ def main() -> None:
                                 )
                     if current_solution_node is None:
                         raise ValueError("Current solution node not found in nodes list from status response")
-                    
+
                     solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
                     current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
                     eval_output_panel.clear()
@@ -489,22 +578,114 @@ def main() -> None:
                     current_additional_instructions = read_additional_instructions(
                         additional_instructions=args.additional_instructions
                     )
-                    eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                        run_id=run_id,
-                        execution_output=term_out,
-                        additional_instructions=current_additional_instructions,
-                        api_keys=llm_api_keys,
-                        timeout=timeout,
-                        auth_headers=auth_headers,
-                    )
+                    api_keys_for_current_call = llm_api_keys.copy()
+
+                    for _attempt in range(2):  # Allow one retry
+                        eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                            run_id=run_id,
+                            execution_output=term_out,
+                            additional_instructions=current_additional_instructions,
+                            api_keys=api_keys_for_current_call,  # Use current attempt's keys
+                            timeout=timeout,
+                            auth_headers=auth_headers,
+                        )
+
+                        if (
+                            isinstance(eval_and_next_solution_response, dict)
+                            and eval_and_next_solution_response.get("error") == "api_key_required"
+                        ):
+                            if _attempt == 0:  # First attempt failed
+                                console.print("\n[bold yellow]API Key Required (final step):[/]")
+                                console.print(
+                                    f"[yellow]{eval_and_next_solution_response.get('message', 'Please provide your LLM API keys to continue.')}[/]"
+                                )
+
+                                user_provided_keys = {}
+                                key_vars = {
+                                    "OPENAI_API_KEY": "OpenAI API Key",
+                                    "ANTHROPIC_API_KEY": "Anthropic API Key",
+                                    "GEMINI_API_KEY": "Gemini API Key",
+                                }
+                                for key_var, key_name in key_vars.items():
+                                    user_key = Prompt.ask(f"Enter your {key_name} (or press Enter to skip)", default="")
+                                    if user_key.strip():
+                                        user_provided_keys[key_var] = user_key.strip()
+
+                                if not user_provided_keys:
+                                    console.print("[bold red]No API keys provided. Terminating run.[/]")
+                                    if run_id:
+                                        report_termination(
+                                            run_id=run_id,
+                                            status_update="terminated",
+                                            reason="api_key_not_provided_after_prompt_final",
+                                            details="User did not provide API keys after free steps exhausted (final step).",
+                                            auth_headers=auth_headers,
+                                        )
+                                    sys.exit(1)
+
+                                api_keys_for_current_call.update(user_provided_keys)
+                                llm_api_keys.update(user_provided_keys)
+                                console.print("[cyan]Retrying final step with provided API keys...[/]")
+                                continue
+                            else:  # Second attempt also failed
+                                console.print(
+                                    f"[bold red]Failed to proceed with final step even after attempting to use provided API keys. Error: {eval_and_next_solution_response.get('detail', 'Unknown error')}[/]"
+                                )
+                                if run_id:
+                                    report_termination(
+                                        run_id=run_id,
+                                        status_update="error",
+                                        reason="api_error_after_key_prompt_final",
+                                        auth_headers=auth_headers,
+                                    )
+                                sys.exit(1)
+
+                        break  # Successful or different error
+
+                    if isinstance(eval_and_next_solution_response, dict) and eval_and_next_solution_response.get("error"):
+                        error_detail_msg = "Unknown error"
+                        if isinstance(eval_and_next_solution_response.get("detail"), str):
+                            error_detail_msg = eval_and_next_solution_response["detail"]
+                        elif (
+                            isinstance(eval_and_next_solution_response.get("detail"), dict)
+                            and "message" in eval_and_next_solution_response["detail"]
+                        ):
+                            error_detail_msg = eval_and_next_solution_response["detail"]["message"]
+                        console.print(f"[bold red]An error occurred during final step: {error_detail_msg}[/]")
+                        if run_id:
+                            report_termination(
+                                run_id=run_id,
+                                status_update="error",
+                                reason="general_api_error_in_suggest_final",
+                                auth_headers=auth_headers,
+                            )
+                        sys.exit(1)
+
+                    if (
+                        not isinstance(eval_and_next_solution_response, dict) or "usage" not in eval_and_next_solution_response
+                    ):  # is_done should be true here
+                        console.print(
+                            f"[bold red]Unexpected response structure from API after final suggest call: {eval_and_next_solution_response}[/]"
+                        )
+                        if run_id:
+                            report_termination(
+                                run_id=run_id,
+                                status_update="error",
+                                reason="unexpected_api_response_structure_final",
+                                auth_headers=auth_headers,
+                            )
+                        sys.exit(1)
+
                     summary_panel.set_step(step=steps)
                     summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
                     status_response = get_optimization_run_status(
                         run_id=run_id, include_history=True, timeout=timeout, auth_headers=auth_headers
                     )
                     nodes_list_from_status_final = status_response.get("nodes")
-                    tree_panel.build_metric_tree(nodes=nodes_list_from_status_final if nodes_list_from_status_final is not None else [])
-                    
+                    tree_panel.build_metric_tree(
+                        nodes=nodes_list_from_status_final if nodes_list_from_status_final is not None else []
+                    )
+
                     if status_response["best_result"] is not None:
                         best_solution_node = Node(
                             id=status_response["best_result"]["solution_id"],

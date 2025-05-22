@@ -221,7 +221,7 @@ class MetricTreePanel:
                 text = "bug"
             else:
                 # evaluated non-buggy node
-                if node.id == best_node.id:
+                if best_node is not None and node.id == best_node.id:
                     # best node
                     color = "green"
                     style = "bold"
