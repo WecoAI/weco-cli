@@ -26,7 +26,7 @@ def evaluate_for_accuracy(
     if id_column not in submission_df.columns:
         raise InvalidSubmissionError(f"Submission must have a `{id_column}` column")
 
-    # sort on id to ensure correct ordering
+    # Sort on id to ensure correct ordering
     submission_df = submission_df.sort_values(by=id_column)
     answers_df = answers_df.sort_values(by=id_column)
 
@@ -51,9 +51,6 @@ if __name__ == "__main__":
     train_df, validation_df, test_df = read_data(args.data_dir)
 
     # Import training and prediction functions
-    # CRITICAL: These function names must NOT be changed during optimization
-    # - train_model: must accept (train_df, random_state) parameters
-    # - predict_with_model: must accept (model, test_df) parameters
     from train import train_model, predict_with_model
 
     # Validate that required functions exist and are callable
@@ -62,12 +59,10 @@ if __name__ == "__main__":
 
     # Step 1: Train the model (this will be optimized by Weco)
     print("Training model...")
-    # REQUIRED: Must call train_model function with these exact parameters
     model = train_model(train_df, args.seed)
 
     # Step 2: Generate predictions on validation set (no retraining)
     print("Generating validation predictions...")
-    # REQUIRED: Must call predict_with_model function with these exact parameters
     validation_submission_df = predict_with_model(model, validation_df)
 
     # Step 3: Evaluate accuracy on validation set
@@ -76,7 +71,6 @@ if __name__ == "__main__":
 
     # Step 4: Generate predictions on test set (optional, for final submission)
     print("Generating test predictions...")
-    # REQUIRED: Must call predict_with_model function with these exact parameters
     test_submission_df = predict_with_model(model, test_df)
     test_submission_df.to_csv("submission.csv", index=False)
     print("Test predictions saved to submission.csv")

@@ -12,10 +12,6 @@
 # ============================================================================
 
 import pandas as pd
-import joblib
-import os
-from pathlib import Path
-# sklearn (and other library) imports will be added/modified by Weco
 from sklearn.dummy import DummyClassifier 
 
 def train_model(train_df: pd.DataFrame, random_state: int = 0):
