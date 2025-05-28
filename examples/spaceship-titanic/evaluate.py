@@ -1,35 +1,46 @@
 import argparse
 from pathlib import Path
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from sklearn.dummy import DummyClassifier
 from sklearn.metrics import accuracy_score
-import joblib
-import warnings
+from sklearn.model_selection import train_test_split
 
-warnings.filterwarnings("ignore", category=UserWarning)  # keep Weco's panel tidy
+class InvalidSubmissionError(Exception):
+    pass
+
+def evaluate_for_accuracy(
+        submission_df: pd.DataFrame,
+        answers_df: pd.DataFrame,
+        target_column: str = "Transported",
+        id_column: str = "PassengerId",
+) -> float:
+    
+    # Answers checks
+    assert target_column in answers_df.columns, f"Answers must have a `{target_column}` column"
+    assert id_column in answers_df.columns, f"Answers must have a `{id_column}` column"
+
+    # Submission checks
+    if len(submission_df) != len(answers_df):
+        raise InvalidSubmissionError("Submission must have the same length as the answers.")
+    if target_column not in submission_df.columns:
+        raise InvalidSubmissionError(f"Submission must have a `{target_column}` column")
+    if id_column not in submission_df.columns:
+        raise InvalidSubmissionError(f"Submission must have a `{id_column}` column")
+
+    # sort on id to ensure correct ordering
+    submission_df = submission_df.sort_values(by=id_column)
+    answers_df = answers_df.sort_values(by=id_column)
+
+    if (submission_df[id_column].values != answers_df[id_column].values).any():
+        raise InvalidSubmissionError(f"Submission and Answers `{id_column}`'s do not match")
+
+    return accuracy_score(submission_df[target_column], answers_df[target_column])
 
 
-def train(df: pd.DataFrame, test_df: pd.DataFrame, random_state: int = 0) -> float:
-    train_df, val_df = train_test_split(df, test_size=0.10, random_state=random_state, stratify=df["Transported"])
-
-    y_train = train_df.pop("Transported")
-    y_val = val_df.pop("Transported")
-
-    model = DummyClassifier(strategy="most_frequent", random_state=random_state)
-    model.fit(train_df, y_train)
-    preds = model.predict(val_df)
-    acc = accuracy_score(y_val, preds)
-
-    # **Important**: Keep this step!!!
-    # Save the model and generate a submission file on test
-    joblib.dump(model, "model.joblib")
-    test_preds = model.predict(test_df)
-    submission_df = pd.DataFrame({"PassengerId": test_df["PassengerId"], "Transported": test_preds.astype(bool)})
-    submission_df.to_csv("submission.csv", index=False)
-
-    return acc
-
+def read_data(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    train_df = pd.read_csv(data_dir / "train.csv")
+    train_df, validation_df = train_test_split(train_df, test_size=0.1, random_state=0)
+    test_df = pd.read_csv(data_dir / "test.csv")
+    return train_df, validation_df, test_df
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
@@ -37,7 +48,36 @@ if __name__ == "__main__":
     p.add_argument("--seed", type=int, default=0)
     args = p.parse_args()
 
-    train_df = pd.read_csv(args.data_dir / "train.csv")
-    test_df = pd.read_csv(args.data_dir / "test.csv")
-    acc = train(train_df, test_df, random_state=args.seed)
+    train_df, validation_df, test_df = read_data(args.data_dir)
+
+    # Import training and prediction functions
+    # CRITICAL: These function names must NOT be changed during optimization
+    # - train_model: must accept (train_df, random_state) parameters
+    # - predict_with_model: must accept (model, test_df) parameters
+    from train import train_model, predict_with_model
+
+    # Validate that required functions exist and are callable
+    assert callable(train_model), "train_model function must exist and be callable"
+    assert callable(predict_with_model), "predict_with_model function must exist and be callable"
+
+    # Step 1: Train the model (this will be optimized by Weco)
+    print("Training model...")
+    # REQUIRED: Must call train_model function with these exact parameters
+    model = train_model(train_df, args.seed)
+
+    # Step 2: Generate predictions on validation set (no retraining)
+    print("Generating validation predictions...")
+    # REQUIRED: Must call predict_with_model function with these exact parameters
+    validation_submission_df = predict_with_model(model, validation_df)
+    validation_submission_df.to_csv("validation_submission.csv", index=False)
+
+    # Step 3: Evaluate accuracy on validation set
+    acc = evaluate_for_accuracy(validation_submission_df, validation_df)
     print(f"accuracy: {acc:.6f}")
+
+    # Step 4: Generate predictions on test set (optional, for final submission)
+    print("Generating test predictions...")
+    # REQUIRED: Must call predict_with_model function with these exact parameters
+    test_submission_df = predict_with_model(model, test_df)
+    test_submission_df.to_csv("submission.csv", index=False)
+    print("Test predictions saved to submission.csv")
