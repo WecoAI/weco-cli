@@ -69,7 +69,6 @@ if __name__ == "__main__":
     print("Generating validation predictions...")
     # REQUIRED: Must call predict_with_model function with these exact parameters
     validation_submission_df = predict_with_model(model, validation_df)
-    validation_submission_df.to_csv("validation_submission.csv", index=False)
 
     # Step 3: Evaluate accuracy on validation set
     acc = evaluate_for_accuracy(validation_submission_df, validation_df)
