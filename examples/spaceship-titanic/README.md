@@ -22,7 +22,7 @@ weco run --source train.py \
          --metric accuracy \
          --goal maximize \
          --steps 10 \
-         --model o4-mini
+         --model o4-mini \
          --additional-instructions "Improve feature engineering, model choice and hyper-parameters."
 ```
 
