@@ -1,7 +1,7 @@
-pandas
-numpy
-scikit-learn
-torch
-xgboost
-lightgbm
-catboost
+pandas==2.3.0
+numpy==2.3.1
+scikit-learn==1.7.0
+torch==2.7.1
+xgboost==3.0.2
+lightgbm==4.6.0
+catboost==1.2.8
