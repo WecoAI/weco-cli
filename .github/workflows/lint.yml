@@ -25,26 +25,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install ruff
 
-    - name: Run Linter (PR Check)
-      if: github.event_name == 'pull_request'
+    - name: Run Linter (Check Only)
       run: |
         ruff check .
-
-    - name: Run Linter & Formatter (Push)
-      if: github.event_name == 'push'
-      run: |
-        ruff check . --fix
-        ruff format .
-
-    - name: Commit changes
-      if: github.event_name == 'push'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add -A
-        if git diff --exit-code --staged; then
-          echo "No changes to commit"
-        else
-          git commit -m "[GitHub Action] Lint and format code with Ruff"
-          git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
-        fi
+        ruff format --check .

@@ -4,16 +4,14 @@ import pandas as pd
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
+
 class InvalidSubmissionError(Exception):
     pass
 
+
 def evaluate_for_accuracy(
-        submission_df: pd.DataFrame,
-        answers_df: pd.DataFrame,
-        target_column: str = "Transported",
-        id_column: str = "PassengerId",
+    submission_df: pd.DataFrame, answers_df: pd.DataFrame, target_column: str = "Transported", id_column: str = "PassengerId"
 ) -> float:
-    
     # Answers checks
     assert target_column in answers_df.columns, f"Answers must have a `{target_column}` column"
     assert id_column in answers_df.columns, f"Answers must have a `{id_column}` column"
@@ -41,6 +39,7 @@ def read_data(data_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]
     train_df, validation_df = train_test_split(train_df, test_size=0.1, random_state=0)
     test_df = pd.read_csv(data_dir / "test.csv")
     return train_df, validation_df, test_df
+
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
