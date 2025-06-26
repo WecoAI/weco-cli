@@ -3,9 +3,10 @@ name: Lint and Format Code
 on:
   push:
     branches:
-      - main
       - dev
   pull_request:  # Run on any pull request
+    branches-ignore:
+      - main
 
 jobs:
   lint:
@@ -27,27 +28,25 @@ jobs:
         python -m pip install --upgrade pip
         pip install ruff
 
-    - name: Run Linter & Formatter (Push - Check Only)
-      if: github.event_name == 'push'
+    - name: Run Linter & Formatter
       run: |
-        ruff check .
-        ruff format --check .
-
-    - name: Run Linter & Formatter (Pull Request)
-      if: github.event_name == 'pull_request'
-      run: |
-        ruff check . --fix
-        ruff format .
-
-    - name: Commit changes (Pull Request)
-      if: github.event_name == 'pull_request'
-      run: |
-        git config --local user.email "action@github.com"
-        git config --local user.name "GitHub Action"
-        git add -A
-        if git diff --exit-code --staged; then
-          echo "No changes to commit"
+        # Check if this is an external fork PR
+        if [[ "${{ github.event.pull_request.head.repo.full_name }}" != "${{ github.repository }}" ]] && [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          echo "External fork PR detected. Running format check only."
+          ruff check .
+          ruff format --check .
         else
-          git commit -m "[GitHub Action] Lint and format code with Ruff"
-          git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          echo "Internal PR or push event. Running format and commit."
+          ruff check . --fix
+          ruff format .
+          
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add -A
+          if git diff --exit-code --staged; then
+            echo "No changes to commit"
+          else
+            git commit -m "[GitHub Action] Lint and format code with Ruff"
+            git push https://${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}
+          fi
         fi
