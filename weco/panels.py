@@ -3,7 +3,6 @@ from rich.table import Table
 from rich.progress import BarColumn, Progress, TextColumn
 from rich.layout import Layout
 from rich.panel import Panel
-from rich.syntax import Syntax
 from rich import box
 from typing import Dict, List, Optional, Union, Tuple
 from .utils import format_number
@@ -345,9 +344,11 @@ class SolutionPanels:
 
         # Fallback to expensive detection once, then cache
         try:
+            from rich.syntax import Syntax  # local import – potentially heavy
             lexer_name = Syntax.from_path(source_fp).lexer
+        except ModuleNotFoundError:
+            lexer_name = "text"
         except Exception:
-            # Last-ditch fallback
             lexer_name = "text"
 
         self._LEXER_CACHE[ext] = lexer_name
@@ -365,6 +366,8 @@ class SolutionPanels:
         current_code = self.current_node.code if self.current_node is not None else ""
         best_code = self.best_node.code if self.best_node is not None else ""
         best_score = self.best_node.metric if self.best_node is not None else None
+
+        from rich.syntax import Syntax  # lazy import
 
         # Current solution (without score)
         current_title = f"[bold]💡 Current Solution (Step {current_step})"
@@ -459,6 +462,8 @@ class EvaluationScriptPanel:
 
     def get_display(self, script_content: str, script_path: str = "evaluate.py") -> Panel:
         """Create a panel displaying the evaluation script with syntax highlighting."""
+        from rich.syntax import Syntax  # lazy import
+
         return Panel(
             Syntax(script_content, "python", theme="monokai", line_numbers=True),
             title=f"[bold]📄 Evaluation Script: {script_path}",
