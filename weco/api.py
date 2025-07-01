@@ -17,10 +17,24 @@ def _get_weco_session() -> requests.Session:
         status_forcelist=[429, 500, 502, 503, 504],  # Retry on these server errors and rate limiting
         allowed_methods=["HEAD", "GET", "PUT", "POST", "DELETE", "OPTIONS"],  # Case-insensitive
         backoff_factor=1,  # e.g., sleep for 0s, 2s, 4s between retries (factor * (2 ** ({number of total retries} - 1)))
+        backoff_jitter=0.1,  # Add jitter to prevent thundering herd
     )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_connections=10,  # Number of connection pools to cache
+        pool_maxsize=20,      # Maximum number of connections to save in the pool
+        pool_block=False      # Don't block when pool is full
+    )
     session.mount("http://", adapter)
     session.mount("https://", adapter)
+    
+    # Set default headers for better performance
+    session.headers.update({
+        'Connection': 'keep-alive',
+        'User-Agent': f'weco-cli/{__pkg_version__}',
+        'Accept-Encoding': 'gzip, deflate',
+    })
+    
     return session
 
 

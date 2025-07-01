@@ -32,6 +32,12 @@ Homepage = "https://github.com/WecoAI/weco-cli"
 
 [project.optional-dependencies]
 dev = ["ruff", "build", "setuptools_scm"]
+performance = [
+    "aiohttp>=3.8.0",
+    "aiofiles>=0.8.0", 
+    "cachetools>=5.0.0",
+    "psutil>=5.8.0"
+]
 
 [tool.setuptools]
 packages = ["weco"]

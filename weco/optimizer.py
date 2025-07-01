@@ -192,7 +192,7 @@ def execute_optimization(
         heartbeat_thread.start()
 
         # --- Live Update Loop ---
-        refresh_rate = 4
+        refresh_rate = 2  # Reduced from 4 for better performance
         with Live(layout, refresh_per_second=refresh_rate) as live:
             # Define the runs directory (.runs/<run-id>) to store logs and results
             runs_dir = pathlib.Path(log_dir) / run_id
@@ -244,7 +244,7 @@ def execute_optimization(
                     ("best_solution", best_solution_panel),
                     ("eval_output", eval_output_panel.get_display()),
                 ],
-                transition_delay=0.1,
+                transition_delay=0.02,  # Reduced delay for better performance
             )
 
             # Run evaluation on the initial solution
@@ -255,7 +255,7 @@ def execute_optimization(
                 live=live,
                 layout=layout,
                 sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                transition_delay=0.1,
+                transition_delay=0.01,  # Minimal delay for evaluation output
             )
 
             # Starting from step 1 to steps (inclusive) because the baseline solution is step 0, so we want to optimize for steps worth of steps
@@ -345,7 +345,7 @@ def execute_optimization(
                         ("best_solution", best_solution_panel),
                         ("eval_output", eval_output_panel.get_display()),
                     ],
-                    transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
+                    transition_delay=0.02,  # Optimized delay for better performance
                 )
                 term_out = run_evaluation(eval_command=eval_command)
                 eval_output_panel.update(output=term_out)
@@ -353,7 +353,7 @@ def execute_optimization(
                     live=live,
                     layout=layout,
                     sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                    transition_delay=0.1,
+                    transition_delay=0.01,  # Minimal delay for evaluation output
                 )
 
             if not user_stop_requested_flag:

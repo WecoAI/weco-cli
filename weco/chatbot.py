@@ -182,6 +182,7 @@ class Chatbot:
         """Analyze the codebase using gitingest and get optimization suggestions from Gemini."""
         try:
             with self.console.status("[bold green]Parsing codebase...[/]"):
+                # Optimize gitingest for better performance
                 result = ingest(
                     str(self.project_path),
                     exclude_patterns=set(
@@ -204,10 +205,28 @@ class Chatbot:
                             "*.rst",
                             "*.yml",
                             "*.yaml",
+                            # Add more exclusions for better performance
+                            "node_modules",
+                            "__pycache__",
+                            ".pytest_cache",
+                            ".mypy_cache",
+                            "*.egg-info",
+                            "dist",
+                            "build",
+                            ".tox",
+                            ".venv",
+                            "venv",
+                            ".env",
                         ]
                     ),
+                    # Add size limit for better memory management
+                    max_file_size=1024 * 1024,  # 1MB per file limit
                 )
                 self.gitingest_summary, self.gitingest_tree, self.gitingest_content_str = result
+
+            # Check content size and warn if too large
+            if self.gitingest_content_str and len(self.gitingest_content_str) > 500000:  # 500KB
+                self.console.print("[yellow]Warning: Large codebase detected. Processing may take longer.[/]")
 
             if not self.gitingest_content_str:
                 self.console.print("[yellow]Warning: gitingest found no content to analyze.[/]")
@@ -234,6 +253,9 @@ class Chatbot:
             self.ui_helper.display_optimization_options_table(options)
             return options
 
+        except MemoryError:
+            self.console.print("[bold red]Error: Codebase too large to process. Try excluding more files or directories.[/]")
+            return None
         except Exception as e:
             self.console.print(f"[bold red]An error occurred during analysis: {e}[/]")
             import traceback

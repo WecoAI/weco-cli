@@ -9,11 +9,14 @@ from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
+from functools import lru_cache
+import hashlib
 
 
 # Env/arg helper functions
+@lru_cache(maxsize=1)
 def read_api_keys_from_env() -> Dict[str, Any]:
-    """Read API keys from environment variables."""
+    """Read API keys from environment variables. Cached for performance."""
     keys = {}
     keys_to_check = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
     for key in keys_to_check:
@@ -21,6 +24,36 @@ def read_api_keys_from_env() -> Dict[str, Any]:
         if value is not None and len(value) > 0:
             keys[key] = value
     return keys
+
+
+@lru_cache(maxsize=128)
+def get_file_content_hash(file_path: str) -> str:
+    """Get SHA-256 hash of file content for caching purposes."""
+    try:
+        with open(file_path, 'rb') as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except (OSError, IOError):
+        return ""
+
+
+def read_from_path_cached(fp: pathlib.Path, is_json: bool = False) -> Union[str, Dict[str, Any]]:
+    """Read content from a file path with caching based on file hash."""
+    file_path = str(fp)
+    content_hash = get_file_content_hash(file_path)
+    
+    if not content_hash:
+        # Fallback to non-cached read if hash fails
+        return read_from_path(fp, is_json)
+    
+    # Use hash-based caching for file content
+    return _read_from_path_with_hash(file_path, content_hash, is_json)
+
+
+@lru_cache(maxsize=64)
+def _read_from_path_with_hash(file_path: str, content_hash: str, is_json: bool) -> Union[str, Dict[str, Any]]:
+    """Internal cached file reader using content hash."""
+    fp = pathlib.Path(file_path)
+    return read_from_path(fp, is_json)
 
 
 def determine_default_model(llm_api_keys: Dict[str, Any]) -> str:
@@ -106,37 +139,65 @@ def format_number(n: Union[int, float]) -> str:
 
 
 def smooth_update(
-    live: Live, layout: Layout, sections_to_update: List[Tuple[str, Panel]], transition_delay: float = 0.05
+    live: Live, layout: Layout, sections_to_update: List[Tuple[str, Panel]], transition_delay: float = 0.02
 ) -> None:
     """
-    Update sections of the layout with a small delay between each update for a smoother transition effect.
+    Update sections of the layout with minimal delay between each update for smoother transitions.
 
     Args:
         live: The Live display instance
         layout: The Layout to update
         sections_to_update: List of (section_name, content) tuples to update
-        transition_delay: Delay in seconds between updates (default: 0.05)
+        transition_delay: Minimal delay in seconds between updates (default: 0.02)
     """
+    # Update all sections first, then refresh once
     for section, content in sections_to_update:
         layout[section].update(content)
-        live.refresh()
-        time.sleep(transition_delay)
+    
+    # Single refresh after all updates
+    live.refresh()
+    
+    # Only add minimal delay if explicitly requested
+    if transition_delay > 0:
+        time.sleep(min(transition_delay, 0.05))  # Cap at 50ms maximum
 
 
 # Other helper functions
-def run_evaluation(eval_command: str) -> str:
-    """Run the evaluation command on the code and return the output."""
+def run_evaluation(eval_command: str, timeout: int = 300) -> str:
+    """Run the evaluation command on the code and return the output.
+    
+    Args:
+        eval_command: The command to execute
+        timeout: Maximum time to wait for command completion (default: 5 minutes)
+    
+    Returns:
+        Combined stdout and stderr output
+    """
+    try:
+        # Run the eval command with timeout and proper error handling
+        result = subprocess.run(
+            eval_command, 
+            shell=True, 
+            capture_output=True, 
+            text=True, 
+            check=False,
+            timeout=timeout,
+            # Improve process isolation
+            env=dict(os.environ, PYTHONUNBUFFERED="1")
+        )
 
-    # Run the eval command as is
-    result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False)
-
-    # Combine stdout and stderr for complete output
-    output = result.stderr if result.stderr else ""
-    if result.stdout:
-        if len(output) > 0:
-            output += "\n"
-        output += result.stdout
-    return output
+        # Combine stdout and stderr for complete output
+        output = result.stderr if result.stderr else ""
+        if result.stdout:
+            if len(output) > 0:
+                output += "\n"
+            output += result.stdout
+        return output
+        
+    except subprocess.TimeoutExpired:
+        return f"Error: Command timed out after {timeout} seconds"
+    except Exception as e:
+        return f"Error executing command: {str(e)}"
 
 
 # Update Check Function
