@@ -144,18 +144,25 @@ def format_number(n: Union[int, float]) -> str:
 def smooth_update(
     live: Live, layout: Layout, sections_to_update: List[Tuple[str, Panel]], transition_delay: float = 0.05
 ) -> None:
-    """
-    Update sections of the layout with a small delay between each update for a smoother transition effect.
+    """Efficiently push *all* panel updates in a single refresh.
 
-    Args:
-        live: The Live display instance
-        layout: The Layout to update
-        sections_to_update: List of (section_name, content) tuples to update
-        transition_delay: Delay in seconds between updates (default: 0.05)
+    The previous implementation refreshed and slept after *every* section,
+    which multiplied the overhead by the number of panels.  We now:
+
+    1. Apply all updates to the layout first.
+    2. Call ``live.refresh()`` **once**.
+    3. Sleep **once** (optional) to give the terminal time to render when a
+       transition delay is desired.
     """
+
     for section, content in sections_to_update:
         layout[section].update(content)
-        live.refresh()
+
+    # Single refresh for all changes
+    live.refresh()
+
+    # Optional brief pause for visual smoothness
+    if transition_delay > 0:
         time.sleep(transition_delay)
 
 
