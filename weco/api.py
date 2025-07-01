@@ -8,20 +8,57 @@ from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
 
+# Added for session caching
+from threading import Lock
+
 
 # --- Session Configuration ---
-def _get_weco_session() -> requests.Session:
+# Reusing a single `requests.Session` across the lifetime of the process dramatically improves
+# performance because it keeps HTTP connections alive and avoids the overhead of (re)creating
+# connection pools and the retry adapter for every API call. Since this CLI is mostly
+# single-process with limited threading (heartbeat thread), a global cached session is safe.
+
+# `_weco_session` and its accompanying lock live at module scope so every caller of
+# `_get_weco_session()` receives the same configured session instance.
+
+_weco_session: Optional[requests.Session] = None
+_session_lock = Lock()
+
+
+def _create_session() -> requests.Session:
+    """Create and configure a fresh `requests.Session` with retry logic."""
     session = requests.Session()
     retry_strategy = Retry(
         total=3,
-        status_forcelist=[429, 500, 502, 503, 504],  # Retry on these server errors and rate limiting
-        allowed_methods=["HEAD", "GET", "PUT", "POST", "DELETE", "OPTIONS"],  # Case-insensitive
-        backoff_factor=1,  # e.g., sleep for 0s, 2s, 4s between retries (factor * (2 ** ({number of total retries} - 1)))
+        status_forcelist=[429, 500, 502, 503, 504],  # Retry on server errors & rate limiting
+        allowed_methods=[
+            "HEAD",
+            "GET",
+            "PUT",
+            "POST",
+            "DELETE",
+            "OPTIONS",
+        ],
+        backoff_factor=1,  # Sleep for 0s, 2s, 4s between retries
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
     return session
+
+
+def _get_weco_session() -> requests.Session:
+    """Return a cached, thread-safe HTTP session configured for the Weco backend."""
+    global _weco_session
+
+    # Double-checked locking: cheap fast-path when the session already exists,
+    # acquire the lock only on first creation.
+    if _weco_session is None:
+        with _session_lock:
+            if _weco_session is None:
+                _weco_session = _create_session()
+
+    return _weco_session
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
