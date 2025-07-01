@@ -9,6 +9,7 @@ from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
+import sys
 
 
 # Env/arg helper functions
@@ -77,14 +78,49 @@ def read_from_path(fp: pathlib.Path, is_json: bool = False) -> Union[str, Dict[s
 
 
 def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json: bool = False) -> None:
-    """Write content to a file path, optionally as JSON."""
-    with fp.open("w", encoding="utf-8") as f:
+    """Write *content* to *fp* only if it has changed.
+
+    Frequent, identical writes (e.g., once per optimization step when the generated code
+    hasn't changed) needlessly thrash the disk and slow down the run. We first perform a
+    lightweight comparison – checking file size and, if those match, doing a hash – to
+    avoid reopening the file in write-mode unless the bytes differ. This optimisation is
+    especially helpful on networked or flash storage where write amplification is costly.
+    """
+
+    # Fast exit if the path already exists with identical contents
+    try:
+        if fp.exists():
+            # Compare file sizes – a quick check that avoids hashing when lengths differ
+            existing_size = fp.stat().st_size
+            if isinstance(content, str):
+                new_bytes = content.encode("utf-8")
+            else:
+                # For JSON we serialise first to bytes for comparison; keep indent=4 to
+                # match write format so size comparison is meaningful.
+                new_bytes = json.dumps(content, indent=4).encode("utf-8")
+
+            if existing_size == len(new_bytes):
+                # Sizes match – compute hashes to be certain
+                import hashlib
+
+                hasher = hashlib.md5()
+                with fp.open("rb") as _f:
+                    hasher.update(_f.read())
+                if hasher.digest() == hashlib.md5(new_bytes).digest():
+                    return  # No change – skip the write
+
+        # If we reach here, either the file doesn't exist or the content differs
         if is_json:
-            json.dump(content, f, indent=4)
+            with fp.open("w", encoding="utf-8") as f:
+                json.dump(content, f, indent=4)
         elif isinstance(content, str):
-            f.write(content)
+            with fp.open("w", encoding="utf-8") as f:
+                f.write(content)
         else:
             raise TypeError("Content must be str or Dict[str, Any]")
+    except OSError as e:
+        # Silently continue on I/O errors but warn – optimisation should not crash run
+        print(f"[write_to_path] Warning: could not write to {fp}: {e}", file=sys.stderr)
 
 
 # Visualization helper functions
