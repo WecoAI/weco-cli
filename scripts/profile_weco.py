@@ -5,6 +5,57 @@ import pathlib
 import tempfile
 from unittest.mock import patch
 
+# Patch importlib.metadata.version early so `weco` can import without dist-info
+import importlib.metadata
+
+_orig_version = importlib.metadata.version
+
+
+def _safe_version(pkg_name: str):  # type: ignore
+    try:
+        return _orig_version(pkg_name)
+    except importlib.metadata.PackageNotFoundError:
+        return "0.0.0"
+
+
+importlib.metadata.version = _safe_version  # type: ignore
+
+# --------------------
+# Helper: Dummy Live context manager to bypass rich rendering cost during profiling
+# --------------------
+
+class _DummyLive:
+    def __init__(self, *args, **kwargs):
+        self.renderable = args[0] if args else None
+
+    def __enter__(self):
+        return self.renderable
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        return False  # don't suppress
+
+    def update(self, *args, **kwargs):
+        pass
+
+    def refresh(self):
+        pass
+
+
+# Dummy thread replacement for HeartbeatSender
+class _DummyThread:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    def start(self):
+        pass
+
+    def is_alive(self):
+        return False
+
+    def join(self, timeout=None):
+        pass
+
+
 from rich.console import Console
 
 # --------------------
@@ -93,9 +144,13 @@ def run_test():
          patch("weco.api.send_heartbeat", _dummy_true), \
          patch("weco.api.report_termination", _dummy_true), \
          patch("weco.auth.handle_authentication", lambda *a, **k: ("dummy", {})), \
+         patch("weco.optimizer.handle_authentication", lambda *a, **k: ("dummy", {})), \
          patch("weco.utils.read_api_keys_from_env", lambda: {"OPENAI_API_KEY": "dummy"}), \
          patch("weco.utils.run_evaluation", _dummy_run_evaluation), \
-         patch("weco.utils.write_to_path", _no_op):
+         patch("weco.utils.write_to_path", _no_op), \
+         patch("weco.utils.smooth_update", lambda *a, **k: None), \
+         patch("weco.optimizer.HeartbeatSender", _DummyThread), \
+         patch("rich.live.Live", _DummyLive):
 
         optimizer.execute_optimization(
             source=str(example_source),

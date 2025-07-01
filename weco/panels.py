@@ -286,6 +286,12 @@ class EvaluationOutputPanel:
 class SolutionPanels:
     """Displays the current and best solutions side by side."""
 
+    # Cache lexers per-extension to avoid the heavy Pygments auto-detection on every
+    # SolutionPanels instantiation (called once per refresh). The first determination
+    # for an extension may still invoke `Syntax.from_path` but subsequent look-ups are
+    # O(1).
+    _LEXER_CACHE: dict[str, str] = {}
+
     def __init__(self, metric_name: str, source_fp: pathlib.Path):
         # Current solution
         self.current_node = None
@@ -297,8 +303,55 @@ class SolutionPanels:
         self.lexer = self._determine_lexer(source_fp)
 
     def _determine_lexer(self, source_fp: pathlib.Path) -> str:
-        """Determine the lexer for the source file."""
-        return Syntax.from_path(source_fp).lexer
+        """Return a Pygments lexer name for *source_fp* quickly.
+
+        The original implementation called ``Syntax.from_path`` which, when the lexer
+        isn't obvious, triggers an expensive import of the entire Pygments lexer
+        corpus (~100 ms). That dominated runtime in tight refresh loops.  We speed
+        this up by:
+
+        1. Mapping well-known extensions directly (``.py`` → ``python`` etc.).
+        2. Falling back to a *cached* call to ``Syntax.from_path`` only the first
+           time we see a new extension.
+        """
+
+        ext = source_fp.suffix.lower()
+
+        # Fast path for common languages
+        direct_map = {
+            ".py": "python",
+            ".c": "c",
+            ".cpp": "cpp",
+            ".cc": "cpp",
+            ".cxx": "cpp",
+            ".cu": "cpp",  # CUDA often uses C++ lexer fine
+            ".h": "c",
+            ".hpp": "cpp",
+            ".json": "json",
+            ".js": "javascript",
+            ".ts": "typescript",
+            ".html": "html",
+            ".css": "css",
+            ".md": "markdown",
+            ".sh": "bash",
+        }
+
+        if ext in direct_map:
+            return direct_map[ext]
+
+        # If we have cached the lexer for this extension, use it
+        if ext in self._LEXER_CACHE:
+            return self._LEXER_CACHE[ext]
+
+        # Fallback to expensive detection once, then cache
+        try:
+            lexer_name = Syntax.from_path(source_fp).lexer
+        except Exception:
+            # Last-ditch fallback
+            lexer_name = "text"
+
+        self._LEXER_CACHE[ext] = lexer_name
+        return lexer_name
 
     def update(self, current_node: Union[Node, None], best_node: Union[Node, None]):
         """Update the current and best solutions."""
