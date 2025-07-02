@@ -787,15 +787,9 @@ class Chatbot:
 
     def _display_compact_logo(self):
         """Display a compact version of the logo for smaller terminals."""
-        compact_logo = """
- ██╗    ██╗███████╗ ██████╗ ██████╗
- ██║    ██║██╔════╝██╔════╝██╔═══██╗
- ██║ █╗ ██║█████╗  ██║     ██║   ██║
- ██║███╗██║██╔══╝  ██║     ██║   ██║
- ╚███╔███╔╝███████╗╚██████╗╚██████╔╝
-  ╚══╝╚══╝ ╚══════╝ ╚═════╝ ╚═════╝
-"""
-        self.console.print(f"[bold magenta]{compact_logo}[/]")
+        ascii_file_path = pathlib.Path(__file__).parent / "ascii.txt"
+        compact_logo = ascii_file_path.read_text()
+        self.console.print(f"[bold #fd4578]{compact_logo}[/]")
 
 
 def run_onboarding_chatbot(
