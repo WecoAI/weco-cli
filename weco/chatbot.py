@@ -750,7 +750,7 @@ class Chatbot:
     def start(self):
         # Use the compact logo
         self._display_compact_logo()
-        
+
         self.console.print(f"Let's optimize your codebase in: [cyan]{self.project_path}[/]\n")
 
         options = self.analyze_codebase_and_get_optimization_options()
