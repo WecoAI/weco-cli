@@ -748,7 +748,9 @@ class Chatbot:
         return weco_run_cmd_str, eval_config, target_file, steps, self.resolved_model, additional_instructions
 
     def start(self):
-        self.console.print("[bold cyan]Welcome to Weco![/]")
+        # Use the compact logo
+        self._display_compact_logo()
+
         self.console.print(f"Let's optimize your codebase in: [cyan]{self.project_path}[/]\n")
 
         options = self.analyze_codebase_and_get_optimization_options()
@@ -782,6 +784,12 @@ class Chatbot:
             self.execute_optimization(eval_config, target_file, steps, model, additional_instructions, weco_command)
         else:
             self.show_and_copy_command(weco_command)
+
+    def _display_compact_logo(self):
+        """Display a compact version of the logo for smaller terminals."""
+        ascii_file_path = pathlib.Path(__file__).parent / "ascii.txt"
+        compact_logo = ascii_file_path.read_text()
+        self.console.print(f"[bold #fd4578]{compact_logo}[/]")
 
 
 def run_onboarding_chatbot(
