@@ -34,7 +34,6 @@ from .utils import (
     read_from_path,
     write_to_path,
     run_evaluation,
-    truncate_output,
     smooth_update,
     format_number,
 )
@@ -250,7 +249,6 @@ def execute_optimization(
 
             # Run evaluation on the initial solution
             term_out = run_evaluation(eval_command=eval_command)
-            term_out = truncate_output(term_out, max_lines=50, max_chars=5000)
             # Update the evaluation output panel
             eval_output_panel.update(output=term_out)
             smooth_update(
@@ -350,7 +348,6 @@ def execute_optimization(
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
                 term_out = run_evaluation(eval_command=eval_command)
-                term_out = truncate_output(term_out, max_lines=50, max_chars=5000)
                 eval_output_panel.update(output=term_out)
                 smooth_update(
                     live=live,

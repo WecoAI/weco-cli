@@ -150,7 +150,8 @@ def run_evaluation(eval_command: str) -> str:
         if len(output) > 0:
             output += "\n"
         output += result.stdout
-    return output
+
+    return truncate_output(output)
 
 
 # Update Check Function
