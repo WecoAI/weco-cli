@@ -124,6 +124,20 @@ def smooth_update(
 
 
 # Other helper functions
+def truncate_output(output: str, max_lines: int = 50, max_chars: int = 5000) -> str:
+    """Truncate the output to a reasonable size."""
+    lines = output.splitlines()
+    if len(lines) > max_lines:
+        output = "\n".join(lines[-max_lines:])
+        output = f"... (truncated to last {max_lines} lines)\n{output}"
+
+    if len(output) > max_chars:
+        output = output[-max_chars:]
+        output = f"... (truncated to last {max_chars} characters)\n{output}"
+
+    return output
+
+
 def run_evaluation(eval_command: str) -> str:
     """Run the evaluation command on the code and return the output."""
 
