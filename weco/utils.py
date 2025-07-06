@@ -124,19 +124,21 @@ def smooth_update(
 
 
 # Other helper functions
-def run_evaluation(eval_command: str) -> str:
+def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
 
     # Run the eval command as is
-    result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False)
-
-    # Combine stdout and stderr for complete output
-    output = result.stderr if result.stderr else ""
-    if result.stdout:
-        if len(output) > 0:
-            output += "\n"
-        output += result.stdout
-    return output
+    try:
+        result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False, timeout=timeout)
+        # Combine stdout and stderr for complete output
+        output = result.stderr if result.stderr else ""
+        if result.stdout:
+            if len(output) > 0:
+                output += "\n"
+            output += result.stdout
+        return output
+    except subprocess.TimeoutExpired:
+        return f"Evaluation timed out after {timeout} seconds."
 
 
 # Update Check Function

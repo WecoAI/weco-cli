@@ -78,6 +78,7 @@ def execute_optimization(
     log_dir: str = ".runs",
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
+    step_timeout: int = 3600,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -248,7 +249,7 @@ def execute_optimization(
             )
 
             # Run evaluation on the initial solution
-            term_out = run_evaluation(eval_command=eval_command)
+            term_out = run_evaluation(eval_command=eval_command, timeout=step_timeout)
             # Update the evaluation output panel
             eval_output_panel.update(output=term_out)
             smooth_update(
@@ -347,7 +348,7 @@ def execute_optimization(
                     ],
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
-                term_out = run_evaluation(eval_command=eval_command)
+                term_out = run_evaluation(eval_command=eval_command, timeout=step_timeout)
                 eval_output_panel.update(output=term_out)
                 smooth_update(
                     live=live,
