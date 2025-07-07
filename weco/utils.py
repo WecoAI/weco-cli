@@ -146,9 +146,9 @@ def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: 
     # Add prefixes for truncations that were applied
     prefixes = []
     if lines_truncated:
-        prefixes.append(f"... (truncated to last {max_lines} lines)")
+        prefixes.append(f"truncated to last {max_lines} lines")
     if chars_truncated:
-        prefixes.append(f"... (truncated to last {max_chars} characters)")
+        prefixes.append(f"truncated to last {max_chars} characters")
 
     if prefixes:
         prefix_text = ", ".join(prefixes)
