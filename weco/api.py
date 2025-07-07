@@ -48,7 +48,7 @@ def start_optimization_run(
     additional_instructions: str = None,
     api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Dict[str, Any]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -87,7 +87,7 @@ def evaluate_feedback_then_suggest_next_solution(
     additional_instructions: str = None,
     api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
@@ -114,7 +114,7 @@ def evaluate_feedback_then_suggest_next_solution(
 
 
 def get_optimization_run_status(
-    run_id: str, include_history: bool = False, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = 800
+    run_id: str, include_history: bool = False, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 800)
 ) -> Dict[str, Any]:
     """Get the current status of the optimization run."""
     try:
@@ -132,7 +132,7 @@ def get_optimization_run_status(
         raise  # Re-raise
 
 
-def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = 10) -> bool:
+def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
     """Send a heartbeat signal to the backend."""
     try:
         session = _get_weco_session()
@@ -156,7 +156,7 @@ def report_termination(
     reason: str,
     details: Optional[str] = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 30,
+    timeout: Union[int, Tuple[int, int]] = (10, 30),
 ) -> bool:
     """Report the termination reason to the backend."""
     try:
@@ -206,7 +206,7 @@ def get_optimization_suggestions_from_codebase(
     gitingest_content_str: str,
     console: Console,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
@@ -245,7 +245,7 @@ def generate_evaluation_script_and_metrics(
     gitingest_content_str: str,
     console: Console,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
@@ -286,7 +286,7 @@ def analyze_evaluation_environment(
     gitingest_content_str: str,
     console: Console,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
@@ -326,7 +326,7 @@ def analyze_script_execution_requirements(
     target_file: str,
     console: Console,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = 800,
+    timeout: Union[int, Tuple[int, int]] = (10, 800),
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:

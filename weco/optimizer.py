@@ -79,6 +79,7 @@ def execute_optimization(
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
     step_timeout: int = 3600,
+    overall_timeout: Optional[int] = None,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -119,9 +120,38 @@ def execute_optimization(
         # Exit gracefully
         sys.exit(0)
 
+    def timeout_handler():
+        console.print(f"\n[bold yellow]Overall timeout of {overall_timeout} seconds reached. Shutting down...[/]")
+
+        # Stop heartbeat thread
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+
+        # Report termination
+        if current_run_id_for_heartbeat:
+            report_termination(
+                run_id=current_run_id_for_heartbeat,
+                status_update="terminated",
+                reason="timeout_reached",
+                details=f"Overall optimization timeout of {overall_timeout} seconds reached.",
+                auth_headers=current_auth_headers_for_heartbeat,
+                timeout=3,
+            )
+
+        # Exit gracefully
+        sys.exit(0)
+
     # Set up signal handlers for this run
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
+
+    # Set up the overall timeout if specified
+    if overall_timeout is not None:
+        overall_timeout_timer = threading.Timer(overall_timeout, timeout_handler)
+        overall_timeout_timer.start()
+    else:
+        overall_timeout_timer = None
 
     run_id = None
     optimization_completed_normally = False
@@ -154,7 +184,7 @@ def execute_optimization(
             "debug_prob": 0.5,
             "max_debug_depth": max(1, math.ceil(0.1 * steps)),
         }
-        timeout = 800
+        api_timeout = (10, 800)
         processed_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
         source_fp = pathlib.Path(source)
         source_code = read_from_path(fp=source_fp, is_json=False)
@@ -182,7 +212,7 @@ def execute_optimization(
             additional_instructions=processed_additional_instructions,
             api_keys=llm_api_keys,
             auth_headers=auth_headers,
-            timeout=timeout,
+            timeout=api_timeout,
         )
         run_id = run_response["run_id"]
         current_run_id_for_heartbeat = run_id
@@ -266,7 +296,7 @@ def execute_optimization(
                 if run_id:
                     try:
                         current_status_response = get_optimization_run_status(
-                            run_id=run_id, include_history=False, timeout=30, auth_headers=auth_headers
+                            run_id=run_id, include_history=False, timeout=(10, 30), auth_headers=auth_headers
                         )
                         current_run_status_val = current_status_response.get("status")
                         if current_run_status_val == "stopping":
@@ -285,14 +315,14 @@ def execute_optimization(
                     additional_instructions=current_additional_instructions,
                     api_keys=llm_api_keys,
                     auth_headers=auth_headers,
-                    timeout=timeout,
+                    timeout=api_timeout,
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
                 write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
                 # Write the next solution to the source file
                 write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
                 status_response = get_optimization_run_status(
-                    run_id=run_id, include_history=True, timeout=timeout, auth_headers=auth_headers
+                    run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
                 )
                 # Update the step of the progress bar, token counts, plan and metric tree
                 summary_panel.set_step(step=step)
@@ -366,13 +396,13 @@ def execute_optimization(
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
                     api_keys=llm_api_keys,
-                    timeout=timeout,
+                    timeout=api_timeout,
                     auth_headers=auth_headers,
                 )
                 summary_panel.set_step(step=steps)
                 summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
                 status_response = get_optimization_run_status(
-                    run_id=run_id, include_history=True, timeout=timeout, auth_headers=auth_headers
+                    run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
                 )
                 # No need to update the plan panel since we have finished the optimization
                 # Get the optimization run status for
@@ -448,6 +478,10 @@ def execute_optimization(
         # Ensure optimization_completed_normally is False
         optimization_completed_normally = False
     finally:
+        # Cancel the overall timeout timer if it was set
+        if overall_timeout_timer:
+            overall_timeout_timer.cancel()
+
         # Restore original signal handlers
         signal.signal(signal.SIGINT, original_sigint_handler)
         signal.signal(signal.SIGTERM, original_sigterm_handler)
