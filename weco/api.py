@@ -48,7 +48,7 @@ def start_optimization_run(
     additional_instructions: str = None,
     api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 800),
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Dict[str, Any]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
