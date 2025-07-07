@@ -62,7 +62,10 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         help="Description of additional instruction or path to a file containing additional instructions. Defaults to None.",
     )
     run_parser.add_argument(
-        "--eval-timeout", type=int, default=3600, help="Timeout in seconds for each evaluation. Defaults to 3600."
+        "--eval-timeout",
+        type=int,
+        default=None,
+        help="Timeout in seconds for each evaluation. No timeout by default. Example: --eval-timeout 3600",
     )
 
 

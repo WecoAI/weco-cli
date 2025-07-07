@@ -79,7 +79,7 @@ def execute_optimization(
     log_dir: str = ".runs",
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
-    eval_timeout: int = 3600,
+    eval_timeout: Optional[int] = None,
 ) -> bool:
     """
     Execute the core optimization logic.
