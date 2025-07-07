@@ -37,6 +37,7 @@ from .utils import (
     smooth_update,
     format_number,
 )
+from .constants import DEFAULT_API_TIMEOUT
 
 
 # --- Heartbeat Sender Class ---
@@ -154,7 +155,7 @@ def execute_optimization(
             "debug_prob": 0.5,
             "max_debug_depth": max(1, math.ceil(0.1 * steps)),
         }
-        api_timeout = (10, 800)
+        api_timeout = DEFAULT_API_TIMEOUT
         processed_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
         source_fp = pathlib.Path(source)
         source_code = read_from_path(fp=source_fp, is_json=False)
