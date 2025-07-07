@@ -130,14 +130,29 @@ DEFAULT_MAX_CHARS = 5000
 def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
     """Truncate the output to a reasonable size."""
     lines = output.splitlines()
-    if len(lines) > max_lines:
+    
+    # Determine what truncations are needed based on original output
+    lines_truncated = len(lines) > max_lines
+    chars_truncated = len(output) > max_chars
+    
+    # Apply truncations to the original output
+    if lines_truncated:
         output = "\n".join(lines[-max_lines:])
-        output = f"... (truncated to last {max_lines} lines)\n{output}"
-
-    if len(output) > max_chars:
+    
+    if chars_truncated:
         output = output[-max_chars:]
-        output = f"... (truncated to last {max_chars} characters)\n{output}"
-
+    
+    # Add prefixes for truncations that were applied
+    prefixes = []
+    if lines_truncated:
+        prefixes.append(f"... (truncated to last {max_lines} lines)")
+    if chars_truncated:
+        prefixes.append(f"... (truncated to last {max_chars} characters)")
+    
+    if prefixes:
+        prefix_text = ", ".join(prefixes)
+        output = f"... ({prefix_text})\n{output}"
+    
     return output
 
 
