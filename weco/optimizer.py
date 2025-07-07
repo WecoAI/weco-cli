@@ -78,8 +78,7 @@ def execute_optimization(
     log_dir: str = ".runs",
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
-    step_timeout: int = 3600,
-    overall_timeout: Optional[int] = None,
+    eval_timeout: int = 3600,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -120,38 +119,9 @@ def execute_optimization(
         # Exit gracefully
         sys.exit(0)
 
-    def timeout_handler():
-        console.print(f"\n[bold yellow]Overall timeout of {overall_timeout} seconds reached. Shutting down...[/]")
-
-        # Stop heartbeat thread
-        stop_heartbeat_event.set()
-        if heartbeat_thread and heartbeat_thread.is_alive():
-            heartbeat_thread.join(timeout=2)
-
-        # Report termination
-        if current_run_id_for_heartbeat:
-            report_termination(
-                run_id=current_run_id_for_heartbeat,
-                status_update="terminated",
-                reason="timeout_reached",
-                details=f"Overall optimization timeout of {overall_timeout} seconds reached.",
-                auth_headers=current_auth_headers_for_heartbeat,
-                timeout=3,
-            )
-
-        # Exit gracefully
-        sys.exit(0)
-
     # Set up signal handlers for this run
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
-
-    # Set up the overall timeout if specified
-    if overall_timeout is not None:
-        overall_timeout_timer = threading.Timer(overall_timeout, timeout_handler)
-        overall_timeout_timer.start()
-    else:
-        overall_timeout_timer = None
 
     run_id = None
     optimization_completed_normally = False
@@ -279,7 +249,7 @@ def execute_optimization(
             )
 
             # Run evaluation on the initial solution
-            term_out = run_evaluation(eval_command=eval_command, timeout=step_timeout)
+            term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
             # Update the evaluation output panel
             eval_output_panel.update(output=term_out)
             smooth_update(
@@ -378,7 +348,7 @@ def execute_optimization(
                     ],
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
-                term_out = run_evaluation(eval_command=eval_command, timeout=step_timeout)
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
                 eval_output_panel.update(output=term_out)
                 smooth_update(
                     live=live,
@@ -478,10 +448,6 @@ def execute_optimization(
         # Ensure optimization_completed_normally is False
         optimization_completed_normally = False
     finally:
-        # Cancel the overall timeout timer if it was set
-        if overall_timeout_timer:
-            overall_timeout_timer.cancel()
-
         # Restore original signal handlers
         signal.signal(signal.SIGINT, original_sigint_handler)
         signal.signal(signal.SIGTERM, original_sigterm_handler)

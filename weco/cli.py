@@ -62,13 +62,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         help="Description of additional instruction or path to a file containing additional instructions. Defaults to None.",
     )
     run_parser.add_argument(
-        "--step-timeout", type=int, default=3600, help="Timeout in seconds for each optimization step. Defaults to 3600."
-    )
-    run_parser.add_argument(
-        "--overall-timeout",
-        type=int,
-        default=None,
-        help="Overall timeout in seconds for the entire optimization run. Defaults to None (no limit).",
+        "--eval-timeout", type=int, default=3600, help="Timeout in seconds for each evaluation. Defaults to 3600."
     )
 
 
@@ -86,8 +80,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         log_dir=args.log_dir,
         additional_instructions=args.additional_instructions,
         console=console,
-        step_timeout=args.step_timeout,
-        overall_timeout=args.overall_timeout,
+        eval_timeout=args.eval_timeout,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
