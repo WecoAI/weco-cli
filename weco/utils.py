@@ -124,7 +124,10 @@ def smooth_update(
 
 
 # Other helper functions
-def truncate_output(output: str, max_lines: int = 50, max_chars: int = 5000) -> str:
+DEFAULT_MAX_LINES = 50
+DEFAULT_MAX_CHARS = 5000
+
+def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
     """Truncate the output to a reasonable size."""
     lines = output.splitlines()
     if len(lines) > max_lines:
