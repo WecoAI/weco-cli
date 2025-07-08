@@ -138,7 +138,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
             output += result.stdout
         return output
     except subprocess.TimeoutExpired:
-        return f"Evaluation timed out after {timeout} seconds."
+        return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
 
 # Update Check Function
