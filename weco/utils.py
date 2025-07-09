@@ -136,9 +136,41 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
             if len(output) > 0:
                 output += "\n"
             output += result.stdout
-        return output
+        return truncate_output(output)
     except subprocess.TimeoutExpired:
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
+
+DEFAULT_MAX_LINES = 50
+DEFAULT_MAX_CHARS = 5000
+
+
+def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
+    """Truncate the output to a reasonable size."""
+    lines = output.splitlines()
+
+    # Determine what truncations are needed based on original output
+    lines_truncated = len(lines) > max_lines
+    chars_truncated = len(output) > max_chars
+
+    # Apply truncations to the original output
+    if lines_truncated:
+        output = "\n".join(lines[-max_lines:])
+
+    if chars_truncated:
+        output = output[-max_chars:]
+
+    # Add prefixes for truncations that were applied
+    prefixes = []
+    if lines_truncated:
+        prefixes.append(f"truncated to last {max_lines} lines")
+    if chars_truncated:
+        prefixes.append(f"truncated to last {max_chars} characters")
+
+    if prefixes:
+        prefix_text = ", ".join(prefixes)
+        output = f"... ({prefix_text})\n{output}"
+
+    return output
 
 
 # Update Check Function
