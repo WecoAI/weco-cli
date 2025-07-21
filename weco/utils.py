@@ -9,6 +9,7 @@ from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
+from .constants import DEFAULT_MAX_LINES, DEFAULT_MAX_CHARS
 
 
 # Env/arg helper functions
@@ -124,10 +125,6 @@ def smooth_update(
 
 
 # Other helper functions
-DEFAULT_MAX_LINES = 50
-DEFAULT_MAX_CHARS = 5000
-
-
 def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
     """Truncate the output to a reasonable size."""
     lines = output.splitlines()
@@ -137,10 +134,21 @@ def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: 
     chars_truncated = len(output) > max_chars
 
     # Apply truncations to the original output
-    if lines_truncated:
-        output = "\n".join(lines[-max_lines:])
+    # When both limits apply, use the one that results in smaller output
+    if lines_truncated and chars_truncated:
+        lines_output = "\n".join(lines[-max_lines:])
+        chars_output = output[-max_chars:]
 
-    if chars_truncated:
+        # Use whichever produces smaller result
+        if len(lines_output) <= len(chars_output):
+            output = lines_output
+            chars_truncated = False  # Only show line truncation message
+        else:
+            output = chars_output
+            lines_truncated = False  # Only show char truncation message
+    elif lines_truncated:
+        output = "\n".join(lines[-max_lines:])
+    elif chars_truncated:
         output = output[-max_chars:]
 
     # Add prefixes for truncations that were applied
