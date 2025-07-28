@@ -58,36 +58,9 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
 
 ## Get Started
 
-### Quick Start (Recommended for New Users)
+### Manual Setup (Recommended)
 
-The easiest way to get started with Weco is to use the **interactive copilot**. Simply navigate to your project directory and run:
-
-```bash
-weco
-```
-
-Or specify a project path:
-
-```bash
-weco /path/to/your/project
-```
-
-This launches Weco's interactive copilot that will:
-
-1. **Analyze your codebase** using AI to understand your project structure and identify optimization opportunities
-2. **Suggest specific optimizations** tailored to your code (e.g., GPU kernel optimization, model improvements, prompt engineering)
-3. **Generate evaluation scripts** automatically or help you configure existing ones
-4. **Set up the complete optimization pipeline** with appropriate metrics and commands
-5. **Run the optimization** or provide you with the exact command to execute
-
-<div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-  <strong>⚠️ Warning: Code Modification</strong><br>
-  <code>weco</code> directly modifies the file specified by <code>--source</code> during the optimization process. It is <strong>strongly recommended</strong> to use version control (like Git) to track changes and revert if needed. Alternatively, ensure you have a backup of your original file before running the command. Upon completion, the file will contain the best-performing version of the code found during the run.
-</div>
-
-### Manual Setup
-
-**Configure optimization parameters yourself** - If you need precise control over the optimization parameters, you can use the direct `weco run` command:
+**Configure optimization parameters yourself** - The most reliable way to get started with Weco is using the direct `weco run` command with manual configuration:
 
 **Example: Optimizing Simple PyTorch Operations**
 
@@ -110,6 +83,40 @@ weco run --source optimize.py \
 **Note:** If you have an NVIDIA GPU, change the device in the `--eval-command` to `cuda`. If you are running this on Apple Silicon, set it to `mps`.
 
 For more advanced examples, including [Triton](/examples/triton/README.md), [CUDA kernel optimization](/examples/cuda/README.md), [ML model optimization](/examples/spaceship-titanic/README.md), and [prompt engineering for math problems](examples/prompt/README.md), please see the `README.md` files within the corresponding subdirectories under the [`examples/`](examples/) folder.
+
+<div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+  <strong>⚠️ Warning: Code Modification</strong><br>
+  <code>weco</code> directly modifies the file specified by <code>--source</code> during the optimization process. It is <strong>strongly recommended</strong> to use version control (like Git) to track changes and revert if needed. Alternatively, ensure you have a backup of your original file before running the command. Upon completion, the file will contain the best-performing version of the code found during the run.
+</div>
+
+### Alternative: Onboarding Copilot (Preview)
+
+You can also try Weco's **onboarding copilot (preview)** - an experimental feature that provides an interactive setup experience. **Note: This is an alpha feature currently in testing and may not work reliably.**
+
+Simply navigate to your project directory and run:
+
+```bash
+weco
+```
+
+Or specify a project path:
+
+```bash
+weco /path/to/your/project
+```
+
+The onboarding copilot (preview) will attempt to:
+
+1. **Analyze your codebase** using AI to understand your project structure and identify optimization opportunities
+2. **Suggest specific optimizations** tailored to your code (e.g., GPU kernel optimization, model improvements, prompt engineering)
+3. **Generate evaluation scripts** automatically or help you configure existing ones
+4. **Set up the complete optimization pipeline** with appropriate metrics and commands
+5. **Run the optimization** or provide you with the exact command to execute
+
+<div style="background-color: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
+  <strong>⚠️ Alpha Feature Warning</strong><br>
+  The onboarding copilot (preview) is currently in alpha testing. For the most reliable experience, we recommend using the manual setup approach above. If you encounter issues with the onboarding copilot (preview), please fall back to manual configuration.
+</div>
 
 ---
 
