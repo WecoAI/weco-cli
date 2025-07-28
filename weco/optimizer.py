@@ -222,6 +222,7 @@ def execute_optimization(
                         "step": 0,
                         "metric_value": None,
                         "is_buggy": None,
+                        "is_invalid": None,
                     }
                 ]
             )
@@ -230,7 +231,12 @@ def execute_optimization(
             # Update the solution panels with the initial solution and get the panel displays
             solution_panels.update(
                 current_node=Node(
-                    id=run_response["solution_id"], parent_id=None, code=run_response["code"], metric=None, is_buggy=None
+                    id=run_response["solution_id"],
+                    parent_id=None,
+                    code=run_response["code"],
+                    metric=None,
+                    is_buggy=None,
+                    is_invalid=None,
                 ),
                 best_node=None,
             )
@@ -314,6 +320,7 @@ def execute_optimization(
                         code=status_response["best_result"]["code"],
                         metric=status_response["best_result"]["metric_value"],
                         is_buggy=status_response["best_result"]["is_buggy"],
+                        is_invalid=status_response["best_result"]["is_invalid"],
                     )
                 else:
                     best_solution_node = None
@@ -328,6 +335,7 @@ def execute_optimization(
                                 code=node_data["code"],
                                 metric=node_data["metric_value"],
                                 is_buggy=node_data["is_buggy"],
+                                is_invalid=node_data["is_invalid"],
                             )
                 if current_solution_node is None:
                     raise ValueError(
@@ -397,6 +405,7 @@ def execute_optimization(
                         code=status_response["best_result"]["code"],
                         metric=status_response["best_result"]["metric_value"],
                         is_buggy=status_response["best_result"]["is_buggy"],
+                        is_invalid=status_response["best_result"]["is_invalid"],
                     )
                 else:
                     best_solution_node = None

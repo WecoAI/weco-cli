@@ -159,6 +159,7 @@ class Node:
         code: Union[str, None],
         metric: Union[float, None],
         is_buggy: Union[bool, None],
+        is_invalid: Union[bool, None],
     ):
         self.id = id
         self.parent_id = parent_id
@@ -166,6 +167,7 @@ class Node:
         self.code = code
         self.metric = metric
         self.is_buggy = is_buggy
+        self.is_invalid = is_invalid
         self.evaluated = True
         self.name = ""
 
@@ -207,6 +209,8 @@ class MetricTree:
             if node.evaluated  # evaluated
             and node.is_buggy
             is False  # not buggy => is_buggy can exist in 3 states: None (solution has not yet been evaluated for bugs), True (solution has bug), False (solution does not have a bug)
+            and node.is_invalid
+            is False  # not invalid => is_invalid can exist in 3 states: None (solution has not yet been evaluated for invalidity), True (solution is invalid), False (solution is valid)
             and node.metric is not None  # has metric
         ]
         if len(measured_nodes) == 0:
@@ -242,6 +246,7 @@ class MetricTreePanel:
                 code=node["code"],
                 metric=node["metric_value"],
                 is_buggy=node["is_buggy"],
+                is_invalid=node["is_invalid"],
             )
             if i == 0:
                 node.name = "baseline"
@@ -264,7 +269,9 @@ class MetricTreePanel:
                 color = "yellow"
                 style = None
                 text = "evaluating..."
-            elif node.is_buggy:
+            elif (
+                node.is_buggy is True or node.is_invalid is True
+            ):  # better to be explicit since is_buggy and is_invalid can exist in 3 states
                 # buggy node
                 color = "red"
                 style = None
