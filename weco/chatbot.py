@@ -2,6 +2,7 @@ import pathlib
 import shlex
 import argparse
 from typing import List, Optional, Dict, Any, Tuple
+import sys
 
 from rich.console import Console
 from rich.prompt import Prompt
@@ -682,9 +683,9 @@ class Chatbot:
 
         # Import and execute the actual optimization function
         # (Import here to avoid circular imports)
-        from .optimizer import execute_optimization as actual_execute_optimization
+        from .optimizer import execute_optimization as execute_optimization_run
 
-        success = actual_execute_optimization(
+        success = execute_optimization_run(
             source=target_file,
             eval_command=eval_config["eval_command"],
             metric=eval_config["metric_name"],
@@ -701,6 +702,9 @@ class Chatbot:
             self.console.print("\n[bold green]✅ Optimization completed successfully![/]")
         else:
             self.console.print("\n[bold yellow]⚠️  Optimization ended early or encountered issues.[/]")
+
+        exit_code = 0 if success else 1
+        sys.exit(exit_code)
 
     def show_and_copy_command(self, command: str) -> None:
         """Show the command and copy it to clipboard."""

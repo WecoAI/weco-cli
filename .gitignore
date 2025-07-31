@@ -76,3 +76,6 @@ CLAUDE.md
 # Repomix
 .repomixignore
 repomix-output.*
+
+# Claude config
+.claude/

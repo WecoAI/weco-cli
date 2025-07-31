@@ -14,8 +14,6 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
     except (ValueError, KeyError):  # Handle cases where response is not JSON or detail key is missing
         detail = f"HTTP {e.response.status_code} Error: {e.response.text}"
     console.print(f"[bold red]{detail}[/]")
-    # Avoid exiting here, let the caller decide if the error is fatal
-    # sys.exit(1)
 
 
 def start_optimization_run(
@@ -32,7 +30,7 @@ def start_optimization_run(
     api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
-) -> Dict[str, Any]:
+) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
         try:
@@ -63,10 +61,10 @@ def start_optimization_run(
             return result
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
-            raise
+            return None
         except Exception as e:
             console.print(f"[bold red]Error starting run: {e}[/]")
-            raise
+            return None
 
 
 def evaluate_feedback_then_suggest_next_solution(
@@ -101,11 +99,11 @@ def evaluate_feedback_then_suggest_next_solution(
         return result
     except requests.exceptions.HTTPError as e:
         # Allow caller to handle suggest errors, maybe retry or terminate
-        handle_api_error(e, console)  # Use default console if none passed
-        raise  # Re-raise the exception
+        handle_api_error(e, console)
+        raise
     except Exception as e:
-        print(f"Error: {e}")  # Use print as console might not be available
-        raise  # Re-raise the exception
+        console.print(f"[bold red]Error: {e}[/]")
+        raise
 
 
 def get_optimization_run_status(
@@ -137,11 +135,11 @@ def get_optimization_run_status(
                     result["nodes"][i]["code"] = ""
         return result
     except requests.exceptions.HTTPError as e:
-        handle_api_error(e, console)  # Use default console
-        raise  # Re-raise
+        handle_api_error(e, console)
+        raise
     except Exception as e:
-        print(f"Error getting run status: {e}")
-        raise  # Re-raise
+        console.print(f"[bold red]Error getting run status: {e}[/]")
+        raise
 
 
 def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
