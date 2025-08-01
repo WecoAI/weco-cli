@@ -183,6 +183,10 @@ def execute_optimization(
             auth_headers=auth_headers,
             timeout=api_timeout,
         )
+        # Indicate the endpoint failed to return a response and the optimization was unsuccessful
+        if run_response is None:
+            return False
+
         run_id = run_response["run_id"]
         run_name = run_response["run_name"]
         current_run_id_for_heartbeat = run_id

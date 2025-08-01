@@ -8,7 +8,7 @@ name = "weco"
 authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
 description = "Documentation for `weco`, a CLI for using Weco AI's code optimizer."
 readme = "README.md"
-version = "0.2.23"
+version = "0.2.25"
 license = { text = "MIT" }
 requires-python = ">=3.8"
 dependencies = [
@@ -16,6 +16,8 @@ dependencies = [
     "rich",
     "packaging",
     "gitingest",
+    "fastapi",
+    "slowapi",
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [

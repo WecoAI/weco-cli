@@ -69,9 +69,13 @@ etc/
 # AI generated files
 digest.txt
 .runs/
+CLAUDE.md
 
 *.pyc
 
 # Repomix
 .repomixignore
 repomix-output.*
+
+# Claude config
+.claude/

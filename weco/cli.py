@@ -71,7 +71,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
-    from .optimizer import execute_optimization  # Moved import inside
+    from .optimizer import execute_optimization
 
     success = execute_optimization(
         source=args.source,

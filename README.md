@@ -232,28 +232,38 @@ Final speedup value = 1.5
 
 Weco will parse this output to extract the numerical value (1.5 in this case) associated with the metric name ('speedup').
 
+## Supported Models
+
+Weco supports the following LLM models:
+
+### OpenAI Models
+- `o3`
+- `o3-mini`
+- `o4-mini`
+- `o1-pro`
+- `o1`
+- `gpt-4.1`
+- `gpt-4.1-mini`
+- `gpt-4.1-nano`
+- `gpt-4o`
+- `gpt-4o-mini`
+
+### Anthropic Models
+- `claude-opus-4-0`
+- `claude-sonnet-4-0`
+- `claude-3-7-sonnet-latest`
+
+### Gemini Models
+- `gemini-2.5-pro`
+- `gemini-2.5-flash`
+- `gemini-2.5-flash-lite`
+
+You can specify any of these models using the `-M` or `--model` flag. Ensure you have the corresponding API key set as an environment variable for the model provider you wish to use.
+
+---
+
 ## Contributing
 
-We welcome your contributions! To get started:
-
-1.  **Fork & Clone the Repository:**
-    ```bash
-    git clone https://github.com/WecoAI/weco-cli.git
-    cd weco-cli
-    ```
-
-2.  **Install Dependencies:**
-    ```bash
-    pip install -e ".[dev]"
-    ```
-
-3.  **Create a Feature Branch:**
-    ```bash
-    git checkout -b feature/your-feature-name
-    ```
-
-4.  **Make Changes:** Ensure your code adheres to our style guidelines and includes relevant tests.
-
-5.  **Commit, Push & Open a PR**: Commit your changes, and open a pull request with a clear description of your enhancements.
+We welcome contributions! Please see [contributing.md](contributing.md) for detailed guidelines on how to contribute to this project.
 
 ---
