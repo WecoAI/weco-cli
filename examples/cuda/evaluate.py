@@ -154,7 +154,7 @@ if __name__ == "__main__":
     max_diff_avg /= n_correctness_trials
     print(f"max float diff between values of baseline and optimized model: {max_diff_avg}")
     if max_diff_avg > correctness_tolerance:
-        print("invalid solution: max float diff is too high")
+        print("Incorrect solution: max float diff is too high")
 
     # measure performance
     inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")

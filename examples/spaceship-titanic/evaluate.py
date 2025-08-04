@@ -5,7 +5,7 @@ from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split
 
 
-class InvalidSubmissionError(Exception):
+class IncorrectSubmissionError(Exception):
     pass
 
 
@@ -18,18 +18,18 @@ def evaluate_for_accuracy(
 
     # Submission checks
     if len(submission_df) != len(answers_df):
-        raise InvalidSubmissionError("Submission must have the same length as the answers.")
+        raise IncorrectSubmissionError("Submission must have the same length as the answers.")
     if target_column not in submission_df.columns:
-        raise InvalidSubmissionError(f"Submission must have a `{target_column}` column")
+        raise IncorrectSubmissionError(f"Submission must have a `{target_column}` column")
     if id_column not in submission_df.columns:
-        raise InvalidSubmissionError(f"Submission must have a `{id_column}` column")
+        raise IncorrectSubmissionError(f"Submission must have a `{id_column}` column")
 
     # Sort on id to ensure correct ordering
     submission_df = submission_df.sort_values(by=id_column)
     answers_df = answers_df.sort_values(by=id_column)
 
     if (submission_df[id_column].values != answers_df[id_column].values).any():
-        raise InvalidSubmissionError(f"Submission and Answers `{id_column}`'s do not match")
+        raise IncorrectSubmissionError(f"Submission and Answers `{id_column}`'s do not match")
 
     return accuracy_score(submission_df[target_column], answers_df[target_column])
 
