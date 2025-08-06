@@ -649,7 +649,7 @@ def resume_optimization(
     solution_panels = SolutionPanels()
     
     # Load previous history if available
-    run_status = get_optimization_run_status(run_id, auth_headers, include_history=True)
+    run_status = get_optimization_run_status(console, run_id, auth_headers, include_history=True)
     if run_status and "nodes" in run_status:
         for node_data in run_status["nodes"]:
             if node_data.get("metric_value") is not None:
@@ -673,7 +673,7 @@ def resume_optimization(
                 summary_panel.update_step(step)
                 
                 # Check for user stop request
-                run_status = get_optimization_run_status(run_id, auth_headers)
+                run_status = get_optimization_run_status(console, run_id, auth_headers)
                 if run_status and run_status.get("status") == "stopping":
                     user_stop_requested_flag = True
                     console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
@@ -745,7 +745,7 @@ def resume_optimization(
                 )
                 
                 # Display final results
-                run_status = get_optimization_run_status(run_id, auth_headers)
+                run_status = get_optimization_run_status(console, run_id, auth_headers)
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
                     if best.get("code"):
