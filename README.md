@@ -170,7 +170,37 @@ To save your optimization runs and view them on the Weco dashboard, you can log 
 | `weco` | Launch interactive onboarding | **Recommended for beginners** - Analyzes your codebase and guides you through setup |
 | `weco /path/to/project` | Launch onboarding for specific project | When working with a project in a different directory |
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
+| `weco resume <run-id> [options]` | Resume an interrupted optimization | When a run was interrupted and you want to continue from the last completed step |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
+
+### Resuming Interrupted Runs
+
+If your optimization run is interrupted (due to network issues, system restart, etc.), you can resume it from the last completed step using the `weco resume` command:
+
+```bash
+# Resume a run from where it left off
+weco resume abc-123-def
+
+# Resume and add 20 more steps to the original run
+weco resume abc-123-def --extend 20
+
+# Skip validation prompts and resume immediately
+weco resume abc-123-def --skip-validation
+```
+
+**Arguments for `weco resume`:**
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `run-id` | The ID of the run to resume (shown at the start of each run) | `abc-123-def` |
+| `--extend` | Add additional steps to the original run limit | `--extend 50` |
+| `--skip-validation` | Skip environment validation checks | `--skip-validation` |
+
+**Important notes:**
+- The resume feature only works for runs that have at least one completed step (with execution output)
+- You'll be prompted to confirm that your evaluation environment hasn't changed since the original run
+- The source file will be restored to the last completed solution before continuing
+- All progress and metrics from the original run are preserved
 
 ### Model Selection
 

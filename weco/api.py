@@ -348,3 +348,34 @@ def analyze_script_execution_requirements(
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/]")
         return f"python {script_path}"
+
+
+def resume_optimization_run(
+    console: Console,
+    run_id: str,
+    extend_steps: Optional[int] = None,
+    api_keys: Dict[str, Any] = {},
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """Resume an optimization run from the last completed step."""
+    with console.status(f"[bold green]Resuming run {run_id}..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/resume",
+                json={
+                    "extend_steps": extend_steps,
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                },
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error resuming run: {e}[/]")
+            return None
