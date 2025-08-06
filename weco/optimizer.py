@@ -589,7 +589,7 @@ def resume_optimization(
     
     # Write the last solution to the appropriate file
     last_solution_path = run_log_dir / f"step_{last_step}.py"
-    if not last_solution_path.exists() and last_solution.get("code"):
+    if last_solution.get("code"):
         write_to_path(str(last_solution_path), last_solution["code"])
     
     # Extract source file path from the original run (we'll need to determine this)
