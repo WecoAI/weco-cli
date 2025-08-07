@@ -513,7 +513,12 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
     if not run_status:
-        console.print("[bold red]Failed to get run status. Please check the run ID and try again.[/]")
+        console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
+        console.print("[yellow]Possible reasons:[/]")
+        console.print("  • The run ID may be incorrect")
+        console.print("  • The run may not exist or has been deleted")
+        console.print("  • There may be a temporary server issue")
+        console.print("\n[cyan]Please verify the run ID and try again.[/]")
         return False
 
     current_status = run_status.get("status")
@@ -787,7 +792,12 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
     if not run_status:
-        console.print("[bold red]Failed to get run status. Please check the run ID and try again.[/]")
+        console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
+        console.print("[yellow]Possible reasons:[/]")
+        console.print("  • The run ID may be incorrect")
+        console.print("  • The run may not exist or has been deleted")
+        console.print("  • There may be a temporary server issue")
+        console.print("\n[cyan]Please verify the run ID and try again.[/]")
         return False
 
     current_status = run_status.get("status")
