@@ -505,7 +505,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
     from .api import resume_optimization_run, get_optimization_run_status
     from datetime import datetime
-    import os
 
     # Read authentication and API keys
     api_key, auth_headers = handle_authentication(console)
@@ -533,11 +532,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # Extract resume information
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
-    remaining_steps = resume_info["remaining_steps"]
     evaluation_command = resume_info["evaluation_command"]
-    source_code = resume_info["source_code"]
     last_solution = resume_info["last_solution"]
-    created_at = resume_info["created_at"]
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
 
@@ -565,7 +561,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
             if hours_ago > 168:  # More than 7 days
                 console.print("[yellow]⚠ Warning: This run is over 7 days old. Environment may have changed.[/]")
-        except:
+        except Exception:
             pass
 
         console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
@@ -658,7 +654,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             create_optimization_layout(summary_panel, metric_tree_panel, solution_panels, evaluation_output_panel),
             console=console,
             refresh_per_second=4,
-        ) as live:
+        ):
             # Continue from the next step
             for step in range(last_step + 1, total_steps + 1):
                 summary_panel.update_step(step)
@@ -728,7 +724,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
-                final_output = run_evaluation(
+                run_evaluation(
                     evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None
                 )
 
@@ -782,8 +778,6 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
         console = Console()
 
     from .api import extend_optimization_run, get_optimization_run_status
-    from datetime import datetime
-    import os
 
     # Read authentication and API keys
     api_key, auth_headers = handle_authentication(console)
@@ -819,8 +813,6 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     source_code = extend_info["source_code"]
     # For extend, we use the best solution as the starting point
     best_solution = extend_info.get("best_solution")
-    created_at = extend_info["created_at"]
-    updated_at = extend_info["updated_at"]
     run_name = extend_info.get("run_name", run_id)
 
     # Display run information
@@ -829,8 +821,6 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     console.print(f"[cyan]Previous Steps:[/] {last_step}")
     console.print(f"[cyan]New Total Steps:[/] {total_steps}")
     console.print(f"[cyan]Additional Steps:[/] {remaining_steps}")
-    console.print(f"[cyan]Created:[/] {created_at}")
-    console.print(f"[cyan]Last Updated:[/] {updated_at}")
 
     # Determine the path for the source file
     source_path = pathlib.Path(f"optimized_{run_id[:8]}.py")
