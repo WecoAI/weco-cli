@@ -507,8 +507,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     from datetime import datetime
 
     # Read authentication and API keys
-    api_key, auth_headers = handle_authentication(console)
     api_keys = read_api_keys_from_env()
+    api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
@@ -781,8 +781,8 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     from .api import extend_optimization_run, get_optimization_run_status
 
     # Read authentication and API keys
-    api_key, auth_headers = handle_authentication(console)
     api_keys = read_api_keys_from_env()
+    api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
