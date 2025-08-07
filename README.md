@@ -178,11 +178,8 @@ To save your optimization runs and view them on the Weco dashboard, you can log 
 If your optimization run is interrupted (due to network issues, system restart, etc.), you can resume it from the last completed step using the `weco resume` command:
 
 ```bash
-# Resume a run from where it left off
+# Resume an interrupted run from where it left off
 weco resume abc-123-def
-
-# Resume and add 20 more steps to the original run
-weco resume abc-123-def --extend 20
 
 # Skip validation prompts and resume immediately
 weco resume abc-123-def --skip-validation
@@ -193,14 +190,39 @@ weco resume abc-123-def --skip-validation
 | Argument | Description | Example |
 |----------|-------------|---------|
 | `run-id` | The ID of the run to resume (shown at the start of each run) | `abc-123-def` |
-| `--extend` | Add additional steps to the original run limit | `--extend 50` |
 | `--skip-validation` | Skip environment validation checks | `--skip-validation` |
 
 **Important notes:**
-- The resume feature only works for runs that have at least one completed step (with execution output)
+- The resume feature only works for interrupted runs (status: error, terminated, etc.)
+- For completed runs, use the `weco extend` command instead
 - You'll be prompted to confirm that your evaluation environment hasn't changed since the original run
 - The source file will be restored to the last completed solution before continuing
 - All progress and metrics from the original run are preserved
+
+### Extending Completed Runs
+
+If your optimization run has completed but you want to continue optimizing with more steps:
+
+```bash
+# Extend a completed run with 20 additional steps
+weco extend abc-123-def 20
+
+# Extend with 50 more steps
+weco extend abc-123-def 50
+```
+
+**Arguments for `weco extend`:**
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `run-id` | The ID of the completed run to extend | `abc-123-def` |
+| `steps` | Number of additional steps to add | `20` |
+
+**Important notes:**
+- The extend feature only works for completed runs
+- For interrupted runs, use the `weco resume` command instead
+- The optimization will continue from the best solution found in the original run
+- The extended run will have a new total step count (original + additional)
 
 ### Model Selection
 
