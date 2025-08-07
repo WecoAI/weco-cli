@@ -93,11 +93,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command to resume an interrupted run."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(
-        run_id=args.run_id,
-        skip_validation=args.skip_validation,
-        console=console,
-    )
+    success = resume_optimization(run_id=args.run_id, skip_validation=args.skip_validation, console=console)
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
@@ -106,11 +102,7 @@ def execute_extend_command(args: argparse.Namespace) -> None:
     """Execute the 'weco extend' command to extend a completed run."""
     from .optimizer import extend_optimization
 
-    success = extend_optimization(
-        run_id=args.run_id,
-        additional_steps=args.steps,
-        console=console,
-    )
+    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, console=console)
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
@@ -147,32 +139,18 @@ def main() -> None:
     resume_parser = subparsers.add_parser(
         "resume", help="Resume an interrupted optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
     )
+    resume_parser.add_argument("run_id", type=str, help="The run ID to resume (e.g., 'abc-123-def')")
     resume_parser.add_argument(
-        "run_id",
-        type=str,
-        help="The run ID to resume (e.g., 'abc-123-def')",
+        "--skip-validation", action="store_true", help="Skip environment validation checks and resume immediately"
     )
-    resume_parser.add_argument(
-        "--skip-validation",
-        action="store_true",
-        help="Skip environment validation checks and resume immediately",
-    )
-    
+
     # --- Extend Command Parser Setup ---
     extend_parser = subparsers.add_parser(
         "extend", help="Extend a completed optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    extend_parser.add_argument(
-        "run_id",
-        type=str,
-        help="The run ID to extend (e.g., 'abc-123-def')",
-    )
-    extend_parser.add_argument(
-        "steps",
-        type=int,
-        help="Number of additional steps to add to the completed run (e.g., 20)",
-    )
-    
+    extend_parser.add_argument("run_id", type=str, help="The run ID to extend (e.g., 'abc-123-def')")
+    extend_parser.add_argument("steps", type=int, help="Number of additional steps to add to the completed run (e.g., 20)")
+
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
 

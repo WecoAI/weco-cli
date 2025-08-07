@@ -488,57 +488,48 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(
-    run_id: str,
-    skip_validation: bool = False,
-    console: Optional[Console] = None,
-) -> bool:
+def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
-    
+
     Args:
         run_id: The ID of the run to resume
         skip_validation: Whether to skip environment validation checks
         console: Rich console for output
-        
+
     Returns:
         bool: True if optimization completed successfully, False otherwise
     """
     if console is None:
         console = Console()
-    
+
     from .api import resume_optimization_run, get_optimization_run_status
     from datetime import datetime
     import os
-    
+
     # Read authentication and API keys
     api_key, auth_headers = handle_authentication(console)
     api_keys = read_api_keys_from_env()
-    
+
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
     if not run_status:
         console.print("[bold red]Failed to get run status. Please check the run ID and try again.[/]")
         return False
-    
+
     current_status = run_status.get("status")
-    
+
     # Check if run is completed
     if current_status == "completed":
         console.print("[bold red]Run is already completed. Use 'weco extend' command to add more steps.[/]")
         return False
-    
+
     # Use resume endpoint for interrupted runs
-    resume_info = resume_optimization_run(
-        console=console,
-        run_id=run_id,
-        api_keys=api_keys,
-        auth_headers=auth_headers,
-    )
+    resume_info = resume_optimization_run(console=console, run_id=run_id, api_keys=api_keys, auth_headers=auth_headers)
     if not resume_info:
         console.print("[bold red]Failed to resume run. Please check the run ID and try again.[/]")
         return False
-    
+
     # Extract resume information
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
@@ -549,81 +540,81 @@ def resume_optimization(
     created_at = resume_info["created_at"]
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
-    
+
     # Environment validation (unless skipped)
     if not skip_validation:
         console.print("\n[bold cyan]Resume Validation[/]")
         console.print(f"Run ID: {run_id}")
         console.print(f"Run Name: {run_name}")
         console.print(f"Last completed: Step {last_step}/{total_steps}")
-        
+
         # Calculate time since last update
         try:
-            last_update_time = datetime.fromisoformat(updated_at.replace('Z', '+00:00'))
+            last_update_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
             time_diff = datetime.now(last_update_time.tzinfo) - last_update_time
             hours_ago = time_diff.total_seconds() / 3600
-            
+
             if hours_ago < 1:
                 time_str = f"{int(time_diff.total_seconds() / 60)} minutes ago"
             elif hours_ago < 24:
                 time_str = f"{int(hours_ago)} hours ago"
             else:
                 time_str = f"{int(hours_ago / 24)} days ago"
-            
+
             console.print(f"Last updated: {time_str}")
-            
+
             if hours_ago > 168:  # More than 7 days
                 console.print("[yellow]⚠ Warning: This run is over 7 days old. Environment may have changed.[/]")
         except:
             pass
-        
+
         console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
-        
+
         # Validation prompts
         console.print("\n[bold yellow]Please confirm:[/]")
         console.print("1. Your evaluation script hasn't been modified since the run started")
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. You haven't modified any of the generated solutions")
-        
-        if not console.input("\n[bold]Continue with resume? [y/N]: [/]").lower().strip() in ['y', 'yes']:
+
+        if not console.input("\n[bold]Continue with resume? [y/N]: [/]").lower().strip() in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
-    
+
     # Determine log directory from run_id
     log_dir = ".runs"
     run_log_dir = pathlib.Path(log_dir) / run_id
-    
+
     # Ensure log directory exists
     run_log_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Write the last solution to the appropriate file (always overwrite to ensure it's current)
     last_solution_path = run_log_dir / f"step_{last_step}.py"
     if last_solution.get("code"):
         write_to_path(str(last_solution_path), last_solution["code"])
-    
+
     # Ask user for source file path since we can't reliably determine it
     source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
     if not pathlib.Path(source_path).exists():
         console.print(f"[bold red]Source file not found: {source_path}[/]")
         return False
-    
+
     # Write last solution to source file
     if last_solution.get("code"):
         write_to_path(source_path, last_solution["code"])
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
-    
+
     # Display resume information
     console.print(f"\n[bold green]Resuming optimization from step {last_step + 1}/{total_steps}[/]")
-    
+
     # Continue optimization from the next step
-    console.print("\n" + "="*50)
+    console.print("\n" + "=" * 50)
     console.print("[bold cyan]Continuing Optimization[/]")
-    console.print("="*50 + "\n")
-    
+    console.print("=" * 50 + "\n")
+
     # Set up signal handlers and heartbeat (similar to execute_optimization)
     heartbeat_thread = None
     stop_heartbeat_event = threading.Event()
-    
+
     def signal_handler(signum, frame):
         signal_name = signal.Signals(signum).name
         console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
@@ -632,20 +623,20 @@ def resume_optimization(
             heartbeat_thread.join(timeout=2)
         report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
         sys.exit(1)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+
     # Start heartbeat thread
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
-    
+
     # Initialize panels for display
     summary_panel = SummaryPanel(run_id, run_name, total_steps)
     metric_tree_panel = MetricTreePanel()
     evaluation_output_panel = EvaluationOutputPanel()
     solution_panels = SolutionPanels()
-    
+
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, auth_headers, include_history=True)
     if run_status and "nodes" in run_status:
@@ -658,25 +649,27 @@ def resume_optimization(
                     is_buggy=node_data.get("is_buggy", False),
                 )
                 metric_tree_panel.add_node(node)
-    
+
     optimization_completed_normally = False
     user_stop_requested_flag = False
-    
+
     try:
-        with Live(create_optimization_layout(summary_panel, metric_tree_panel, solution_panels, evaluation_output_panel), 
-                  console=console, refresh_per_second=4) as live:
-            
+        with Live(
+            create_optimization_layout(summary_panel, metric_tree_panel, solution_panels, evaluation_output_panel),
+            console=console,
+            refresh_per_second=4,
+        ) as live:
             # Continue from the next step
             for step in range(last_step + 1, total_steps + 1):
                 summary_panel.update_step(step)
-                
+
                 # Check for user stop request
                 run_status = get_optimization_run_status(console, run_id, auth_headers)
                 if run_status and run_status.get("status") == "stopping":
                     user_stop_requested_flag = True
                     console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
                     break
-                
+
                 # Get the current solution (it should already be generated from the last suggest call)
                 # We need to call suggest with the last execution output to get the next solution
                 if step == last_step + 1:
@@ -688,9 +681,9 @@ def resume_optimization(
                     execution_output = run_evaluation(
                         evaluation_command,
                         lambda line: evaluation_output_panel.add_line(line),
-                        timeout=None  # Add eval_timeout support if needed
+                        timeout=None,  # Add eval_timeout support if needed
                     )
-                
+
                 # Get next solution
                 response = evaluate_feedback_then_suggest_next_solution(
                     console=console,
@@ -700,17 +693,17 @@ def resume_optimization(
                     api_keys=api_keys,
                     auth_headers=auth_headers,
                 )
-                
+
                 if not response:
                     console.print("[bold red]Failed to get next solution. Stopping optimization.[/]")
                     break
-                
+
                 # Update panels with new solution
                 if response.get("code"):
                     solution_panels.update_current(response["code"], response.get("plan", ""))
                     write_to_path(source_path, response["code"])
                     write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
-                
+
                 # Update metric tree if we have a metric value
                 if response.get("previous_solution_metric_value") is not None:
                     node = Node(
@@ -720,28 +713,25 @@ def resume_optimization(
                         is_buggy=False,
                     )
                     metric_tree_panel.add_node(node)
-                
+
                 # Update token usage
                 if response.get("usage"):
                     summary_panel.add_usage(
-                        response["usage"].get("input_tokens", 0),
-                        response["usage"].get("output_tokens", 0)
+                        response["usage"].get("input_tokens", 0), response["usage"].get("output_tokens", 0)
                     )
-                
+
                 # Check if optimization is done
                 if response.get("is_done"):
                     optimization_completed_normally = True
                     break
-            
+
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
                 final_output = run_evaluation(
-                    evaluation_command,
-                    lambda line: evaluation_output_panel.add_line(line),
-                    timeout=None
+                    evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None
                 )
-                
+
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, auth_headers)
                 if run_status and run_status.get("best_result"):
@@ -749,19 +739,19 @@ def resume_optimization(
                     if best.get("code"):
                         solution_panels.update_best(best["code"], best.get("plan", ""))
                         write_to_path(str(run_log_dir / "best.py"), best["code"])
-                
+
                 optimization_completed_normally = True
-    
+
     except Exception as e:
         console.print(f"\n[bold red]Error during optimization: {e}[/]")
         traceback.print_exc()
-    
+
     finally:
         # Stop heartbeat
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
-        
+
         # Report termination status
         if optimization_completed_normally:
             status, reason, details = "completed", "completed_successfully", None
@@ -770,65 +760,57 @@ def resume_optimization(
         else:
             status, reason = "error", "error_cli_internal"
             details = "Resume failed due to an error"
-        
+
         report_termination(run_id, status, reason, details, auth_headers)
-    
+
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def extend_optimization(
-    run_id: str,
-    additional_steps: int,
-    console: Optional[Console] = None,
-) -> bool:
+def extend_optimization(run_id: str, additional_steps: int, console: Optional[Console] = None) -> bool:
     """
     Extend a completed optimization run with additional steps.
-    
+
     Args:
         run_id: The ID of the completed run to extend
         additional_steps: Number of additional steps to add
         console: Rich console for output
-        
+
     Returns:
         bool: True if optimization completed successfully, False otherwise
     """
     if console is None:
         console = Console()
-    
+
     from .api import extend_optimization_run, get_optimization_run_status
     from datetime import datetime
     import os
-    
+
     # Read authentication and API keys
     api_key, auth_headers = handle_authentication(console)
     api_keys = read_api_keys_from_env()
-    
+
     # First, check the run status
     run_status = get_optimization_run_status(console, run_id, False, auth_headers)
     if not run_status:
         console.print("[bold red]Failed to get run status. Please check the run ID and try again.[/]")
         return False
-    
+
     current_status = run_status.get("status")
-    
+
     # Check if run is actually completed
     if current_status != "completed":
         console.print(f"[bold red]Run is not completed (status: {current_status}). Use 'weco resume' for interrupted runs.[/]")
         return False
-    
+
     # Use extend endpoint for completed runs
     console.print(f"[cyan]Extending completed run with {additional_steps} additional steps...[/]")
     extend_info = extend_optimization_run(
-        console=console,
-        run_id=run_id,
-        additional_steps=additional_steps,
-        api_keys=api_keys,
-        auth_headers=auth_headers,
+        console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
     )
     if not extend_info:
         console.print("[bold red]Failed to extend run. Please try again.[/]")
         return False
-    
+
     # Extract extend information
     last_step = extend_info["previous_steps"]  # The completed steps
     total_steps = extend_info["new_total_steps"]
@@ -840,7 +822,7 @@ def extend_optimization(
     created_at = extend_info["created_at"]
     updated_at = extend_info["updated_at"]
     run_name = extend_info.get("run_name", run_id)
-    
+
     # Display run information
     console.print(f"\n[bold green]Extending Run:[/] {run_name}")
     console.print(f"[cyan]Run ID:[/] {run_id}")
@@ -849,14 +831,14 @@ def extend_optimization(
     console.print(f"[cyan]Additional Steps:[/] {remaining_steps}")
     console.print(f"[cyan]Created:[/] {created_at}")
     console.print(f"[cyan]Last Updated:[/] {updated_at}")
-    
+
     # Determine the path for the source file
     source_path = pathlib.Path(f"optimized_{run_id[:8]}.py")
-    
+
     # Create run log directory
     run_log_dir = pathlib.Path(".runs") / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Write the best solution (starting point) to the source file
     if best_solution and best_solution.get("code"):
         write_to_path(str(source_path), best_solution["code"])
@@ -865,21 +847,21 @@ def extend_optimization(
         # Fallback to original source code if no best solution
         write_to_path(str(source_path), source_code)
         console.print(f"\n[yellow]No best solution found, starting from original source:[/] {source_path}")
-    
+
     console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}\n")
-    
+
     # Now continue with the optimization similar to resume
     # The rest of the implementation would be similar to resume_optimization
     # but starting from the completed state
-    
+
     # For now, we'll use the resume optimization logic with the extended run
     # Since the API has already updated the run to "running" with more steps,
     # we can call resume_optimization_run again to get the next step
-    
+
     console.print("[bold green]Extension initialized. Starting optimization...[/]\n")
-    
+
     # The optimization loop would continue from here
     # This is a simplified version - you may want to copy the full optimization loop
     # from resume_optimization function
-    
+
     return True  # Placeholder - implement full optimization loop as needed

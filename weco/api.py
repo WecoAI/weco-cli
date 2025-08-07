@@ -362,9 +362,7 @@ def resume_optimization_run(
         try:
             response = requests.post(
                 f"{__base_url__}/runs/{run_id}/resume",
-                json={
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
-                },
+                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys}},
                 headers=auth_headers,
                 timeout=timeout,
             )
