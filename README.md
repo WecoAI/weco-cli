@@ -171,6 +171,7 @@ To save your optimization runs and view them on the Weco dashboard, you can log 
 | `weco /path/to/project` | Launch onboarding for specific project | When working with a project in a different directory |
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
 | `weco resume <run-id> [options]` | Resume an interrupted optimization | When a run was interrupted and you want to continue from the last completed step |
+| `weco extend <run-id> <steps>` | Extend a completed optimization | When a run completed but you want to continue optimizing with more steps |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
 
 ### Resuming Interrupted Runs
@@ -179,17 +180,17 @@ If your optimization run is interrupted (due to network issues, system restart, 
 
 ```bash
 # Resume an interrupted run from where it left off
-weco resume abc-123-def
+weco resume 0002e071-1b67-411f-a514-36947f0c4b31
 
 # Skip validation prompts and resume immediately
-weco resume abc-123-def --skip-validation
+weco resume 0002e071-1b67-411f-a514-36947f0c4b31 --skip-validation
 ```
 
 **Arguments for `weco resume`:**
 
 | Argument | Description | Example |
 |----------|-------------|---------|
-| `run-id` | The ID of the run to resume (shown at the start of each run) | `abc-123-def` |
+| `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
 | `--skip-validation` | Skip environment validation checks | `--skip-validation` |
 
 **Important notes:**
@@ -205,17 +206,17 @@ If your optimization run has completed but you want to continue optimizing with 
 
 ```bash
 # Extend a completed run with 20 additional steps
-weco extend abc-123-def 20
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 20
 
 # Extend with 50 more steps
-weco extend abc-123-def 50
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50
 ```
 
 **Arguments for `weco extend`:**
 
 | Argument | Description | Example |
 |----------|-------------|---------|
-| `run-id` | The ID of the completed run to extend | `abc-123-def` |
+| `run-id` | The UUID of the completed run to extend | `0002e071-1b67-411f-a514-36947f0c4b31` |
 | `steps` | Number of additional steps to add | `20` |
 
 **Important notes:**
