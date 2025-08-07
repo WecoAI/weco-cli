@@ -575,7 +575,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. You haven't modified any of the generated solutions")
 
-        if not console.input("\n[bold]Continue with resume? [y/N]: [/]").lower().strip() in ["y", "yes"]:
+        if console.input("\n[bold]Continue with resume? [y/N]: [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
 
@@ -727,9 +727,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
-                run_evaluation(
-                    evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None
-                )
+                run_evaluation(evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None)
 
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, auth_headers)
