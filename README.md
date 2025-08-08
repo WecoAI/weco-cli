@@ -237,9 +237,12 @@ Weco will parse this output to extract the numerical value (1.5 in this case) as
 Weco supports the following LLM models:
 
 ### OpenAI Models
-- `o3`
+- `gpt-5`
+- `gpt-5-mini`
+- `gpt-5-nano`
+- `o3` (recommended)
 - `o3-mini`
-- `o4-mini`
+- `o4-mini` (recommended)
 - `o1-pro`
 - `o1`
 - `gpt-4.1`
@@ -247,6 +250,7 @@ Weco supports the following LLM models:
 - `gpt-4.1-nano`
 - `gpt-4o`
 - `gpt-4o-mini`
+- `codex-mini-latest`
 
 ### Anthropic Models
 - `claude-opus-4-1`
