@@ -89,6 +89,24 @@ def execute_run_command(args: argparse.Namespace) -> None:
     sys.exit(exit_code)
 
 
+def execute_resume_command(args: argparse.Namespace) -> None:
+    """Execute the 'weco resume' command to resume an interrupted run."""
+    from .optimizer import resume_optimization
+
+    success = resume_optimization(run_id=args.run_id, skip_validation=args.skip_validation, console=console)
+    exit_code = 0 if success else 1
+    sys.exit(exit_code)
+
+
+def execute_extend_command(args: argparse.Namespace) -> None:
+    """Execute the 'weco extend' command to extend a completed run."""
+    from .optimizer import extend_optimization
+
+    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, console=console)
+    exit_code = 0 if success else 1
+    sys.exit(exit_code)
+
+
 def main() -> None:
     """Main function for the Weco CLI."""
     check_for_cli_updates()
@@ -116,6 +134,22 @@ def main() -> None:
         "run", help="Run code optimization", formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False
     )
     configure_run_parser(run_parser)  # Use the helper to add arguments
+
+    # --- Resume Command Parser Setup ---
+    resume_parser = subparsers.add_parser(
+        "resume", help="Resume an interrupted optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    resume_parser.add_argument("run_id", type=str, help="The run ID to resume (e.g., 'abc-123-def')")
+    resume_parser.add_argument(
+        "--skip-validation", action="store_true", help="Skip environment validation checks and resume immediately"
+    )
+
+    # --- Extend Command Parser Setup ---
+    extend_parser = subparsers.add_parser(
+        "extend", help="Extend a completed optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    extend_parser.add_argument("run_id", type=str, help="The run ID to extend (e.g., 'abc-123-def')")
+    extend_parser.add_argument("steps", type=int, help="Number of additional steps to add to the completed run (e.g., 20)")
 
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
@@ -151,7 +185,7 @@ def main() -> None:
         return None
 
     first_non_option = get_first_non_option_arg()
-    is_known_command = first_non_option in ["run", "logout"]
+    is_known_command = first_non_option in ["run", "resume", "extend", "logout"]
     is_help_command = len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help"]  # Check for global help
 
     should_run_chatbot_result = should_run_chatbot(sys.argv[1:])
@@ -202,6 +236,10 @@ def main() -> None:
         sys.exit(0)
     elif args.command == "run":
         execute_run_command(args)
+    elif args.command == "resume":
+        execute_resume_command(args)
+    elif args.command == "extend":
+        execute_extend_command(args)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,
         # or if an invalid command is provided.
