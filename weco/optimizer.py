@@ -1035,44 +1035,290 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     run_name = extend_info.get("run_name", run_id)
 
     # Display run information
-    console.print(f"\n[bold green]Extending Run:[/] {run_name}")
+    console.print(f"\n[bold green]Extending Completed Run[/]")
+    console.print(f"[cyan]Run Name:[/] {run_name}")
     console.print(f"[cyan]Run ID:[/] {run_id}")
-    console.print(f"[cyan]Previous Steps:[/] {last_step}")
-    console.print(f"[cyan]New Total Steps:[/] {total_steps}")
-    console.print(f"[cyan]Additional Steps:[/] {remaining_steps}")
-    console.print(f"[cyan]Created:[/] {created_at}")
-    console.print(f"[cyan]Last Updated:[/] {updated_at}")
+    console.print(f"[cyan]Completed Steps:[/] {last_step}")
+    console.print(f"[cyan]Adding Steps:[/] {remaining_steps}")
+    console.print(f"[cyan]New Total:[/] {total_steps}")
+    if best_solution:
+        console.print(f"[cyan]Best Metric:[/] {best_solution.get('metric_value', 'N/A')}")
+    console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
 
-    # Determine the path for the source file
-    source_path = pathlib.Path(f"optimized_{run_id[:8]}.py")
-
-    # Create run log directory
-    run_log_dir = pathlib.Path(".runs") / run_id
+    # Get metric info from run_status
+    objective = run_status.get("objective", {})
+    metric_name = objective.get("metric_name", "metric")
+    maximize = objective.get("maximize", True)
+    
+    # Get optimizer config for model info
+    optimizer_config = run_status.get("optimizer", {})
+    model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
+    
+    # Determine log directory from run_id
+    log_dir = ".runs"
+    run_log_dir = pathlib.Path(log_dir) / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Try to get source path and eval_timeout from local metadata file
+    stored_source_path = None
+    eval_timeout = None
+    local_metadata_path = run_log_dir / "metadata.json"
+    if local_metadata_path.exists():
+        try:
+            local_metadata = read_from_path(local_metadata_path, is_json=True)
+            stored_source_path = local_metadata.get("source_path")
+            eval_timeout = local_metadata.get("eval_timeout")
+        except Exception:
+            pass  # Fall back to defaults
+    
+    # Determine the source file path
+    if stored_source_path and pathlib.Path(stored_source_path).exists():
+        source_path = stored_source_path
+        console.print(f"[cyan]Using source file from original run: {source_path}[/]")
+    else:
+        # Try to find the source file
+        possible_files = []
+        for pattern in ["train.py", "main.py", "solution.py", "*.py"]:
+            files = list(pathlib.Path(".").glob(pattern))
+            possible_files.extend(files)
+        
+        possible_files = list(set(f for f in possible_files if f.is_file()))
+        
+        if len(possible_files) == 1:
+            source_path = str(possible_files[0])
+            console.print(f"[cyan]Found source file: {source_path}[/]")
+        else:
+            console.print("[yellow]Please specify the source file to continue optimizing.[/]")
+            source_path = console.input("[bold]Enter the path to the source file: [/]").strip()
+            if not pathlib.Path(source_path).exists():
+                console.print(f"[bold red]Source file not found: {source_path}[/]")
+                return False
 
     # Write the best solution (starting point) to the source file
     if best_solution and best_solution.get("code"):
         write_to_path(str(source_path), best_solution["code"])
-        console.print(f"\n[green]Starting from best solution (step {best_solution.get('step', last_step)}):[/] {source_path}")
+        write_to_path(str(run_log_dir / f"step_{last_step}.py"), best_solution["code"])
+        console.print(f"\n[green]Starting from best solution (metric: {best_solution.get('metric_value')}):[/] {source_path}")
     else:
         # Fallback to original source code if no best solution
         write_to_path(str(source_path), source_code)
         console.print(f"\n[yellow]No best solution found, starting from original source:[/] {source_path}")
 
-    console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}\n")
+    console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
+    console.print(f"[cyan]Extending from step {last_step} to {total_steps}[/]\n")
 
-    # Now continue with the optimization similar to resume
-    # The rest of the implementation would be similar to resume_optimization
-    # but starting from the completed state
+    # Set up signal handlers and heartbeat
+    heartbeat_thread = None
+    stop_heartbeat_event = threading.Event()
 
-    # For now, we'll use the resume optimization logic with the extended run
-    # Since the API has already updated the run to "running" with more steps,
-    # we can call resume_optimization_run again to get the next step
+    def signal_handler(signum, frame):
+        signal_name = signal.Signals(signum).name
+        console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            stop_heartbeat_event.set()
+            heartbeat_thread.join(timeout=2)
+        report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        sys.exit(1)
 
-    console.print("[bold green]Extension initialized. Starting optimization...[/]\n")
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
 
-    # The optimization loop would continue from here
-    # This is a simplified version - you may want to copy the full optimization loop
-    # from resume_optimization function
+    # Start heartbeat thread
+    heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
+    heartbeat_thread.start()
 
-    return True  # Placeholder - implement full optimization loop as needed
+    # Initialize panels for display
+    source_fp = pathlib.Path(source_path)
+    summary_panel = SummaryPanel(
+        maximize=maximize,
+        metric_name=metric_name,
+        total_steps=total_steps,
+        model=model,
+        runs_dir=log_dir,
+        run_id=run_id,
+        run_name=run_name,
+    )
+    summary_panel.set_dashboard_url(run_id)
+    if run_name:
+        summary_panel.set_run_name(run_name)
+    summary_panel.set_step(last_step)  # Start from where we left off
+    
+    metric_tree_panel = MetricTreePanel(maximize=maximize)
+    evaluation_output_panel = EvaluationOutputPanel()
+    solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
+
+    # Load previous history
+    run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
+    if run_status and "nodes" in run_status and run_status["nodes"]:
+        metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
+
+    # Initialize with best solution
+    best_node = None
+    if best_solution:
+        best_node = Node(
+            id=best_solution.get("solution_id", ""),
+            parent_id=best_solution.get("parent_id"),
+            code=best_solution.get("code"),
+            metric=best_solution.get("metric_value"),
+            is_buggy=best_solution.get("is_buggy", False),
+        )
+        solution_panels.update(current_node=best_node, best_node=best_node)
+
+    optimization_completed_normally = False
+    user_stop_requested_flag = False
+
+    # Create the layout for display
+    layout = create_optimization_layout()
+    layout["summary"].update(summary_panel.get_display())
+    layout["tree"].update(metric_tree_panel.get_display(is_done=False))
+    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=last_step)
+    layout["current_solution"].update(current_solution_panel)
+    layout["best_solution"].update(best_solution_panel)
+    layout["eval_output"].update(evaluation_output_panel.get_display())
+
+    try:
+        with Live(layout, console=console, refresh_per_second=4) as live:
+            # Run evaluation on the best solution first
+            console.print("[cyan]Evaluating current best solution...[/]")
+            execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
+            evaluation_output_panel.update(execution_output)
+            
+            # Continue from last_step + 1 to total_steps
+            for step in range(last_step + 1, total_steps + 1):
+                # Check for user stop request
+                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+                if run_status and run_status.get("status") == "stopping":
+                    user_stop_requested_flag = True
+                    console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
+                    stop_heartbeat_event.set()
+                    break
+
+                # Get next solution
+                response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=run_id,
+                    execution_output=execution_output,
+                    additional_instructions=None,
+                    api_keys=api_keys,
+                    auth_headers=auth_headers,
+                )
+
+                if not response:
+                    console.print("[bold red]Failed to get next solution. Stopping optimization.[/]")
+                    break
+
+                # Update panels with new solution
+                if response.get("code"):
+                    write_to_path(source_path, response["code"])
+                    write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
+
+                # Update progress bar
+                summary_panel.set_step(step)
+
+                # Refresh the tree from status
+                status_response = get_optimization_run_status(
+                    console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+                )
+
+                # Update displays similar to resume
+                if status_response and status_response.get("nodes"):
+                    metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
+                    
+                    if response.get("solution_id"):
+                        try:
+                            metric_tree_panel.set_unevaluated_node(node_id=response["solution_id"])
+                        except Exception:
+                            pass
+                    
+                    # Update solution panels
+                    current_solution_node = None
+                    for node_data in status_response["nodes"]:
+                        if node_data["solution_id"] == response.get("solution_id"):
+                            current_solution_node = Node(
+                                id=node_data["solution_id"],
+                                parent_id=node_data.get("parent_id"),
+                                code=node_data.get("code"),
+                                metric=node_data.get("metric_value"),
+                                is_buggy=node_data.get("is_buggy"),
+                            )
+                            break
+                    
+                    best_solution_node = None
+                    if status_response.get("best_result"):
+                        best_result = status_response["best_result"]
+                        best_solution_node = Node(
+                            id=best_result["solution_id"],
+                            parent_id=best_result.get("parent_id"),
+                            code=best_result.get("code"),
+                            metric=best_result.get("metric_value"),
+                            is_buggy=best_result.get("is_buggy", False),
+                        )
+                    
+                    if current_solution_node:
+                        solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+
+                # Update token usage and thinking
+                if response.get("usage"):
+                    summary_panel.update_token_counts(usage=response["usage"])
+                if response.get("plan"):
+                    summary_panel.update_thinking(thinking=response["plan"])
+
+                # Update the display
+                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[
+                        ("summary", summary_panel.get_display()),
+                        ("tree", metric_tree_panel.get_display(is_done=False)),
+                        ("current_solution", current_solution_panel),
+                        ("best_solution", best_solution_panel),
+                        ("eval_output", evaluation_output_panel.get_display()),
+                    ],
+                    transition_delay=0.08,
+                )
+
+                # Check if optimization is done
+                if response.get("is_done"):
+                    optimization_completed_normally = True
+                    stop_heartbeat_event.set()
+                    break
+                
+                # Run evaluation for next iteration
+                if step < total_steps:  # Don't evaluate if this is the last step
+                    evaluation_output_panel.clear()
+                    execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
+                    evaluation_output_panel.update(execution_output)
+
+            # Final handling
+            if optimization_completed_normally or step == total_steps:
+                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+                if run_status and run_status.get("best_result"):
+                    best = run_status["best_result"]
+                    if best.get("code"):
+                        write_to_path(str(run_log_dir / "best.py"), best["code"])
+                        console.print(f"\n[bold green]Extension complete! Best metric: {best.get('metric_value')}[/]")
+
+                optimization_completed_normally = True
+
+    except Exception as e:
+        console.print(f"\n[bold red]Error during extension: {e}[/]")
+        traceback.print_exc()
+
+    finally:
+        # Stop heartbeat
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            stop_heartbeat_event.set()
+            heartbeat_thread.join(timeout=2)
+
+        # Report termination status only if not completed normally
+        if not optimization_completed_normally:
+            if user_stop_requested_flag:
+                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            else:
+                status, reason = "error", "error_cli_internal"
+                details = "Extension failed due to an error"
+            
+            report_termination(run_id, status, reason, details, auth_headers)
+
+    return optimization_completed_normally or user_stop_requested_flag
