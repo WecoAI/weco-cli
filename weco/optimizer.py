@@ -739,7 +739,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # Initialize solution panels with current and best solutions
     current_node = None
     best_node = None
-    
+
     # Set the current solution to the last completed solution
     if last_solution:
         current_node = Node(
@@ -749,7 +749,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             metric=last_solution.get("metric_value"),
             is_buggy=last_solution.get("is_buggy"),
         )
-    
+
     # Set the best solution if available
     if run_status and run_status.get("best_result"):
         best_result = run_status["best_result"]
@@ -760,7 +760,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             metric=best_result.get("metric_value"),
             is_buggy=best_result.get("is_buggy", False),
         )
-    
+
     # Update solution panels with both current and best
     solution_panels.update(current_node=current_node, best_node=best_node)
 
@@ -826,7 +826,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
                 # Update progress bar now that we have the new solution
                 summary_panel.set_step(step)
-                
+
                 # Refresh the entire tree from the status to avoid synchronization issues
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
@@ -886,7 +886,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 if response.get("plan"):
                     summary_panel.update_thinking(thinking=response["plan"])
                     # Debug: Log thinking update
-                    console.print(f"[dim]Debug: Updated thinking for step {step} (length: {len(response['plan'])} chars)[/]", markup=True)
+                    console.print(
+                        f"[dim]Debug: Updated thinking for step {step} (length: {len(response['plan'])} chars)[/]", markup=True
+                    )
 
                 # Update the display
                 current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
@@ -966,7 +968,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             else:
                 status, reason = "error", "error_cli_internal"
                 details = "Resume failed due to an error"
-            
+
             report_termination(run_id, status, reason, details, auth_headers)
 
     return optimization_completed_normally or user_stop_requested_flag
