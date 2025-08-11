@@ -182,6 +182,7 @@ def execute_optimization(
             api_keys=llm_api_keys,
             auth_headers=auth_headers,
             timeout=api_timeout,
+            source_path=source,
         )
         # Indicate the endpoint failed to return a response and the optimization was unsuccessful
         if run_response is None:
@@ -544,6 +545,19 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     created_at = resume_info["created_at"]  # noqa: F841 - Keep for logging/debugging
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
+    
+    # Get metric info from run_status
+    objective = run_status.get("objective", {})
+    metric_name = objective.get("metric_name", "metric")
+    maximize = objective.get("maximize", True)
+    
+    # Get optimizer config for model info
+    optimizer_config = run_status.get("optimizer", {})
+    model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
+    
+    # Get source path from metadata if available
+    metadata = run_status.get("metadata", {})
+    stored_source_path = metadata.get("source_path")
 
     # Environment validation (unless skipped)
     if not skip_validation:
@@ -580,7 +594,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. You haven't modified any of the generated solutions")
 
-        if console.input("\n[bold]Continue with resume? [y/N]: [/]").lower().strip() not in ["y", "yes"]:
+        if console.input("\n[bold]Continue with resume? (yes/no, default=no): [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
 
@@ -596,11 +610,34 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     if last_solution.get("code"):
         write_to_path(str(last_solution_path), last_solution["code"])
 
-    # Ask user for source file path since we can't reliably determine it
-    source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
-    if not pathlib.Path(source_path).exists():
-        console.print(f"[bold red]Source file not found: {source_path}[/]")
-        return False
+    # Use stored source path if available, otherwise ask the user
+    if stored_source_path and pathlib.Path(stored_source_path).exists():
+        source_path = stored_source_path
+        console.print(f"[cyan]Using source file from original run: {source_path}[/]")
+    else:
+        # Try to find the source file automatically by looking for common patterns
+        # First check if there's a file matching the metric name pattern
+        possible_files = []
+        for pattern in ["train.py", "main.py", "solution.py", "*.py"]:
+            files = list(pathlib.Path(".").glob(pattern))
+            possible_files.extend(files)
+        
+        # Remove duplicates and filter to actual files
+        possible_files = list(set(f for f in possible_files if f.is_file()))
+        
+        if len(possible_files) == 1:
+            # Only one Python file found, use it
+            source_path = str(possible_files[0])
+            console.print(f"[cyan]Found source file: {source_path}[/]")
+        else:
+            # Ask user for source file path
+            if not stored_source_path:
+                console.print("\n[yellow]Source path not found in run metadata (run may have been created with an older version).[/]")
+            console.print("[yellow]Please specify the source file to optimize.[/]")
+            source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
+            if not pathlib.Path(source_path).exists():
+                console.print(f"[bold red]Source file not found: {source_path}[/]")
+                return False
 
     # Write last solution to source file
     if last_solution.get("code"):
@@ -636,10 +673,20 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     heartbeat_thread.start()
 
     # Initialize panels for display
-    summary_panel = SummaryPanel(run_id, run_name, total_steps)
-    metric_tree_panel = MetricTreePanel()
+    log_dir = ".runs"
+    summary_panel = SummaryPanel(
+        maximize=maximize,
+        metric_name=metric_name,
+        total_steps=total_steps,
+        model=model,
+        runs_dir=log_dir,
+        run_id=run_id,
+        run_name=run_name
+    )
+    metric_tree_panel = MetricTreePanel(maximize=maximize)
     evaluation_output_panel = EvaluationOutputPanel()
-    solution_panels = SolutionPanels()
+    source_fp = pathlib.Path(source_path)
+    solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
 
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, auth_headers, include_history=True)

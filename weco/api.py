@@ -30,6 +30,7 @@ def start_optimization_run(
     api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    source_path: str = None,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -46,7 +47,7 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, "source_path": source_path, **api_keys},
                 },
                 headers=auth_headers,
                 timeout=timeout,
