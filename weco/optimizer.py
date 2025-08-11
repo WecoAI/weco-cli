@@ -790,6 +790,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 if run_status and run_status.get("status") == "stopping":
                     user_stop_requested_flag = True
                     console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
+                    # Stop heartbeat when user requests stop
+                    stop_heartbeat_event.set()
                     break
 
                 # Get the current solution (it should already be generated from the last suggest call)
@@ -883,6 +885,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     summary_panel.update_token_counts(usage=response["usage"])
                 if response.get("plan"):
                     summary_panel.update_thinking(thinking=response["plan"])
+                    # Debug: Log thinking update
+                    console.print(f"[dim]Debug: Updated thinking for step {step} (length: {len(response['plan'])} chars)[/]", markup=True)
 
                 # Update the display
                 current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
@@ -902,6 +906,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 # Check if optimization is done
                 if response.get("is_done"):
                     optimization_completed_normally = True
+                    # Stop heartbeat immediately when done
+                    stop_heartbeat_event.set()
                     break
 
             # Final evaluation if completed normally
@@ -952,16 +958,16 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
 
-        # Report termination status
-        if optimization_completed_normally:
-            status, reason, details = "completed", "completed_successfully", None
-        elif user_stop_requested_flag:
-            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
-        else:
-            status, reason = "error", "error_cli_internal"
-            details = "Resume failed due to an error"
-
-        report_termination(run_id, status, reason, details, auth_headers)
+        # Report termination status only if not completed normally
+        # (API already marks as completed when is_done=True)
+        if not optimization_completed_normally:
+            if user_stop_requested_flag:
+                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            else:
+                status, reason = "error", "error_cli_internal"
+                details = "Resume failed due to an error"
+            
+            report_termination(run_id, status, reason, details, auth_headers)
 
     return optimization_completed_normally or user_stop_requested_flag
 
