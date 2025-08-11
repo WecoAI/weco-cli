@@ -5,6 +5,7 @@ import threading
 import signal
 import sys
 import traceback
+from datetime import datetime
 from typing import Optional
 from rich.console import Console
 from rich.live import Live
@@ -203,6 +204,17 @@ def execute_optimization(
             # Define the runs directory (.runs/<run-id>) to store logs and results
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save run metadata locally (including source path)
+            local_metadata = {
+                "source_path": source,
+                "evaluation_command": eval_command,
+                "metric_name": metric,
+                "maximize": maximize,
+                "created_at": datetime.now().isoformat(),
+            }
+            write_to_path(fp=runs_dir / "metadata.json", content=local_metadata, is_json=True)
+            
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
             # Write the initial code string to the source file path
@@ -566,9 +578,19 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     optimizer_config = run_status.get("optimizer", {})
     model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
     
-    # Get source path from metadata if available
-    metadata = run_status.get("metadata", {})
-    stored_source_path = metadata.get("source_path")
+    # Determine log directory from run_id
+    log_dir = ".runs"
+    run_log_dir = pathlib.Path(log_dir) / run_id
+    
+    # Try to get source path from local metadata file
+    stored_source_path = None
+    local_metadata_path = run_log_dir / "metadata.json"
+    if local_metadata_path.exists():
+        try:
+            local_metadata = read_from_path(local_metadata_path, is_json=True)
+            stored_source_path = local_metadata.get("source_path")
+        except Exception:
+            pass  # If we can't read the metadata, fall back to asking the user
 
     # Environment validation (unless skipped)
     if not skip_validation:
@@ -608,10 +630,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         if console.input("\n[bold]Continue with resume? (yes/no, default=no): [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
-
-    # Determine log directory from run_id
-    log_dir = ".runs"
-    run_log_dir = pathlib.Path(log_dir) / run_id
 
     # Ensure log directory exists
     run_log_dir.mkdir(parents=True, exist_ok=True)
@@ -684,7 +702,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     heartbeat_thread.start()
 
     # Initialize panels for display
-    log_dir = ".runs"
     summary_panel = SummaryPanel(
         maximize=maximize,
         metric_name=metric_name,
@@ -722,10 +739,10 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
     try:
         with Live(
-            create_optimization_layout(summary_panel, metric_tree_panel, solution_panels, evaluation_output_panel),
+            create_optimization_layout(),
             console=console,
             refresh_per_second=4,
-        ):
+        ) as live:
             # Continue from the next step
             for step in range(last_step + 1, total_steps + 1):
                 summary_panel.update_step(step)
