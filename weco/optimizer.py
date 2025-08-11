@@ -501,7 +501,7 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None) -> bool:
+def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None, eval_timeout: Optional[int] = None) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
 
@@ -711,6 +711,10 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         run_id=run_id,
         run_name=run_name
     )
+    # Set the dashboard URL and run_name since we already have them
+    summary_panel.set_dashboard_url(run_id)
+    if run_name:
+        summary_panel.set_run_name(run_name)
     metric_tree_panel = MetricTreePanel(maximize=maximize)
     evaluation_output_panel = EvaluationOutputPanel()
     source_fp = pathlib.Path(source_path)
@@ -718,8 +722,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
-    if run_status and "nodes" in run_status:
-        # Build the metric tree with all previous nodes
+    if run_status and "nodes" in run_status and run_status["nodes"]:
+        # Build the metric tree with all previous nodes (only if not empty)
         metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
     
     # Initialize solution panels with best solution if available
@@ -775,7 +779,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     evaluation_output_panel.clear()
                     execution_output = run_evaluation(
                         evaluation_command,
-                        timeout=None,  # Add eval_timeout support if needed
+                        timeout=eval_timeout,
                     )
                     evaluation_output_panel.update(execution_output)
 
@@ -847,7 +851,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
-                final_output = run_evaluation(evaluation_command, timeout=None)
+                final_output = run_evaluation(evaluation_command, timeout=eval_timeout)
                 evaluation_output_panel.update(final_output)
 
                 # Display final results
