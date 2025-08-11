@@ -706,8 +706,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             if node_data.get("metric_value") is not None:
                 node = Node(
                     id=node_data.get("solution_id", ""),
-                    step=node_data.get("step", 0),
-                    metric_value=node_data.get("metric_value"),
+                    parent_id=node_data.get("parent_id"),
+                    code=node_data.get("code"),
+                    metric=node_data.get("metric_value"),
                     is_buggy=node_data.get("is_buggy", False),
                 )
                 metric_tree_panel.add_node(node)
@@ -770,8 +771,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 if response.get("previous_solution_metric_value") is not None:
                     node = Node(
                         id=response.get("solution_id", ""),
-                        step=step - 1,
-                        metric_value=response["previous_solution_metric_value"],
+                        parent_id=response.get("parent_id"),
+                        code=response.get("code"),
+                        metric=response["previous_solution_metric_value"],
                         is_buggy=False,
                     )
                     metric_tree_panel.add_node(node)
