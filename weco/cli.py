@@ -93,11 +93,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command to resume an interrupted run."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(
-        run_id=args.run_id, 
-        skip_validation=args.skip_validation, 
-        console=console
-    )
+    success = resume_optimization(run_id=args.run_id, skip_validation=args.skip_validation, console=console)
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
