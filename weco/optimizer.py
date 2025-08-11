@@ -737,15 +737,26 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     optimization_completed_normally = False
     user_stop_requested_flag = False
 
+    # Create the layout for display
+    layout = create_optimization_layout()
+    
+    # Initialize layout with panel content
+    layout["summary"].update(summary_panel.get_display())
+    layout["tree"].update(metric_tree_panel.get_display(is_done=False))
+    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=last_step)
+    layout["current_solution"].update(current_solution_panel)
+    layout["best_solution"].update(best_solution_panel)
+    layout["eval_output"].update(evaluation_output_panel.get_display())
+    
     try:
         with Live(
-            create_optimization_layout(),
+            layout,
             console=console,
             refresh_per_second=4,
         ) as live:
             # Continue from the next step
             for step in range(last_step + 1, total_steps + 1):
-                summary_panel.update_step(step)
+                summary_panel.set_step(step)
 
                 # Check for user stop request
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
@@ -764,9 +775,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     evaluation_output_panel.clear()
                     execution_output = run_evaluation(
                         evaluation_command,
-                        lambda line: evaluation_output_panel.add_line(line),
                         timeout=None,  # Add eval_timeout support if needed
                     )
+                    evaluation_output_panel.update(execution_output)
 
                 # Get next solution
                 response = evaluate_feedback_then_suggest_next_solution(
@@ -784,7 +795,15 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
                 # Update panels with new solution
                 if response.get("code"):
-                    solution_panels.update_current(response["code"], response.get("plan", ""))
+                    # Create a node for the current solution
+                    current_node = Node(
+                        id=response.get("solution_id", ""),
+                        parent_id=response.get("parent_id"),
+                        code=response["code"],
+                        metric=None,  # Not evaluated yet
+                        is_buggy=None,
+                    )
+                    solution_panels.update(current_node=current_node, best_node=solution_panels.best_node)
                     write_to_path(source_path, response["code"])
                     write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
 
@@ -799,11 +818,26 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     )
                     metric_tree_panel.metric_tree.add_node(node)
 
-                # Update token usage
+                # Update token usage and thinking
                 if response.get("usage"):
-                    summary_panel.add_usage(
-                        response["usage"].get("input_tokens", 0), response["usage"].get("output_tokens", 0)
-                    )
+                    summary_panel.update_token_counts(usage=response["usage"])
+                if response.get("plan"):
+                    summary_panel.update_thinking(thinking=response["plan"])
+                
+                # Update the display
+                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[
+                        ("summary", summary_panel.get_display()),
+                        ("tree", metric_tree_panel.get_display(is_done=False)),
+                        ("current_solution", current_solution_panel),
+                        ("best_solution", best_solution_panel),
+                        ("eval_output", evaluation_output_panel.get_display()),
+                    ],
+                    transition_delay=0.08,
+                )
 
                 # Check if optimization is done
                 if response.get("is_done"):
@@ -813,15 +847,38 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
-                run_evaluation(evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None)
+                final_output = run_evaluation(evaluation_command, timeout=None)
+                evaluation_output_panel.update(final_output)
 
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
                     if best.get("code"):
-                        solution_panels.update_best(best["code"], best.get("plan", ""))
+                        best_node = Node(
+                            id=best.get("solution_id", ""),
+                            parent_id=best.get("parent_id"),
+                            code=best["code"],
+                            metric=best.get("metric_value"),
+                            is_buggy=best.get("is_buggy", False),
+                        )
+                        solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
                         write_to_path(str(run_log_dir / "best.py"), best["code"])
+                        
+                        # Final display update
+                        current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
+                        smooth_update(
+                            live=live,
+                            layout=layout,
+                            sections_to_update=[
+                                ("summary", summary_panel.get_display()),
+                                ("tree", metric_tree_panel.get_display(is_done=True)),
+                                ("current_solution", current_solution_panel),
+                                ("best_solution", best_solution_panel),
+                                ("eval_output", evaluation_output_panel.get_display()),
+                            ],
+                            transition_delay=0.08,
+                        )
 
                 optimization_completed_normally = True
 
