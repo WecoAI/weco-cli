@@ -681,8 +681,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
     # Display resume information
     # Note: last_step is 0-indexed (0=baseline, 1=first optimization, etc.)
-    # But for display, we show 1-indexed to match user expectations
     console.print(f"\n[bold green]Resuming optimization from step {last_step}/{total_steps}[/]")
+    console.print(f"[dim]Will run steps {last_step + 1} through {total_steps}[/]")
 
     # Continue optimization from the next step
     console.print("\n" + "=" * 50)
@@ -765,7 +765,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     try:
         with Live(layout, console=console, refresh_per_second=4) as live:
             # Continue from the next step
-            # Note: Steps are 0-indexed internally but displayed as 1-indexed
+            # Note: Steps are 0-indexed internally (0=baseline, 1-N=optimization steps)
+            # But total_steps is the count of optimization steps (excludes baseline)
+            # So if total_steps=5, we have steps 0,1,2,3,4,5 (6 total)
             for step in range(last_step + 1, total_steps + 1):
                 # Update progress bar immediately at start of each step
                 summary_panel.set_step(step)
