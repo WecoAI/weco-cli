@@ -559,16 +559,16 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
     
-    # Check if the last solution actually succeeded or failed
-    # If it contains an error in execution_output, we should retry it
+    # Debug: Log what we received from API
+    console.print(f"[dim]Debug: API returned last_completed_step={last_step}, total_steps={total_steps}[/]")
+    if last_solution:
+        console.print(f"[dim]Debug: Last solution - step={last_solution.get('step')}, is_buggy={last_solution.get('is_buggy')}[/]")
+    
+    # Note if the last solution was buggy
     actual_last_completed_step = last_step  # Keep original for file naming
-    if last_solution and last_solution.get("execution_output"):
-        output = last_solution["execution_output"].lower()
-        if "error" in output or "traceback" in output or "exception" in output:
-            # Last step failed, we should retry it instead of moving to next
-            console.print(f"[yellow]Note: Step {last_step} had an execution error and will be retried.[/]")
-            # Adjust to retry the failed step
-            last_step = last_step - 1 if last_step > 0 else 0
+    last_was_buggy = last_solution.get("is_buggy", False)
+    if last_was_buggy:
+        console.print(f"[yellow]Note: Step {last_step} resulted in a bug. Continuing optimization.[/]")
     
     # Get metric info from run_status
     objective = run_status.get("objective", {})
@@ -677,7 +677,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
 
     # Display resume information
-    console.print(f"\n[bold green]Resuming optimization from step {last_step + 1}/{total_steps}[/]")
+    # Note: last_step is 0-indexed (0=baseline, 1=first optimization, etc.)
+    # But for display, we show 1-indexed to match user expectations
+    console.print(f"\n[bold green]Resuming optimization from step {last_step}/{total_steps}[/]")
 
     # Continue optimization from the next step
     console.print("\n" + "=" * 50)
@@ -718,6 +720,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     summary_panel.set_dashboard_url(run_id)
     if run_name:
         summary_panel.set_run_name(run_name)
+    # Set the initial progress to the last completed step
+    summary_panel.set_step(last_step)
     metric_tree_panel = MetricTreePanel(maximize=maximize)
     evaluation_output_panel = EvaluationOutputPanel()
     source_fp = pathlib.Path(source_path)
@@ -762,7 +766,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             refresh_per_second=4,
         ) as live:
             # Continue from the next step
+            # Note: Steps are 0-indexed internally but displayed as 1-indexed
             for step in range(last_step + 1, total_steps + 1):
+                # Update progress bar immediately at start of each step
                 summary_panel.set_step(step)
 
                 # Check for user stop request
