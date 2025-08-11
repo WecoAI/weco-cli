@@ -175,7 +175,7 @@ def execute_optimization(
             "source_path": source,  # Store the source file path
             "eval_timeout": eval_timeout,  # Store the evaluation timeout
         }
-        
+
         run_response = start_optimization_run(
             console=console,
             source_code=source_code,
@@ -210,7 +210,6 @@ def execute_optimization(
             # Define the runs directory (.runs/<run-id>) to store logs and results
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
-
 
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
@@ -1038,16 +1037,16 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     objective = run_status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
     maximize = objective.get("maximize", True)
-    
+
     # Get optimizer config for model info
     optimizer_config = run_status.get("optimizer", {})
     model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
-    
+
     # Determine log directory from run_id
     log_dir = ".runs"
     run_log_dir = pathlib.Path(log_dir) / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Determine the source file path
     if source_path_from_api and pathlib.Path(source_path_from_api).exists():
         source_path = source_path_from_api
@@ -1058,9 +1057,9 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
         for pattern in ["train.py", "main.py", "solution.py", "*.py"]:
             files = list(pathlib.Path(".").glob(pattern))
             possible_files.extend(files)
-        
+
         possible_files = list(set(f for f in possible_files if f.is_file()))
-        
+
         if len(possible_files) == 1:
             source_path = str(possible_files[0])
             console.print(f"[cyan]Found source file: {source_path}[/]")
@@ -1119,7 +1118,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     if run_name:
         summary_panel.set_run_name(run_name)
     summary_panel.set_step(last_step)  # Start from where we left off
-    
+
     metric_tree_panel = MetricTreePanel(maximize=maximize)
     evaluation_output_panel = EvaluationOutputPanel()
     solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
@@ -1159,7 +1158,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
             console.print("[cyan]Evaluating current best solution...[/]")
             execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
             evaluation_output_panel.update(execution_output)
-            
+
             # Continue from last_step + 1 to total_steps
             for step in range(last_step + 1, total_steps + 1):
                 # Check for user stop request
@@ -1200,13 +1199,13 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                 # Update displays similar to resume
                 if status_response and status_response.get("nodes"):
                     metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
-                    
+
                     if response.get("solution_id"):
                         try:
                             metric_tree_panel.set_unevaluated_node(node_id=response["solution_id"])
                         except Exception:
                             pass
-                    
+
                     # Update solution panels
                     current_solution_node = None
                     for node_data in status_response["nodes"]:
@@ -1219,7 +1218,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                                 is_buggy=node_data.get("is_buggy"),
                             )
                             break
-                    
+
                     best_solution_node = None
                     if status_response.get("best_result"):
                         best_result = status_response["best_result"]
@@ -1230,7 +1229,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                             metric=best_result.get("metric_value"),
                             is_buggy=best_result.get("is_buggy", False),
                         )
-                    
+
                     if current_solution_node:
                         solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
 
@@ -1260,7 +1259,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                     optimization_completed_normally = True
                     stop_heartbeat_event.set()
                     break
-                
+
                 # Run evaluation for next iteration
                 if step < total_steps:  # Don't evaluate if this is the last step
                     evaluation_output_panel.clear()
@@ -1295,7 +1294,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
             else:
                 status, reason = "error", "error_cli_internal"
                 details = "Extension failed due to an error"
-            
+
             report_termination(run_id, status, reason, details, auth_headers)
 
     return optimization_completed_normally or user_stop_requested_flag
