@@ -785,10 +785,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             # But total_steps is the count of optimization steps (excludes baseline)
             # So if total_steps=5, we have steps 0,1,2,3,4,5 (6 total)
             for step in range(last_step + 1, total_steps + 1):
-                # Update progress bar immediately at start of each step
-                summary_panel.set_step(step)
-
-                # Check for user stop request
+                # Check for user stop request first (before updating progress)
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
                 if run_status and run_status.get("status") == "stopping":
                     user_stop_requested_flag = True
@@ -825,6 +822,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     write_to_path(source_path, response["code"])
                     write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
 
+                # Update progress bar now that we have the new solution
+                summary_panel.set_step(step)
+                
                 # Refresh the entire tree from the status to avoid synchronization issues
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
