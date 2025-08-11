@@ -169,6 +169,13 @@ def execute_optimization(
         end_optimization_layout = create_end_optimization_layout()
 
         # --- Start Optimization Run ---
+        # Add source_path and eval_timeout to api_keys dict (they'll be sent as metadata)
+        api_keys_with_metadata = {
+            **llm_api_keys,
+            "source_path": source,  # Store the source file path
+            "eval_timeout": eval_timeout,  # Store the evaluation timeout
+        }
+        
         run_response = start_optimization_run(
             console=console,
             source_code=source_code,
@@ -180,7 +187,7 @@ def execute_optimization(
             evaluator_config=evaluator_config,
             search_policy_config=search_policy_config,
             additional_instructions=processed_additional_instructions,
-            api_keys=llm_api_keys,
+            api_keys=api_keys_with_metadata,
             auth_headers=auth_headers,
             timeout=api_timeout,
         )
@@ -204,16 +211,6 @@ def execute_optimization(
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
 
-            # Save run metadata locally (including source path and eval_timeout)
-            local_metadata = {
-                "source_path": source,
-                "evaluation_command": eval_command,
-                "metric_name": metric,
-                "maximize": maximize,
-                "eval_timeout": eval_timeout,
-                "created_at": datetime.now().isoformat(),
-            }
-            write_to_path(fp=runs_dir / "metadata.json", content=local_metadata, is_json=True)
 
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
@@ -557,6 +554,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     created_at = resume_info["created_at"]  # noqa: F841 - Keep for logging/debugging
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
+    source_path_from_api = resume_info.get("source_path")  # Get source_path from API
+    eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
 
     # Debug: Log what we received from API
     console.print(f"[dim]Debug: API returned last_completed_step={last_step}, total_steps={total_steps}[/]")
@@ -583,18 +582,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # Determine log directory from run_id
     log_dir = ".runs"
     run_log_dir = pathlib.Path(log_dir) / run_id
-
-    # Try to get source path and eval_timeout from local metadata file
-    stored_source_path = None
-    eval_timeout = None  # Will be loaded from metadata
-    local_metadata_path = run_log_dir / "metadata.json"
-    if local_metadata_path.exists():
-        try:
-            local_metadata = read_from_path(local_metadata_path, is_json=True)
-            stored_source_path = local_metadata.get("source_path")
-            eval_timeout = local_metadata.get("eval_timeout")  # Load eval_timeout from metadata
-        except Exception:
-            pass  # If we can't read the metadata, fall back to defaults
 
     # Environment validation (unless skipped)
     if not skip_validation:
@@ -643,9 +630,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     if last_solution.get("code"):
         write_to_path(str(last_solution_path), last_solution["code"])
 
-    # Use stored source path if available, otherwise ask the user
-    if stored_source_path and pathlib.Path(stored_source_path).exists():
-        source_path = stored_source_path
+    # Use source path from API if available, otherwise ask the user
+    if source_path_from_api and pathlib.Path(source_path_from_api).exists():
+        source_path = source_path_from_api
         console.print(f"[cyan]Using source file from original run: {source_path}[/]")
     else:
         # Try to find the source file automatically by looking for common patterns
@@ -664,9 +651,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             console.print(f"[cyan]Found source file: {source_path}[/]")
         else:
             # Ask user for source file path
-            if not stored_source_path:
+            if not source_path_from_api:
                 console.print(
-                    "\n[yellow]Source path not found in run metadata (run may have been created with an older version).[/]"
+                    "\n[yellow]Source path not found in run data (run may have been created with an older version).[/]"
                 )
             console.print("[yellow]Please specify the source file to optimize.[/]")
             source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
@@ -1033,6 +1020,8 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     created_at = extend_info["created_at"]
     updated_at = extend_info["updated_at"]
     run_name = extend_info.get("run_name", run_id)
+    source_path_from_api = extend_info.get("source_path")  # Get source_path from API
+    eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
 
     # Display run information
     console.print(f"\n[bold green]Extending Completed Run[/]")
@@ -1059,21 +1048,9 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     run_log_dir = pathlib.Path(log_dir) / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
     
-    # Try to get source path and eval_timeout from local metadata file
-    stored_source_path = None
-    eval_timeout = None
-    local_metadata_path = run_log_dir / "metadata.json"
-    if local_metadata_path.exists():
-        try:
-            local_metadata = read_from_path(local_metadata_path, is_json=True)
-            stored_source_path = local_metadata.get("source_path")
-            eval_timeout = local_metadata.get("eval_timeout")
-        except Exception:
-            pass  # Fall back to defaults
-    
     # Determine the source file path
-    if stored_source_path and pathlib.Path(stored_source_path).exists():
-        source_path = stored_source_path
+    if source_path_from_api and pathlib.Path(source_path_from_api).exists():
+        source_path = source_path_from_api
         console.print(f"[cyan]Using source file from original run: {source_path}[/]")
     else:
         # Try to find the source file
