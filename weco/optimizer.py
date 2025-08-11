@@ -736,7 +736,21 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         # Build the metric tree with all previous nodes (only if not empty)
         metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
 
-    # Initialize solution panels with best solution if available
+    # Initialize solution panels with current and best solutions
+    current_node = None
+    best_node = None
+    
+    # Set the current solution to the last completed solution
+    if last_solution:
+        current_node = Node(
+            id=last_solution.get("solution_id", ""),
+            parent_id=last_solution.get("parent_id"),
+            code=last_solution.get("code"),
+            metric=last_solution.get("metric_value"),
+            is_buggy=last_solution.get("is_buggy"),
+        )
+    
+    # Set the best solution if available
     if run_status and run_status.get("best_result"):
         best_result = run_status["best_result"]
         best_node = Node(
@@ -746,7 +760,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
             metric=best_result.get("metric_value"),
             is_buggy=best_result.get("is_buggy", False),
         )
-        solution_panels.update(current_node=None, best_node=best_node)
+    
+    # Update solution panels with both current and best
+    solution_panels.update(current_node=current_node, best_node=best_node)
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
