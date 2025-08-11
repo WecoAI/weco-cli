@@ -96,8 +96,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     success = resume_optimization(
         run_id=args.run_id, 
         skip_validation=args.skip_validation, 
-        console=console,
-        eval_timeout=args.eval_timeout
+        console=console
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -147,9 +146,6 @@ def main() -> None:
     resume_parser.add_argument("run_id", type=str, help="The run ID to resume (e.g., 'abc-123-def')")
     resume_parser.add_argument(
         "--skip-validation", action="store_true", help="Skip environment validation checks and resume immediately"
-    )
-    resume_parser.add_argument(
-        "--eval-timeout", type=int, default=None, help="Timeout for each evaluation (in seconds). Default: no timeout"
     )
 
     # --- Extend Command Parser Setup ---

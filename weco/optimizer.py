@@ -205,12 +205,13 @@ def execute_optimization(
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
             
-            # Save run metadata locally (including source path)
+            # Save run metadata locally (including source path and eval_timeout)
             local_metadata = {
                 "source_path": source,
                 "evaluation_command": eval_command,
                 "metric_name": metric,
                 "maximize": maximize,
+                "eval_timeout": eval_timeout,
                 "created_at": datetime.now().isoformat(),
             }
             write_to_path(fp=runs_dir / "metadata.json", content=local_metadata, is_json=True)
@@ -501,7 +502,7 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None, eval_timeout: Optional[int] = None) -> bool:
+def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
 
@@ -582,15 +583,17 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     log_dir = ".runs"
     run_log_dir = pathlib.Path(log_dir) / run_id
     
-    # Try to get source path from local metadata file
+    # Try to get source path and eval_timeout from local metadata file
     stored_source_path = None
+    eval_timeout = None  # Will be loaded from metadata
     local_metadata_path = run_log_dir / "metadata.json"
     if local_metadata_path.exists():
         try:
             local_metadata = read_from_path(local_metadata_path, is_json=True)
             stored_source_path = local_metadata.get("source_path")
+            eval_timeout = local_metadata.get("eval_timeout")  # Load eval_timeout from metadata
         except Exception:
-            pass  # If we can't read the metadata, fall back to asking the user
+            pass  # If we can't read the metadata, fall back to defaults
 
     # Environment validation (unless skipped)
     if not skip_validation:
@@ -799,28 +802,61 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
                 # Update panels with new solution
                 if response.get("code"):
-                    # Create a node for the current solution
-                    current_node = Node(
-                        id=response.get("solution_id", ""),
-                        parent_id=response.get("parent_id"),
-                        code=response["code"],
-                        metric=None,  # Not evaluated yet
-                        is_buggy=None,
-                    )
-                    solution_panels.update(current_node=current_node, best_node=solution_panels.best_node)
                     write_to_path(source_path, response["code"])
                     write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
-
-                # Update metric tree if we have a metric value
-                if response.get("previous_solution_metric_value") is not None:
-                    node = Node(
-                        id=response.get("solution_id", ""),
-                        parent_id=response.get("parent_id"),
-                        code=response.get("code"),
-                        metric=response["previous_solution_metric_value"],
-                        is_buggy=False,
-                    )
-                    metric_tree_panel.metric_tree.add_node(node)
+                
+                # Refresh the entire tree from the status to avoid synchronization issues
+                status_response = get_optimization_run_status(
+                    console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+                )
+                
+                # Rebuild the metric tree with all nodes
+                if status_response and status_response.get("nodes"):
+                    metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
+                    
+                    # Mark the current node as unevaluated if it's a new one
+                    if response.get("solution_id"):
+                        try:
+                            metric_tree_panel.set_unevaluated_node(node_id=response["solution_id"])
+                        except Exception:
+                            pass  # Node might not exist yet
+                    
+                    # Update solution panels with current and best nodes
+                    current_solution_node = None
+                    for node_data in status_response["nodes"]:
+                        if node_data["solution_id"] == response.get("solution_id"):
+                            current_solution_node = Node(
+                                id=node_data["solution_id"],
+                                parent_id=node_data.get("parent_id"),
+                                code=node_data.get("code"),
+                                metric=node_data.get("metric_value"),
+                                is_buggy=node_data.get("is_buggy"),
+                            )
+                            break
+                    
+                    best_solution_node = None
+                    if status_response.get("best_result"):
+                        best_result = status_response["best_result"]
+                        best_solution_node = Node(
+                            id=best_result["solution_id"],
+                            parent_id=best_result.get("parent_id"),
+                            code=best_result.get("code"),
+                            metric=best_result.get("metric_value"),
+                            is_buggy=best_result.get("is_buggy", False),
+                        )
+                    
+                    if current_solution_node:
+                        solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+                    elif response.get("code"):
+                        # Fallback if node not found in status
+                        current_node = Node(
+                            id=response.get("solution_id", f"temp_{step}"),
+                            parent_id=response.get("parent_id"),
+                            code=response["code"],
+                            metric=None,
+                            is_buggy=None,
+                        )
+                        solution_panels.update(current_node=current_node, best_node=best_solution_node)
 
                 # Update token usage and thinking
                 if response.get("usage"):
