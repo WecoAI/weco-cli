@@ -512,7 +512,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
-    run_status = get_optimization_run_status(console, run_id, False, auth_headers)
+    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
     if not run_status:
         console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
         console.print("[yellow]Possible reasons:[/]")
@@ -545,6 +545,17 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     created_at = resume_info["created_at"]  # noqa: F841 - Keep for logging/debugging
     updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
+    
+    # Check if the last solution actually succeeded or failed
+    # If it contains an error in execution_output, we should retry it
+    actual_last_completed_step = last_step  # Keep original for file naming
+    if last_solution and last_solution.get("execution_output"):
+        output = last_solution["execution_output"].lower()
+        if "error" in output or "traceback" in output or "exception" in output:
+            # Last step failed, we should retry it instead of moving to next
+            console.print(f"[yellow]Note: Step {last_step} had an execution error and will be retried.[/]")
+            # Adjust to retry the failed step
+            last_step = last_step - 1 if last_step > 0 else 0
     
     # Get metric info from run_status
     objective = run_status.get("objective", {})
@@ -606,7 +617,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     run_log_dir.mkdir(parents=True, exist_ok=True)
 
     # Write the last solution to the appropriate file (always overwrite to ensure it's current)
-    last_solution_path = run_log_dir / f"step_{last_step}.py"
+    last_solution_path = run_log_dir / f"step_{actual_last_completed_step}.py"
     if last_solution.get("code"):
         write_to_path(str(last_solution_path), last_solution["code"])
 
@@ -689,7 +700,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
 
     # Load previous history if available
-    run_status = get_optimization_run_status(console, run_id, auth_headers, include_history=True)
+    run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status:
         for node_data in run_status["nodes"]:
             if node_data.get("metric_value") is not None:
@@ -715,7 +726,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 summary_panel.update_step(step)
 
                 # Check for user stop request
-                run_status = get_optimization_run_status(console, run_id, auth_headers)
+                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
                 if run_status and run_status.get("status") == "stopping":
                     user_stop_requested_flag = True
                     console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
@@ -782,7 +793,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                 run_evaluation(evaluation_command, lambda line: evaluation_output_panel.add_line(line), timeout=None)
 
                 # Display final results
-                run_status = get_optimization_run_status(console, run_id, auth_headers)
+                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
                     if best.get("code"):
@@ -837,7 +848,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
-    run_status = get_optimization_run_status(console, run_id, False, auth_headers)
+    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
     if not run_status:
         console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
         console.print("[yellow]Possible reasons:[/]")
