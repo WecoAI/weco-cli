@@ -183,7 +183,6 @@ def execute_optimization(
             api_keys=llm_api_keys,
             auth_headers=auth_headers,
             timeout=api_timeout,
-            source_path=source,
         )
         # Indicate the endpoint failed to return a response and the optimization was unsuccessful
         if run_response is None:
