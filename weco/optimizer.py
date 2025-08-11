@@ -702,16 +702,20 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status:
-        for node_data in run_status["nodes"]:
-            if node_data.get("metric_value") is not None:
-                node = Node(
-                    id=node_data.get("solution_id", ""),
-                    parent_id=node_data.get("parent_id"),
-                    code=node_data.get("code"),
-                    metric=node_data.get("metric_value"),
-                    is_buggy=node_data.get("is_buggy", False),
-                )
-                metric_tree_panel.add_node(node)
+        # Build the metric tree with all previous nodes
+        metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
+    
+    # Initialize solution panels with best solution if available
+    if run_status and run_status.get("best_result"):
+        best_result = run_status["best_result"]
+        best_node = Node(
+            id=best_result["solution_id"],
+            parent_id=best_result.get("parent_id"),
+            code=best_result.get("code"),
+            metric=best_result.get("metric_value"),
+            is_buggy=best_result.get("is_buggy", False),
+        )
+        solution_panels.update(current_node=None, best_node=best_node)
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
@@ -776,7 +780,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                         metric=response["previous_solution_metric_value"],
                         is_buggy=False,
                     )
-                    metric_tree_panel.add_node(node)
+                    metric_tree_panel.metric_tree.add_node(node)
 
                 # Update token usage
                 if response.get("usage"):
