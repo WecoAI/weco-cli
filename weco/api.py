@@ -46,11 +46,7 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
-                    "metadata": {
-                        "client_name": "cli",
-                        "client_version": __pkg_version__,
-                        **api_keys,
-                    },
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
                 },
                 headers=auth_headers,
                 timeout=timeout,

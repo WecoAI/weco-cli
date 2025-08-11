@@ -139,7 +139,9 @@ def main() -> None:
     resume_parser = subparsers.add_parser(
         "resume", help="Resume an interrupted optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    resume_parser.add_argument("run_id", type=str, help="The UUID of the run to resume (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')")
+    resume_parser.add_argument(
+        "run_id", type=str, help="The UUID of the run to resume (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
+    )
     resume_parser.add_argument(
         "--skip-validation", action="store_true", help="Skip environment validation checks and resume immediately"
     )
@@ -148,7 +150,9 @@ def main() -> None:
     extend_parser = subparsers.add_parser(
         "extend", help="Extend a completed optimization run", formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    extend_parser.add_argument("run_id", type=str, help="The UUID of the completed run to extend (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')")
+    extend_parser.add_argument(
+        "run_id", type=str, help="The UUID of the completed run to extend (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
+    )
     extend_parser.add_argument("steps", type=int, help="Number of additional steps to add to the completed run (e.g., 20)")
 
     # --- Logout Command Parser Setup ---
