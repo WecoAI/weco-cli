@@ -513,7 +513,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         console = Console()
 
     from .api import resume_optimization_run, get_optimization_run_status
-    from datetime import datetime
 
     # Read authentication and API keys
     api_keys = read_api_keys_from_env()
@@ -1016,14 +1015,17 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     source_code = extend_info["source_code"]
     # For extend, we use the best solution as the starting point
     best_solution = extend_info.get("best_solution")
-    created_at = extend_info["created_at"]
-    updated_at = extend_info["updated_at"]
     run_name = extend_info.get("run_name", run_id)
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
 
+    # Get metric info from run_status
+    objective = run_status.get("objective", {})
+    metric_name = objective.get("metric_name", "metric")
+    maximize = objective.get("maximize", True)
+
     # Display run information
-    console.print(f"\n[bold green]Extending Completed Run[/]")
+    console.print("\n[bold green]Extending Completed Run[/]")
     console.print(f"[cyan]Run Name:[/] {run_name}")
     console.print(f"[cyan]Run ID:[/] {run_id}")
     console.print(f"[cyan]Completed Steps:[/] {last_step}")
@@ -1032,11 +1034,6 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     if best_solution:
         console.print(f"[cyan]Best Metric:[/] {best_solution.get('metric_value', 'N/A')}")
     console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
-
-    # Get metric info from run_status
-    objective = run_status.get("objective", {})
-    metric_name = objective.get("metric_name", "metric")
-    maximize = objective.get("maximize", True)
 
     # Get optimizer config for model info
     optimizer_config = run_status.get("optimizer", {})
