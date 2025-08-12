@@ -172,8 +172,8 @@ def execute_optimization(
         # Add source_path and eval_timeout to api_keys dict (they'll be sent as metadata)
         api_keys_with_metadata = {
             **llm_api_keys,
-            "source_path": source,  # Store the source file path
-            "eval_timeout": eval_timeout,  # Store the evaluation timeout
+            "source_path": str(source) if source else None,  # Ensure it's a string for JSON serialization
+            "eval_timeout": eval_timeout,  # Store the evaluation timeout (None means no limit)
         }
 
         run_response = start_optimization_run(
