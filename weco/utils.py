@@ -68,10 +68,8 @@ def read_additional_instructions(additional_instructions: str | None) -> str | N
 
 
 # File helper functions
-def read_from_path(fp: Union[str, pathlib.Path], is_json: bool = False) -> Union[str, Dict[str, Any]]:
+def read_from_path(fp: pathlib.Path, is_json: bool = False) -> Union[str, Dict[str, Any]]:
     """Read content from a file path, optionally parsing as JSON."""
-    if isinstance(fp, str):
-        fp = pathlib.Path(fp)
     with fp.open("r", encoding="utf-8") as f:
         if is_json:
             return json.load(f)
