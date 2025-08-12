@@ -626,7 +626,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     # Write the last solution to the appropriate file (always overwrite to ensure it's current)
     last_solution_path = run_log_dir / f"step_{actual_last_completed_step}.py"
     if last_solution.get("code"):
-        write_to_path(str(last_solution_path), last_solution["code"])
+        write_to_path(last_solution_path, last_solution["code"])
 
     # Use source path from API if available, otherwise ask the user
     if source_path_from_api and pathlib.Path(source_path_from_api).exists():
@@ -661,7 +661,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
     # Write last solution to source file
     if last_solution.get("code"):
-        write_to_path(source_path, last_solution["code"])
+        write_to_path(pathlib.Path(source_path), last_solution["code"])
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
 
     # Display resume information
@@ -806,8 +806,8 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
 
                 # Update panels with new solution
                 if response.get("code"):
-                    write_to_path(source_path, response["code"])
-                    write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
+                    write_to_path(pathlib.Path(source_path), response["code"])
+                    write_to_path(run_log_dir / f"step_{step}.py", response["code"])
 
                 # Update progress bar now that we have the new solution
                 summary_panel.set_step(step)
@@ -916,7 +916,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                             is_buggy=best.get("is_buggy", False),
                         )
                         solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
-                        write_to_path(str(run_log_dir / "best.py"), best["code"])
+                        write_to_path(run_log_dir / "best.py", best["code"])
 
                         # Final display update
                         current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
@@ -1069,12 +1069,12 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
 
     # Write the best solution (starting point) to the source file
     if best_solution and best_solution.get("code"):
-        write_to_path(str(source_path), best_solution["code"])
-        write_to_path(str(run_log_dir / f"step_{last_step}.py"), best_solution["code"])
+        write_to_path(pathlib.Path(source_path), best_solution["code"])
+        write_to_path(run_log_dir / f"step_{last_step}.py", best_solution["code"])
         console.print(f"\n[green]Starting from best solution (metric: {best_solution.get('metric_value')}):[/] {source_path}")
     else:
         # Fallback to original source code if no best solution
-        write_to_path(str(source_path), source_code)
+        write_to_path(pathlib.Path(source_path), source_code)
         console.print(f"\n[yellow]No best solution found, starting from original source:[/] {source_path}")
 
     console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
@@ -1182,8 +1182,8 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
 
                 # Update panels with new solution
                 if response.get("code"):
-                    write_to_path(source_path, response["code"])
-                    write_to_path(str(run_log_dir / f"step_{step}.py"), response["code"])
+                    write_to_path(pathlib.Path(source_path), response["code"])
+                    write_to_path(run_log_dir / f"step_{step}.py", response["code"])
 
                 # Update progress bar
                 summary_panel.set_step(step)
@@ -1269,7 +1269,7 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
                     if best.get("code"):
-                        write_to_path(str(run_log_dir / "best.py"), best["code"])
+                        write_to_path(run_log_dir / "best.py", best["code"])
                         console.print(f"\n[bold green]Extension complete! Best metric: {best.get('metric_value')}[/]")
 
                 optimization_completed_normally = True

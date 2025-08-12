@@ -78,10 +78,8 @@ def read_from_path(fp: Union[str, pathlib.Path], is_json: bool = False) -> Union
         return f.read()
 
 
-def write_to_path(fp: Union[str, pathlib.Path], content: Union[str, Dict[str, Any]], is_json: bool = False) -> None:
+def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json: bool = False) -> None:
     """Write content to a file path, optionally as JSON."""
-    if isinstance(fp, str):
-        fp = pathlib.Path(fp)
     with fp.open("w", encoding="utf-8") as f:
         if is_json:
             json.dump(content, f, indent=4)
