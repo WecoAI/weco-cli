@@ -35,7 +35,7 @@ def start_optimization_run(
     with console.status("[bold green]Starting Optimization..."):
         try:
             response = requests.post(
-                f"{__base_url__}/runs",
+                f"{__base_url__}/runs/",
                 json={
                     "source_code": source_code,
                     "additional_instructions": additional_instructions,
