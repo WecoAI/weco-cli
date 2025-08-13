@@ -184,9 +184,9 @@ def perform_login(console: Console):
         return False
 
 
-def handle_authentication(console: Console, llm_api_keys: dict) -> tuple[str | None, dict]:
+def handle_authentication(console: Console) -> tuple[str | None, dict]:
     """
-    Handle the complete authentication flow.
+    Handle the complete authentication flow. Authentication is now mandatory.
 
     Returns:
         tuple: (weco_api_key, auth_headers)
@@ -194,13 +194,18 @@ def handle_authentication(console: Console, llm_api_keys: dict) -> tuple[str | N
     weco_api_key = load_weco_api_key()
 
     if not weco_api_key:
+        console.print("[bold yellow]Authentication Required[/]")
+        console.print("With our new credit-based billing system, authentication is required to use Weco.")
+        console.print("You'll receive 100 free credits to get started!")
+        console.print("")
+        
         login_choice = Prompt.ask(
-            "Log in to Weco to save run history or use anonymously? ([bold]L[/]ogin / [bold]S[/]kip)",
-            choices=["l", "s"],
-            default="s",
+            "Would you like to log in now? ([bold]Y[/]es / [bold]N[/]o)",
+            choices=["y", "n"],
+            default="y",
         ).lower()
 
-        if login_choice == "l":
+        if login_choice == "y":
             console.print("[cyan]Starting login process...[/]")
             if not perform_login(console):
                 console.print("[bold red]Login process failed or was cancelled.[/]")
@@ -210,14 +215,9 @@ def handle_authentication(console: Console, llm_api_keys: dict) -> tuple[str | N
             if not weco_api_key:
                 console.print("[bold red]Error: Login completed but failed to retrieve API key.[/]")
                 return None, {}
-
-        elif login_choice == "s":
-            console.print("[yellow]Proceeding anonymously. LLM API keys must be provided via environment variables.[/]")
-            if not llm_api_keys:
-                console.print(
-                    "[bold red]Error:[/] No LLM API keys found in environment (e.g., OPENAI_API_KEY). Cannot proceed anonymously."
-                )
-                return None, {}
+        else:
+            console.print("[yellow]Authentication is required to use Weco. Please run 'weco' again when ready to log in.[/]")
+            return None, {}
 
     # Build auth headers
     auth_headers = {}

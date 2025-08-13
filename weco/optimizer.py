@@ -28,7 +28,6 @@ from .panels import (
     create_end_optimization_layout,
 )
 from .utils import (
-    read_api_keys_from_env,
     read_additional_instructions,
     read_from_path,
     write_to_path,
@@ -128,12 +127,10 @@ def execute_optimization(
     user_stop_requested_flag = False
 
     try:
-        llm_api_keys = read_api_keys_from_env()
-
-        # --- Login/Authentication Handling ---
-        weco_api_key, auth_headers = handle_authentication(console, llm_api_keys)
-        if weco_api_key is None and not llm_api_keys:
-            # Authentication failed and no LLM keys available
+        # --- Login/Authentication Handling (now mandatory) ---
+        weco_api_key, auth_headers = handle_authentication(console)
+        if weco_api_key is None:
+            # Authentication failed or user declined
             return False
 
         current_auth_headers_for_heartbeat = auth_headers
@@ -143,9 +140,8 @@ def execute_optimization(
 
         # Determine the model to use
         if model is None:
-            from .utils import determine_default_model
-
-            model = determine_default_model(llm_api_keys)
+            # Default to o4-mini with credit-based billing
+            model = "o4-mini"
 
         code_generator_config = {"model": model}
         evaluator_config = {"model": model, "include_analysis": True}
@@ -179,7 +175,6 @@ def execute_optimization(
             evaluator_config=evaluator_config,
             search_policy_config=search_policy_config,
             additional_instructions=processed_additional_instructions,
-            api_keys=llm_api_keys,
             auth_headers=auth_headers,
             timeout=api_timeout,
         )
@@ -289,8 +284,7 @@ def execute_optimization(
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
-                    api_keys=llm_api_keys,
-                    auth_headers=auth_headers,
+                            auth_headers=auth_headers,
                     timeout=api_timeout,
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
@@ -373,8 +367,7 @@ def execute_optimization(
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
-                    api_keys=llm_api_keys,
-                    timeout=api_timeout,
+                            timeout=api_timeout,
                     auth_headers=auth_headers,
                 )
                 summary_panel.set_step(step=steps)

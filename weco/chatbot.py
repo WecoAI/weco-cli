@@ -220,6 +220,7 @@ class Chatbot:
                     gitingest_summary=self.gitingest_summary,
                     gitingest_tree=self.gitingest_tree,
                     gitingest_content_str=self.gitingest_content_str,
+                    auth_headers=getattr(self, 'auth_headers', {}),
                 )
 
                 if result and isinstance(result, list):
@@ -332,6 +333,7 @@ class Chatbot:
                         target_file=selected_option["target_file"],
                         description=selected_option["description"],
                         gitingest_content_str=self.gitingest_content_str,
+                        auth_headers=getattr(self, 'auth_headers', {}),
                     )
                 if result and result[0]:
                     eval_script_content, metric_name, goal, reasoning = result
@@ -381,6 +383,7 @@ class Chatbot:
                 script_content=eval_script_content,
                 script_path=eval_script_path_str,
                 target_file=selected_option["target_file"],
+                auth_headers=getattr(self, 'auth_headers', {}),
             )
 
         return {
@@ -401,6 +404,7 @@ class Chatbot:
                 gitingest_summary=self.gitingest_summary,
                 gitingest_tree=self.gitingest_tree,
                 gitingest_content_str=self.gitingest_content_str,
+                auth_headers=getattr(self, 'auth_headers', {}),
             )
 
         if not analysis:
@@ -542,6 +546,7 @@ class Chatbot:
                         script_content=script_content,
                         script_path=script_path,
                         target_file=selected_option["target_file"],
+                        auth_headers=getattr(self, 'auth_headers', {}),
                     )
 
             self.current_step = "confirmation"
@@ -765,6 +770,16 @@ class Chatbot:
     def start(self):
         self.console.print("[bold cyan]Welcome to Weco![/]")
         self.console.print(f"Let's optimize your codebase in: [cyan]{self.project_path}[/]\n")
+
+        # Mandatory authentication as per PLAN.md
+        from .auth import handle_authentication
+        weco_api_key, auth_headers = handle_authentication(self.console)
+        if not weco_api_key:
+            self.console.print("[yellow]Authentication is required to use Weco. Exiting...[/]")
+            return
+
+        # Store auth headers for API calls
+        self.auth_headers = auth_headers
 
         options = self.analyze_codebase_and_get_optimization_options()
         if not options:
