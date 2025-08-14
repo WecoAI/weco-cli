@@ -8,7 +8,7 @@ The goal is to improve the model's `accuracy` metric by optimizing the `train.py
 1.  Ensure you are in the `examples/spaceship-titanic` directory.
 2.  Install Dependencies:
     ```bash
-    pip install weco pandas numpy scikit-learn torch xgboost lightgbm catboost
+    pip install weco>=0.2.18 pandas numpy scikit-learn torch xgboost lightgbm catboost
     ```
 3. Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
     ```bash
