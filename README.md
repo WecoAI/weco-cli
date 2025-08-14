@@ -43,8 +43,10 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
 1.  **Install the Package:**
 
     ```bash
-    pip install weco
+    pip install --upgrade weco
     ```
+    
+    > **Note:** Requires weco>=0.2.18
 
 2.  **Set Up LLM API Keys (Required):**
 
