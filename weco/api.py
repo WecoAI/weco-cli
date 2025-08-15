@@ -69,10 +69,10 @@ def start_optimization_run(
             return result
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
-            raise
+            return None
         except Exception as e:
             console.print(f"[bold red]Error starting run: {e}[/]")
-            raise
+            return None
 
 
 def evaluate_feedback_then_suggest_next_solution(
@@ -144,10 +144,10 @@ def get_optimization_run_status(
         return result
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
-        raise
+        return None
     except Exception as e:
         console.print(f"[bold red]Error getting run status: {e}[/]")
-        raise
+        return None
 
 
 def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
@@ -245,10 +245,10 @@ def get_optimization_suggestions_from_codebase(
 
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
-        raise
+        return None
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/]")
-        raise
+        return None
 
 
 def generate_evaluation_script_and_metrics(
@@ -279,10 +279,10 @@ def generate_evaluation_script_and_metrics(
         return result.get("script_content"), result.get("metric_name"), result.get("goal"), result.get("reasoning")
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
-        raise
+        return None, None, None, None
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/]")
-        raise
+        return None, None, None, None
 
 
 def analyze_evaluation_environment(
@@ -317,10 +317,10 @@ def analyze_evaluation_environment(
 
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
-        raise
+        return None
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/]")
-        raise
+        return None
 
 
 def analyze_script_execution_requirements(
@@ -379,10 +379,10 @@ def resume_optimization_run(
             return result
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
-            raise
+            return None
         except Exception as e:
             console.print(f"[bold red]Error resuming run: {e}[/]")
-            raise
+            return None
 
 
 def extend_optimization_run(
@@ -410,7 +410,7 @@ def extend_optimization_run(
             return result
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
-            raise
+            return None
         except Exception as e:
             console.print(f"[bold red]Error extending run: {e}[/]")
-            raise
+            return None
