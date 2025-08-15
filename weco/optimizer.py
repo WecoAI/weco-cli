@@ -5,6 +5,7 @@ import threading
 import signal
 import sys
 import traceback
+from datetime import datetime
 from typing import Optional
 from rich.console import Console
 from rich.live import Live
@@ -37,6 +38,23 @@ from .utils import (
     format_number,
 )
 from .constants import DEFAULT_API_TIMEOUT
+
+
+def save_execution_log(log_file_path: pathlib.Path, step: int, output: str) -> None:
+    """
+    Save execution output to a log file with timestamp and step number.
+
+    Args:
+        log_file_path: Path to the log file
+        step: Current step number
+        output: The execution output to save
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    with open(log_file_path, "a", encoding="utf-8") as f:
+        f.write(f"\n[Step {step}] {timestamp}\n")
+        f.write(output)
+        f.write("\n")
 
 
 # --- Heartbeat Sender Class ---
@@ -79,6 +97,7 @@ def execute_optimization(
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
     eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -202,6 +221,18 @@ def execute_optimization(
             # Define the runs directory (.runs/<run-id>) to store logs and results
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
+
+            # Initialize log file if save_logs is enabled
+            if save_logs:
+                log_file_path = runs_dir / "exec_output.txt"
+                with open(log_file_path, "w", encoding="utf-8") as f:
+                    f.write("Execution Output Log\n")
+                    f.write(f"Run ID: {run_id}\n")
+                    f.write(f"Run Name: {run_name}\n")
+                    f.write(f"Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                    f.write(f"Evaluation Command: {eval_command}\n")
+                    f.write(f"Metric: {metric} ({'maximize' if maximize else 'minimize'})\n")
+                    f.write(f"Total Steps: {steps}\n")
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
             # Write the initial code string to the source file path
@@ -255,6 +286,10 @@ def execute_optimization(
 
             # Run evaluation on the initial solution
             term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+            # Save logs if requested
+            if save_logs:
+                log_file_path = runs_dir / "exec_output.txt"
+                save_execution_log(log_file_path, step=0, output=term_out)
             # Update the evaluation output panel
             eval_output_panel.update(output=term_out)
             smooth_update(
@@ -356,6 +391,10 @@ def execute_optimization(
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
                 term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                # Save logs if requested
+                if save_logs:
+                    log_file_path = runs_dir / "exec_output.txt"
+                    save_execution_log(log_file_path, step=step, output=term_out)
                 eval_output_panel.update(output=term_out)
                 smooth_update(
                     live=live,
