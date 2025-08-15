@@ -53,7 +53,7 @@ def start_optimization_run(
                         "client_version": __pkg_version__,
                         "source_path": source_path,
                         "eval_timeout": eval_timeout,
-                        **api_keys
+                        **api_keys,
                     },
                 },
                 headers=auth_headers,
