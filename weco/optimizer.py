@@ -176,23 +176,24 @@ def execute_optimization(
             "eval_timeout": eval_timeout,  # Store the evaluation timeout (None means no limit)
         }
 
-        run_response = start_optimization_run(
-            console=console,
-            source_code=source_code,
-            evaluation_command=eval_command,
-            metric_name=metric,
-            maximize=maximize,
-            steps=steps,
-            code_generator_config=code_generator_config,
-            evaluator_config=evaluator_config,
-            search_policy_config=search_policy_config,
-            additional_instructions=processed_additional_instructions,
-            api_keys=api_keys_with_metadata,
-            auth_headers=auth_headers,
-            timeout=api_timeout,
-        )
-        # Indicate the endpoint failed to return a response and the optimization was unsuccessful
-        if run_response is None:
+        try:
+            run_response = start_optimization_run(
+                console=console,
+                source_code=source_code,
+                evaluation_command=eval_command,
+                metric_name=metric,
+                maximize=maximize,
+                steps=steps,
+                code_generator_config=code_generator_config,
+                evaluator_config=evaluator_config,
+                search_policy_config=search_policy_config,
+                additional_instructions=processed_additional_instructions,
+                api_keys=api_keys_with_metadata,
+                auth_headers=auth_headers,
+                timeout=api_timeout,
+            )
+        except Exception:
+            # Error already displayed by the API function
             return False
 
         run_id = run_response["run_id"]
@@ -519,8 +520,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
     api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
-    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-    if not run_status:
+    try:
+        run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+    except Exception:
         console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
         console.print("[yellow]Possible reasons:[/]")
         console.print("  • The run ID may be incorrect")
@@ -791,16 +793,16 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
                     evaluation_output_panel.update(execution_output)
 
                 # Get next solution
-                response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    run_id=run_id,
-                    execution_output=execution_output,
-                    additional_instructions=None,
-                    api_keys=api_keys,
-                    auth_headers=auth_headers,
-                )
-
-                if not response:
+                try:
+                    response = evaluate_feedback_then_suggest_next_solution(
+                        console=console,
+                        run_id=run_id,
+                        execution_output=execution_output,
+                        additional_instructions=None,
+                        api_keys=api_keys,
+                        auth_headers=auth_headers,
+                    )
+                except Exception:
                     console.print("[bold red]Failed to get next solution. Stopping optimization.[/]")
                     break
 
@@ -981,8 +983,9 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     api_key, auth_headers = handle_authentication(console, api_keys)
 
     # First, check the run status
-    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-    if not run_status:
+    try:
+        run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+    except Exception:
         console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
         console.print("[yellow]Possible reasons:[/]")
         console.print("  • The run ID may be incorrect")
@@ -1167,16 +1170,16 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
                     break
 
                 # Get next solution
-                response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    run_id=run_id,
-                    execution_output=execution_output,
-                    additional_instructions=None,
-                    api_keys=api_keys,
-                    auth_headers=auth_headers,
-                )
-
-                if not response:
+                try:
+                    response = evaluate_feedback_then_suggest_next_solution(
+                        console=console,
+                        run_id=run_id,
+                        execution_output=execution_output,
+                        additional_instructions=None,
+                        api_keys=api_keys,
+                        auth_headers=auth_headers,
+                    )
+                except Exception:
                     console.print("[bold red]Failed to get next solution. Stopping optimization.[/]")
                     break
 
