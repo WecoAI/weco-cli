@@ -169,13 +169,6 @@ def execute_optimization(
         end_optimization_layout = create_end_optimization_layout()
 
         # --- Start Optimization Run ---
-        # Add source_path and eval_timeout to api_keys dict (they'll be sent as metadata)
-        api_keys_with_metadata = {
-            **llm_api_keys,
-            "source_path": str(source) if source else None,  # Ensure it's a string for JSON serialization
-            "eval_timeout": eval_timeout,  # Store the evaluation timeout (None means no limit)
-        }
-
         try:
             run_response = start_optimization_run(
                 console=console,
@@ -188,7 +181,9 @@ def execute_optimization(
                 evaluator_config=evaluator_config,
                 search_policy_config=search_policy_config,
                 additional_instructions=processed_additional_instructions,
-                api_keys=api_keys_with_metadata,
+                api_keys=llm_api_keys,
+                source_path=str(source) if source else None,  # Ensure it's a string for JSON serialization
+                eval_timeout=eval_timeout,  # Store the evaluation timeout (None means no limit)
                 auth_headers=auth_headers,
                 timeout=api_timeout,
             )
@@ -539,8 +534,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, console: Opt
         return False
 
     # Use resume endpoint for interrupted runs
-    resume_info = resume_optimization_run(console=console, run_id=run_id, api_keys=api_keys, auth_headers=auth_headers)
-    if not resume_info:
+    try:
+        resume_info = resume_optimization_run(console=console, run_id=run_id, api_keys=api_keys, auth_headers=auth_headers)
+    except Exception:
         console.print("[bold red]Failed to resume run. Please check the run ID and try again.[/]")
         return False
 
@@ -1003,10 +999,11 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
 
     # Use extend endpoint for completed runs
     console.print(f"[cyan]Extending completed run with {additional_steps} additional steps...[/]")
-    extend_info = extend_optimization_run(
-        console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
-    )
-    if not extend_info:
+    try:
+        extend_info = extend_optimization_run(
+            console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
+        )
+    except Exception:
         console.print("[bold red]Failed to extend run. Please try again.[/]")
         return False
 

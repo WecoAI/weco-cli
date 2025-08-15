@@ -28,6 +28,8 @@ def start_optimization_run(
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
     api_keys: Dict[str, Any] = {},
+    source_path: Optional[str] = None,
+    eval_timeout: Optional[int] = None,
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -46,7 +48,13 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                    "metadata": {
+                        "client_name": "cli",
+                        "client_version": __pkg_version__,
+                        "source_path": source_path,
+                        "eval_timeout": eval_timeout,
+                        **api_keys
+                    },
                 },
                 headers=auth_headers,
                 timeout=timeout,
