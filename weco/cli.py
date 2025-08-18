@@ -70,7 +70,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
     run_parser.add_argument(
         "--save-logs",
         action="store_true",
-        help="Save execution output to .runs/<run-id>/exec_output.txt with timestamps and step numbers",
+        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt with JSONL index",
     )
 
 
