@@ -117,7 +117,9 @@ def execute_optimization(
                 timeout=3,
             )
             # Suggest resume command
-            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {current_run_id_for_heartbeat}[/]")
+            console.print(
+                f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {current_run_id_for_heartbeat}[/]"
+            )
 
         # Exit gracefully
         sys.exit(0)
@@ -1002,13 +1004,17 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     if current_status != "completed":
         console.print(f"[bold red]Run is not completed (status: {current_status}).[/]")
         if current_status in ["interrupted", "terminated", "error"]:
-            console.print(f"[cyan]This run was interrupted after {completed_steps} steps. Use 'weco resume {run_id}' to continue it.[/]")
+            console.print(
+                f"[cyan]This run was interrupted after {completed_steps} steps. Use 'weco resume {run_id}' to continue it.[/]"
+            )
         else:
             console.print(f"[cyan]Current status: {current_status}. Only completed runs can be extended.[/]")
         return False
 
     # Use extend endpoint for completed runs
-    console.print(f"[cyan]Extending completed run (originally {completed_steps} steps) with {additional_steps} additional steps...[/]")
+    console.print(
+        f"[cyan]Extending completed run (originally {completed_steps} steps) with {additional_steps} additional steps...[/]"
+    )
     extend_info = extend_optimization_run(
         console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
     )
