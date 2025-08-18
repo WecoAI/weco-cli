@@ -1026,7 +1026,6 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     # Extract extend information
     last_step = extend_info["previous_steps"]  # The completed steps
     total_steps = extend_info["new_total_steps"]
-    remaining_steps = extend_info["additional_steps"]
     evaluation_command = extend_info["evaluation_command"]
     source_code = extend_info["source_code"]
     # For extend, we use the best solution as the starting point
