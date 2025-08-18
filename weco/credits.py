@@ -122,24 +122,43 @@ def configure_autotopup(console: Console, auth_headers: dict, args) -> None:
         
         # If neither flag is set, show current settings
         if not args.enable and not args.disable:
-            # First, get current balance to check if user has a payment method
+            # Get current auto top-up settings from API
             response = requests.get(
-                f"{__base_url__}/billing/balance",
+                f"{__base_url__}/billing/auto-topup",
                 headers=auth_headers,
                 timeout=10
             )
             response.raise_for_status()
-            balance_data = response.json()
+            settings_data = response.json()
             
-            if not balance_data.get("stripe_customer_id"):
-                console.print("[yellow]Auto top-up requires a saved payment method.[/]")
-                console.print("Complete a manual top-up first to save your payment details.")
-                return
+            # Also check if user has a payment method
+            balance_response = requests.get(
+                f"{__base_url__}/billing/balance",
+                headers=auth_headers,
+                timeout=10
+            )
+            balance_response.raise_for_status()
+            balance_data = balance_response.json()
+            
+            has_payment_method = bool(balance_data.get("stripe_customer_id"))
             
             console.print("[cyan]Current Auto Top-Up Settings:[/]")
-            console.print("Status: [yellow]Check dashboard for current settings[/]")
-            console.print(f"Threshold: {args.threshold} credits")
-            console.print(f"Top-up Amount: {args.amount} credits")
+            
+            if settings_data.get("enabled"):
+                if has_payment_method:
+                    console.print("Status: [green]✅ Enabled[/]")
+                else:
+                    console.print("Status: [yellow]⚠️ Enabled but no payment method saved[/]")
+            else:
+                console.print("Status: [red]❌ Disabled[/]")
+            
+            console.print(f"Threshold: {settings_data.get('threshold_credits', 4.0)} credits")
+            console.print(f"Top-up Amount: {settings_data.get('topup_amount_credits', 50.0)} credits")
+            
+            if not has_payment_method:
+                console.print("\n[yellow]💡 Note: Auto top-up requires a saved payment method.[/]")
+                console.print("Complete a manual top-up first to save your payment details.")
+            
             console.print("\nUse --enable or --disable to change settings.")
             return
         
