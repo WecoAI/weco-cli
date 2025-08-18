@@ -116,6 +116,8 @@ def execute_optimization(
                 auth_headers=current_auth_headers_for_heartbeat,
                 timeout=3,
             )
+            # Suggest resume command
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {current_run_id_for_heartbeat}[/]")
 
         # Exit gracefully
         sys.exit(0)
@@ -459,6 +461,9 @@ def execute_optimization(
         console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
         # Ensure optimization_completed_normally is False
         optimization_completed_normally = False
+        # Suggest resume command if we have a run_id
+        if run_id:
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
     finally:
         # Restore original signal handlers
         signal.signal(signal.SIGINT, original_sigint_handler)
@@ -488,6 +493,8 @@ def execute_optimization(
         # Handle exit
         if user_stop_requested_flag:
             console.print("[yellow]Run terminated by user request.[/]")
+            if run_id:
+                console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -980,26 +987,34 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     if not run_status:
         console.print(f"[bold red]Failed to get run status for ID: {run_id}[/]")
         console.print("[yellow]Possible reasons:[/]")
-        console.print("  • The run ID may be incorrect")
+        console.print("  • The run ID may be incorrect (should be a UUID like '0002e071-1b67-411f-a514-36947f0c4b31')")
         console.print("  • The run may not exist or has been deleted")
         console.print("  • There may be a temporary server issue")
-        console.print("\n[cyan]Please verify the run ID and try again.[/]")
+        console.print("\n[cyan]Tip: You can find run IDs in the .runs/ directory or from previous run outputs.[/]")
+        console.print("[cyan]Usage: weco extend <run-id> <additional-steps>[/]")
+        console.print("[cyan]Example: weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50[/]")
         return False
 
     current_status = run_status.get("status")
+    completed_steps = run_status.get("completed_steps", 0)
 
     # Check if run is actually completed
     if current_status != "completed":
-        console.print(f"[bold red]Run is not completed (status: {current_status}). Use 'weco resume' for interrupted runs.[/]")
+        console.print(f"[bold red]Run is not completed (status: {current_status}).[/]")
+        if current_status in ["interrupted", "terminated", "error"]:
+            console.print(f"[cyan]This run was interrupted after {completed_steps} steps. Use 'weco resume {run_id}' to continue it.[/]")
+        else:
+            console.print(f"[cyan]Current status: {current_status}. Only completed runs can be extended.[/]")
         return False
 
     # Use extend endpoint for completed runs
-    console.print(f"[cyan]Extending completed run with {additional_steps} additional steps...[/]")
+    console.print(f"[cyan]Extending completed run (originally {completed_steps} steps) with {additional_steps} additional steps...[/]")
     extend_info = extend_optimization_run(
         console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
     )
     if not extend_info:
         console.print("[bold red]Failed to extend run. Please try again.[/]")
+        console.print("[cyan]Tip: Make sure the run is fully completed and not currently being processed.[/]")
         return False
 
     # Extract extend information
@@ -1023,9 +1038,9 @@ def extend_optimization(run_id: str, additional_steps: int, console: Optional[Co
     console.print("\n[bold green]Extending Completed Run[/]")
     console.print(f"[cyan]Run Name:[/] {run_name}")
     console.print(f"[cyan]Run ID:[/] {run_id}")
-    console.print(f"[cyan]Completed Steps:[/] {last_step}")
-    console.print(f"[cyan]Adding Steps:[/] {remaining_steps}")
-    console.print(f"[cyan]New Total:[/] {total_steps}")
+    console.print(f"[cyan]Previous steps:[/] {last_step}")
+    console.print(f"[cyan]Additional steps:[/] {additional_steps}")
+    console.print(f"[cyan]New total steps:[/] [bold green]{total_steps}[/]")
     if best_solution:
         console.print(f"[cyan]Best Metric:[/] {best_solution.get('metric_value', 'N/A')}")
     console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
