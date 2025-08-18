@@ -8,7 +8,7 @@ This example uses a separate Markdown file (`guide.md`) to provide detailed inst
 
 Install the CLI using `pip`:
 ```bash
-pip install weco
+pip install weco>=0.2.18
 ```
 
 Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:

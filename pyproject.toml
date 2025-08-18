@@ -9,7 +9,7 @@ authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
 description = "Documentation for `weco`, a CLI for using Weco AI's code optimizer."
 readme = "README.md"
 version = "0.2.26"
-license = { text = "MIT" }
+license = { file = "LICENSE" }
 requires-python = ">=3.8"
 dependencies = [
     "requests",
@@ -23,7 +23,7 @@ keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
-    "License :: OSI Approved :: MIT License",
+    "License :: OSI Approved :: Apache Software License",
 ]
 
 [project.scripts]

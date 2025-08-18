@@ -43,7 +43,7 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
 1.  **Install the Package:**
 
     ```bash
-    pip install weco
+    pip install weco>=0.2.18
     ```
 
 2.  **Authenticate (Required):**
@@ -231,12 +231,13 @@ Weco will parse this output to extract the numerical value (1.5 in this case) as
 Weco supports the following LLM models:
 
 ### OpenAI Models
-- `gpt-5`
+- `gpt-5` (recommended)
 - `gpt-5-mini`
 - `gpt-5-nano`
+- `o3-pro` (recommended)
 - `o3` (recommended)
-- `o3-mini`
 - `o4-mini` (recommended)
+- `o3-mini`
 - `o1-pro`
 - `o1`
 - `gpt-4.1`
