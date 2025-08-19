@@ -51,7 +51,7 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
     `weco` now uses a **credit-based billing system** with centralized LLM access. You need to authenticate to use the service:
 
     - **Run the CLI**: `weco` will prompt you to authenticate via your web browser
-    - **Free Credits**: New users receive **100 free credits** upon signup
+    - **Free Credits**: New users receive **free credits** upon signup
     - **Centralized Keys**: All LLM provider API keys are managed by Weco (no BYOK required)
     - **Credit Top-ups**: Purchase additional credits through the dashboard at [app.weco.ai](https://app.weco.ai)
 
@@ -155,7 +155,7 @@ Weco now requires authentication for all operations. This enables our credit-bas
 **Benefits of the credit system:**
 - **No API Key Management**: All LLM provider keys are managed centrally
 - **Cost Transparency**: See exactly how many credits each optimization consumes
-- **Free Trial**: 100 credits to get started with optimization projects
+- **Free Trial**: Free credits to get started with optimization projects
 - **Run History**: View all your optimization runs on the Weco dashboard
 - **Progress Tracking**: Monitor long-running optimizations remotely
 - **Budget Control**: Set spending limits and auto top-up preferences

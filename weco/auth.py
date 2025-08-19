@@ -196,7 +196,7 @@ def handle_authentication(console: Console) -> tuple[str | None, dict]:
     if not weco_api_key:
         console.print("[bold yellow]Authentication Required[/]")
         console.print("With our new credit-based billing system, authentication is required to use Weco.")
-        console.print("You'll receive 100 free credits to get started!")
+        console.print("You'll receive free credits to get started!")
         console.print("")
         
         login_choice = Prompt.ask(
