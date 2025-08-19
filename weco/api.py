@@ -27,7 +27,6 @@ def start_optimization_run(
     evaluator_config: Dict[str, Any],
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
-    api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -46,7 +45,7 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__},
                 },
                 headers=auth_headers,
                 timeout=timeout,
@@ -72,7 +71,6 @@ def evaluate_feedback_then_suggest_next_solution(
     run_id: str,
     execution_output: str,
     additional_instructions: str = None,
-    api_keys: Dict[str, Any] = {},
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Dict[str, Any]:
@@ -83,7 +81,7 @@ def evaluate_feedback_then_suggest_next_solution(
             json={
                 "execution_output": execution_output,
                 "additional_instructions": additional_instructions,
-                "metadata": {**api_keys},
+                "metadata": {},
             },
             headers=auth_headers,
             timeout=timeout,
@@ -183,29 +181,10 @@ def report_termination(
 
 
 # --- Chatbot API Functions ---
-def _determine_model_and_api_key() -> tuple[str, dict[str, str]]:
-    """Determine the model and API key to use based on available environment variables.
-
-    Uses the shared model selection logic to maintain consistency.
-    Returns (model_name, api_key_dict)
-    """
-    from .utils import read_api_keys_from_env, determine_default_model
-
-    llm_api_keys = read_api_keys_from_env()
-    model = determine_default_model(llm_api_keys)
-
-    # Create API key dictionary with only the key for the selected model
-    if model == "o4-mini":
-        api_key_dict = {"OPENAI_API_KEY": llm_api_keys["OPENAI_API_KEY"]}
-    elif model == "claude-sonnet-4-0":
-        api_key_dict = {"ANTHROPIC_API_KEY": llm_api_keys["ANTHROPIC_API_KEY"]}
-    elif model == "gemini-2.5-pro":
-        api_key_dict = {"GEMINI_API_KEY": llm_api_keys["GEMINI_API_KEY"]}
-    else:
-        # This should never happen if determine_default_model works correctly
-        raise ValueError(f"Unknown default model choice: {model}")
-
-    return model, api_key_dict
+def _determine_model() -> str:
+    """Determine which model to use. Defaults to o4-mini with credit-based billing."""
+    # With credit-based billing, we can default to o4-mini
+    return "o4-mini"
 
 
 def get_optimization_suggestions_from_codebase(
@@ -218,7 +197,7 @@ def get_optimization_suggestions_from_codebase(
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
-        model, api_key_dict = _determine_model_and_api_key()
+        model = _determine_model()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-codebase",
             json={
@@ -226,7 +205,7 @@ def get_optimization_suggestions_from_codebase(
                 "gitingest_tree": gitingest_tree,
                 "gitingest_content": gitingest_content_str,
                 "model": model,
-                "metadata": api_key_dict,
+                "metadata": {},
             },
             headers=auth_headers,
             timeout=timeout,
@@ -253,7 +232,7 @@ def generate_evaluation_script_and_metrics(
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
-        model, api_key_dict = _determine_model_and_api_key()
+        model = _determine_model()
         response = requests.post(
             f"{__base_url__}/onboard/generate-script",
             json={
@@ -261,7 +240,7 @@ def generate_evaluation_script_and_metrics(
                 "description": description,
                 "gitingest_content": gitingest_content_str,
                 "model": model,
-                "metadata": api_key_dict,
+                "metadata": {},
             },
             headers=auth_headers,
             timeout=timeout,
@@ -289,7 +268,7 @@ def analyze_evaluation_environment(
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
-        model, api_key_dict = _determine_model_and_api_key()
+        model = _determine_model()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-environment",
             json={
@@ -299,7 +278,7 @@ def analyze_evaluation_environment(
                 "gitingest_tree": gitingest_tree,
                 "gitingest_content": gitingest_content_str,
                 "model": model,
-                "metadata": api_key_dict,
+                "metadata": {},
             },
             headers=auth_headers,
             timeout=timeout,
@@ -325,7 +304,7 @@ def analyze_script_execution_requirements(
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:
-        model, api_key_dict = _determine_model_and_api_key()
+        model = _determine_model()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-script",
             json={
@@ -333,7 +312,7 @@ def analyze_script_execution_requirements(
                 "script_path": script_path,
                 "target_file": target_file,
                 "model": model,
-                "metadata": api_key_dict,
+                "metadata": {},
             },
             headers=auth_headers,
             timeout=timeout,
