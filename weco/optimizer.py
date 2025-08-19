@@ -77,12 +77,20 @@ def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> Non
         f.write(json.dumps(entry) + "\n")
 
 
-def initialize_or_append_logs(runs_dir: pathlib.Path, run_id: str, run_name: str, context: str,
-                             eval_command: str, metric_name: str, maximize: bool, 
-                             total_steps: int, **extra_fields) -> None:
+def initialize_or_append_logs(
+    runs_dir: pathlib.Path,
+    run_id: str,
+    run_name: str,
+    context: str,
+    eval_command: str,
+    metric_name: str,
+    maximize: bool,
+    total_steps: int,
+    **extra_fields,
+) -> None:
     """
     Initialize or append to the execution logs JSONL file.
-    
+
     Args:
         runs_dir: Path to the run directory (.runs/<run_id>)
         run_id: The run ID
@@ -95,7 +103,7 @@ def initialize_or_append_logs(runs_dir: pathlib.Path, run_id: str, run_name: str
         **extra_fields: Additional fields to include in the metadata
     """
     jsonl_file = runs_dir / "exec_output.jsonl"
-    
+
     # Check if this is a fresh run or continuation
     if context == "run" or not jsonl_file.exists():
         # Initialize new JSONL file with metadata
@@ -108,17 +116,13 @@ def initialize_or_append_logs(runs_dir: pathlib.Path, run_id: str, run_name: str
             "metric": metric_name,
             "goal": "maximize" if maximize else "minimize",
             "total_steps": total_steps,
-            **extra_fields
+            **extra_fields,
         }
         with open(jsonl_file, "w", encoding="utf-8") as f:
             f.write(json.dumps(metadata) + "\n")
     else:
         # Append context marker for resume/extend
-        context_marker = {
-            "type": context,
-            f"{context}_at": datetime.now().isoformat(),
-            **extra_fields
-        }
+        context_marker = {"type": context, f"{context}_at": datetime.now().isoformat(), **extra_fields}
         with open(jsonl_file, "a", encoding="utf-8") as f:
             f.write(json.dumps(context_marker) + "\n")
 
@@ -298,10 +302,7 @@ def execute_optimization(
 
             # Initialize logging structure if save_logs is enabled
             if save_logs:
-                initialize_or_append_logs(
-                    runs_dir, run_id, run_name, "run",
-                    eval_command, metric, maximize, steps
-                )
+                initialize_or_append_logs(runs_dir, run_id, run_name, "run", eval_command, metric, maximize, steps)
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
             # Write the initial code string to the source file path
@@ -599,7 +600,9 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: Optional[bool] = None, console: Optional[Console] = None) -> bool:
+def resume_optimization(
+    run_id: str, skip_validation: bool = False, save_logs: Optional[bool] = None, console: Optional[Console] = None
+) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
 
@@ -657,7 +660,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs_from_api = resume_info.get("save_logs", False)  # Get save_logs from API
     log_dir = resume_info.get("log_dir", ".runs")  # Get log_dir from API
-    
+
     # Determine final save_logs setting: command-line override or inherit from run
     if save_logs is None:
         save_logs = save_logs_from_api
@@ -753,13 +756,19 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     if last_solution.get("code"):
         write_to_path(pathlib.Path(source_path), last_solution["code"])
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
-    
+
     # Initialize/append logging structure if save_logs is enabled
     if save_logs:
         initialize_or_append_logs(
-            run_log_dir, run_id, run_name, "resume",
-            evaluation_command, metric_name, maximize, total_steps,
-            resumed_from_step=last_step
+            run_log_dir,
+            run_id,
+            run_name,
+            "resume",
+            evaluation_command,
+            metric_name,
+            maximize,
+            total_steps,
+            resumed_from_step=last_step,
         )
         console.print("[dim]Continuing with local execution logging[/]")
 
@@ -889,7 +898,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
                     execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
                     # Save logs if requested
                     if save_logs:
-                        save_execution_output(run_log_dir, step=step-1, output=execution_output)
+                        save_execution_output(run_log_dir, step=step - 1, output=execution_output)
                     evaluation_output_panel.update(execution_output)
 
                 # Get next solution
@@ -1064,7 +1073,9 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def extend_optimization(run_id: str, additional_steps: int, save_logs: Optional[bool] = None, console: Optional[Console] = None) -> bool:
+def extend_optimization(
+    run_id: str, additional_steps: int, save_logs: Optional[bool] = None, console: Optional[Console] = None
+) -> bool:
     """
     Extend a completed optimization run with additional steps.
 
@@ -1137,7 +1148,7 @@ def extend_optimization(run_id: str, additional_steps: int, save_logs: Optional[
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs_from_api = extend_info.get("save_logs", False)  # Get save_logs from API
     log_dir = extend_info.get("log_dir", ".runs")  # Get log_dir from API
-    
+
     # Determine final save_logs setting: command-line override or inherit from run
     if save_logs is None:
         save_logs = save_logs_from_api
@@ -1206,14 +1217,20 @@ def extend_optimization(run_id: str, additional_steps: int, save_logs: Optional[
 
     console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
     console.print(f"[cyan]Extending from step {last_step} to {total_steps}[/]\n")
-    
+
     # Initialize/append logging structure if save_logs is enabled
     if save_logs:
         initialize_or_append_logs(
-            run_log_dir, run_id, run_name, "extend",
-            evaluation_command, metric_name, maximize, total_steps,
+            run_log_dir,
+            run_id,
+            run_name,
+            "extend",
+            evaluation_command,
+            metric_name,
+            maximize,
+            total_steps,
             extended_from_step=last_step,
-            additional_steps=additional_steps
+            additional_steps=additional_steps,
         )
         console.print("[dim]Continuing with local execution logging for extension[/]")
 

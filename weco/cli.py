@@ -108,10 +108,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     # If neither flag is set, save_logs remains None and will inherit from database
 
     success = resume_optimization(
-        run_id=args.run_id, 
-        skip_validation=args.skip_validation, 
-        save_logs=save_logs,
-        console=console
+        run_id=args.run_id, skip_validation=args.skip_validation, save_logs=save_logs, console=console
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -129,12 +126,7 @@ def execute_extend_command(args: argparse.Namespace) -> None:
         save_logs = False
     # If neither flag is set, save_logs remains None and will inherit from database
 
-    success = extend_optimization(
-        run_id=args.run_id, 
-        additional_steps=args.steps, 
-        save_logs=save_logs,
-        console=console
-    )
+    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, save_logs=save_logs, console=console)
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
@@ -180,12 +172,12 @@ def main() -> None:
     resume_parser.add_argument(
         "--save-logs",
         action="store_true",
-        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)"
+        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)",
     )
     resume_parser.add_argument(
         "--no-save-logs",
         action="store_true",
-        help="Disable saving execution output locally even if original run had --save-logs"
+        help="Disable saving execution output locally even if original run had --save-logs",
     )
 
     # --- Extend Command Parser Setup ---
@@ -199,12 +191,12 @@ def main() -> None:
     extend_parser.add_argument(
         "--save-logs",
         action="store_true",
-        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)"
+        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)",
     )
     extend_parser.add_argument(
         "--no-save-logs",
         action="store_true",
-        help="Disable saving execution output locally even if original run had --save-logs"
+        help="Disable saving execution output locally even if original run had --save-logs",
     )
 
     # --- Logout Command Parser Setup ---
