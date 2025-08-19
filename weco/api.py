@@ -225,8 +225,8 @@ def get_optimization_suggestions_from_codebase(
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
-    model, api_key_dict = _determine_model_and_api_key()
     try:
+        model, api_key_dict = _determine_model_and_api_key()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-codebase",
             json={
@@ -260,8 +260,8 @@ def generate_evaluation_script_and_metrics(
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
-    model, api_key_dict = _determine_model_and_api_key()
     try:
+        model, api_key_dict = _determine_model_and_api_key()
         response = requests.post(
             f"{__base_url__}/onboard/generate-script",
             json={
@@ -296,8 +296,8 @@ def analyze_evaluation_environment(
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
-    model, api_key_dict = _determine_model_and_api_key()
     try:
+        model, api_key_dict = _determine_model_and_api_key()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-environment",
             json={
@@ -332,8 +332,8 @@ def analyze_script_execution_requirements(
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
-    model, api_key_dict = _determine_model_and_api_key()
     try:
+        model, api_key_dict = _determine_model_and_api_key()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-script",
             json={

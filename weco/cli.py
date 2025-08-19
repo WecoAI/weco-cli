@@ -67,6 +67,11 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         default=None,
         help="Timeout in seconds for each evaluation. No timeout by default. Example: --eval-timeout 3600",
     )
+    run_parser.add_argument(
+        "--save-logs",
+        action="store_true",
+        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt with JSONL index",
+    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -84,6 +89,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         additional_instructions=args.additional_instructions,
         console=console,
         eval_timeout=args.eval_timeout,
+        save_logs=args.save_logs,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)

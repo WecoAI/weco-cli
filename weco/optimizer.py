@@ -5,6 +5,7 @@ import threading
 import signal
 import sys
 import traceback
+import json
 from datetime import datetime
 from typing import Optional
 from rich.console import Console
@@ -36,8 +37,44 @@ from .utils import (
     run_evaluation,
     smooth_update,
     format_number,
+    truncate_output,
 )
 from .constants import DEFAULT_API_TIMEOUT
+
+
+def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
+    """
+    Save execution output using hybrid approach:
+    1. Per-step raw files under outputs/step_<n>.out.txt
+    2. Centralized JSONL index in exec_output.jsonl
+
+    Args:
+        runs_dir: Path to the run directory (.runs/<run_id>)
+        step: Current step number
+        output: The execution output to save
+    """
+    timestamp = datetime.now().isoformat()
+
+    # Create outputs directory if it doesn't exist
+    outputs_dir = runs_dir / "outputs"
+    outputs_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save per-step raw output file
+    step_file = outputs_dir / f"step_{step}.out.txt"
+    with open(step_file, "w", encoding="utf-8") as f:
+        f.write(output)
+
+    # Append to centralized JSONL index
+    jsonl_file = runs_dir / "exec_output.jsonl"
+    entry = {
+        "step": step,
+        "timestamp": timestamp,
+        "output_file": f"outputs/step_{step}.out.txt",
+        "output_length": len(output),
+        "output_preview": truncate_output(output, max_lines=10, max_chars=500),
+    }
+    with open(jsonl_file, "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry) + "\n")
 
 
 # --- Heartbeat Sender Class ---
@@ -80,6 +117,7 @@ def execute_optimization(
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
     eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -210,6 +248,22 @@ def execute_optimization(
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
 
+            # Initialize logging structure if save_logs is enabled
+            if save_logs:
+                # Initialize JSONL index with metadata
+                jsonl_file = runs_dir / "exec_output.jsonl"
+                metadata = {
+                    "type": "metadata",
+                    "run_id": run_id,
+                    "run_name": run_name,
+                    "started": datetime.now().isoformat(),
+                    "eval_command": eval_command,
+                    "metric": metric,
+                    "goal": "maximize" if maximize else "minimize",
+                    "total_steps": steps,
+                }
+                with open(jsonl_file, "w", encoding="utf-8") as f:
+                    f.write(json.dumps(metadata) + "\n")
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
             # Write the initial code string to the source file path
@@ -263,6 +317,9 @@ def execute_optimization(
 
             # Run evaluation on the initial solution
             term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+            # Save logs if requested
+            if save_logs:
+                save_execution_output(runs_dir, step=0, output=term_out)
             # Update the evaluation output panel
             eval_output_panel.update(output=term_out)
             smooth_update(
@@ -364,6 +421,9 @@ def execute_optimization(
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
                 term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                # Save logs if requested
+                if save_logs:
+                    save_execution_output(runs_dir, step=step, output=term_out)
                 eval_output_panel.update(output=term_out)
                 smooth_update(
                     live=live,

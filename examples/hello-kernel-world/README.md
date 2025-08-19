@@ -6,7 +6,7 @@ This example demonstrates the basics of using Weco to optimize a simple PyTorch 
 
 Install the CLI using `pip`:
 ```bash
-pip install weco
+pip install weco>=0.2.18
 ```
 
 Create your API key from one of the supported providers:

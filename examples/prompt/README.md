@@ -13,7 +13,7 @@ The experiment runs locally, requires only two short Python files and a prompt g
 
 2. Install the CLI and dependencies for the example:
    ```bash
-   pip install weco openai datasets
+   pip install weco>=0.2.18 openai datasets
    ```
 
 3. This example uses `o4-mini` via the OpenAI API by default. Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
