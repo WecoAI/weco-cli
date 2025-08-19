@@ -30,6 +30,7 @@ def start_optimization_run(
     api_keys: Dict[str, Any] = {},
     source_path: Optional[str] = None,
     eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -53,6 +54,7 @@ def start_optimization_run(
                         "client_version": __pkg_version__,
                         "source_path": source_path,
                         "eval_timeout": eval_timeout,
+                        "save_logs": save_logs,
                         **api_keys,
                     },
                 },
