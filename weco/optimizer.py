@@ -272,6 +272,7 @@ def execute_optimization(
             source_path=str(source) if source else None,  # Ensure it's a string for JSON serialization
             eval_timeout=eval_timeout,  # Store the evaluation timeout (None means no limit)
             save_logs=save_logs,  # Store the save_logs preference
+            log_dir=log_dir,  # Store the log directory path
             auth_headers=auth_headers,
             timeout=api_timeout,
         )
@@ -655,6 +656,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs_from_api = resume_info.get("save_logs", False)  # Get save_logs from API
+    log_dir = resume_info.get("log_dir", ".runs")  # Get log_dir from API
     
     # Determine final save_logs setting: command-line override or inherit from run
     if save_logs is None:
@@ -687,8 +689,7 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     optimizer_config = run_status.get("optimizer", {})
     model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
 
-    # Determine log directory from run_id
-    log_dir = ".runs"
+    # Log directory was already retrieved from resume_info above
     run_log_dir = pathlib.Path(log_dir) / run_id
 
     # Environment validation (unless skipped)
@@ -1135,6 +1136,7 @@ def extend_optimization(run_id: str, additional_steps: int, save_logs: Optional[
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs_from_api = extend_info.get("save_logs", False)  # Get save_logs from API
+    log_dir = extend_info.get("log_dir", ".runs")  # Get log_dir from API
     
     # Determine final save_logs setting: command-line override or inherit from run
     if save_logs is None:
@@ -1165,8 +1167,7 @@ def extend_optimization(run_id: str, additional_steps: int, save_logs: Optional[
     optimizer_config = run_status.get("optimizer", {})
     model = optimizer_config.get("code_generator", {}).get("model", "gpt-4o")
 
-    # Determine log directory from run_id
-    log_dir = ".runs"
+    # Log directory was already retrieved from extend_info above
     run_log_dir = pathlib.Path(log_dir) / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
 
