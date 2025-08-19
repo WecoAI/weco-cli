@@ -651,8 +651,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
     evaluation_command = resume_info["evaluation_command"]
     source_code = resume_info["source_code"]  # noqa: F841 - Keep for potential fallback scenarios
     last_solution = resume_info["last_solution"]
-    created_at = resume_info["created_at"]  # noqa: F841 - Keep for logging/debugging
-    updated_at = resume_info["updated_at"]
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
@@ -699,27 +697,6 @@ def resume_optimization(run_id: str, skip_validation: bool = False, save_logs: O
         console.print(f"Run ID: {run_id}")
         console.print(f"Run Name: {run_name}")
         console.print(f"Last completed: Step {last_step}/{total_steps}")
-
-        # Calculate time since last update
-        try:
-            last_update_time = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
-            time_diff = datetime.now(last_update_time.tzinfo) - last_update_time
-            hours_ago = time_diff.total_seconds() / 3600
-
-            if hours_ago < 1:
-                time_str = f"{int(time_diff.total_seconds() / 60)} minutes ago"
-            elif hours_ago < 24:
-                time_str = f"{int(hours_ago)} hours ago"
-            else:
-                time_str = f"{int(hours_ago / 24)} days ago"
-
-            console.print(f"Last updated: {time_str}")
-
-            if hours_ago > 168:  # More than 7 days
-                console.print("[yellow]⚠ Warning: This run is over 7 days old. Environment may have changed.[/]")
-        except Exception:
-            pass
-
         console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
 
         # Validation prompts
