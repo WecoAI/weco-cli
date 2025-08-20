@@ -151,6 +151,7 @@ def get_optimization_run_status(
         return None
     except Exception as e:
         console.print(f"[bold red]Error getting run status: {e}[/]")
+        # Return None instead of raising to allow calling code to continue gracefully
         return None
 
 

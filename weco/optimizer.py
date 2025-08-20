@@ -156,6 +156,191 @@ class HeartbeatSender(threading.Thread):
             # The loop will break due to the exception, and thread will terminate via finally.
 
 
+# ============================================================================
+# Helper Functions for Common Optimization Patterns
+# ============================================================================
+
+def initialize_panels(
+    maximize: bool,
+    metric_name: str,
+    total_steps: int,
+    model: str,
+    log_dir: str,
+    source_fp: pathlib.Path,
+    run_id: Optional[str] = None,
+    run_name: Optional[str] = None,
+) -> tuple:
+    """
+    Initialize all panels used in optimization.
+    
+    Returns:
+        tuple: (summary_panel, solution_panels, eval_output_panel, tree_panel)
+    """
+    summary_panel = SummaryPanel(
+        maximize=maximize,
+        metric_name=metric_name,
+        total_steps=total_steps,
+        model=model,
+        runs_dir=log_dir,
+        run_id=run_id,
+        run_name=run_name,
+    )
+    solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
+    eval_output_panel = EvaluationOutputPanel()
+    tree_panel = MetricTreePanel(maximize=maximize)
+    
+    return summary_panel, solution_panels, eval_output_panel, tree_panel
+
+
+def update_live_display(
+    live,
+    layout,
+    summary_panel,
+    tree_panel,
+    solution_panels,
+    eval_output_panel,
+    current_step: int,
+    is_done: bool = False,
+    transition_delay: float = 0.08,
+) -> None:
+    """Update the live display with all panel contents."""
+    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
+    smooth_update(
+        live=live,
+        layout=layout,
+        sections_to_update=[
+            ("summary", summary_panel.get_display()),
+            ("tree", tree_panel.get_display(is_done=is_done)),
+            ("current_solution", current_solution_panel),
+            ("best_solution", best_solution_panel),
+            ("eval_output", eval_output_panel.get_display()),
+        ],
+        transition_delay=transition_delay,
+    )
+
+
+def create_node_from_status(node_data: dict) -> Node:
+    """Create a Node object from API status response data."""
+    return Node(
+        id=node_data["solution_id"],
+        parent_id=node_data.get("parent_id"),
+        code=node_data.get("code"),
+        metric=node_data.get("metric_value"),
+        is_buggy=node_data.get("is_buggy"),
+    )
+
+
+def find_node_in_status(status_response: dict, solution_id: str) -> Optional[Node]:
+    """Find and create a Node from status response by solution ID."""
+    if not status_response.get("nodes"):
+        return None
+    
+    for node_data in status_response["nodes"]:
+        if node_data["solution_id"] == solution_id:
+            return create_node_from_status(node_data)
+    return None
+
+
+def get_best_node_from_status(status_response: dict) -> Optional[Node]:
+    """Extract the best solution node from status response."""
+    if not status_response.get("best_result"):
+        return None
+    
+    best_result = status_response["best_result"]
+    return Node(
+        id=best_result["solution_id"],
+        parent_id=best_result.get("parent_id"),
+        code=best_result.get("code"),
+        metric=best_result.get("metric_value"),
+        is_buggy=best_result.get("is_buggy"),
+    )
+
+
+def run_and_log_evaluation(
+    eval_command: str,
+    eval_timeout: Optional[int],
+    save_logs: bool,
+    runs_dir: pathlib.Path,
+    step: int,
+    eval_output_panel: EvaluationOutputPanel,
+) -> str:
+    """Run evaluation, optionally save logs, and update output panel."""
+    execution_output = run_evaluation(eval_command, timeout=eval_timeout)
+    
+    if save_logs:
+        save_execution_output(runs_dir, step=step, output=execution_output)
+    
+    eval_output_panel.update(execution_output)
+    return execution_output
+
+
+def write_solution_files(
+    code: str,
+    source_fp: pathlib.Path,
+    runs_dir: pathlib.Path,
+    step: int,
+) -> None:
+    """Write solution code to both source file and log directory."""
+    write_to_path(fp=source_fp, content=code)
+    write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
+
+
+def check_run_status_for_stop(
+    console: Console,
+    run_id: str,
+    auth_headers: dict,
+    stop_heartbeat_event: threading.Event,
+) -> tuple[dict, bool]:
+    """
+    Check run status and detect if user requested stop.
+    
+    Returns:
+        tuple: (run_status, user_stop_requested)
+    """
+    run_status = get_optimization_run_status(
+        console,
+        run_id,
+        include_history=False,
+        auth_headers=auth_headers,
+    )
+    
+    user_stop_requested = False
+    if run_status and run_status.get("status") == "stopping":
+        user_stop_requested = True
+        console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
+        stop_heartbeat_event.set()
+    
+    return run_status, user_stop_requested
+
+
+def setup_signal_handler(
+    stop_heartbeat_event: threading.Event,
+    heartbeat_thread: Optional[threading.Thread],
+    console: Console,
+    run_id: Optional[str] = None,
+    auth_headers: Optional[dict] = None,
+) -> None:
+    """Setup signal handler for graceful shutdown."""
+    def signal_handler(signum, frame):
+        """Handle interrupt signals gracefully."""
+        signal_name = signal.Signals(signum).name
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
+        
+        # Stop heartbeat thread
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+        
+        # Report termination if run_id is available
+        if run_id and auth_headers:
+            report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        
+        sys.exit(1)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+
+
 def execute_optimization(
     source: str,
     eval_command: str,
@@ -253,10 +438,14 @@ def execute_optimization(
         source_code = read_from_path(fp=source_fp, is_json=False)
 
         # --- Panel Initialization ---
-        summary_panel = SummaryPanel(maximize=maximize, metric_name=metric, total_steps=steps, model=model, runs_dir=log_dir)
-        solution_panels = SolutionPanels(metric_name=metric, source_fp=source_fp)
-        eval_output_panel = EvaluationOutputPanel()
-        tree_panel = MetricTreePanel(maximize=maximize)
+        summary_panel, solution_panels, eval_output_panel, tree_panel = initialize_panels(
+            maximize=maximize,
+            metric_name=metric,
+            total_steps=steps,
+            model=model,
+            log_dir=log_dir,
+            source_fp=source_fp,
+        )
         layout = create_optimization_layout()
         end_optimization_layout = create_end_optimization_layout()
 
@@ -339,28 +528,28 @@ def execute_optimization(
                 ),
                 best_node=None,
             )
-            current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=0)
             # Update the live layout with the initial solution panels
-            smooth_update(
+            update_live_display(
                 live=live,
                 layout=layout,
-                sections_to_update=[
-                    ("summary", summary_panel.get_display()),
-                    ("tree", tree_panel.get_display(is_done=False)),
-                    ("current_solution", current_solution_panel),
-                    ("best_solution", best_solution_panel),
-                    ("eval_output", eval_output_panel.get_display()),
-                ],
+                summary_panel=summary_panel,
+                tree_panel=tree_panel,
+                solution_panels=solution_panels,
+                eval_output_panel=eval_output_panel,
+                current_step=0,
+                is_done=False,
                 transition_delay=0.1,
             )
 
             # Run evaluation on the initial solution
-            term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
-            # Save logs if requested
-            if save_logs:
-                save_execution_output(runs_dir, step=0, output=term_out)
-            # Update the evaluation output panel
-            eval_output_panel.update(output=term_out)
+            term_out = run_and_log_evaluation(
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                runs_dir=runs_dir,
+                step=0,
+                eval_output_panel=eval_output_panel,
+            )
             smooth_update(
                 live=live,
                 layout=layout,
@@ -397,10 +586,13 @@ def execute_optimization(
                     auth_headers=auth_headers,
                     timeout=api_timeout,
                 )
-                # Save next solution (.runs/<run-id>/step_<step>.<extension>)
-                write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
-                # Write the next solution to the source file
-                write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
+                # Save next solution to both source file and log directory
+                write_solution_files(
+                    code=eval_and_next_solution_response["code"],
+                    source_fp=source_fp,
+                    runs_dir=runs_dir,
+                    step=step,
+                )
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
                 )
@@ -414,29 +606,8 @@ def execute_optimization(
                 tree_panel.set_unevaluated_node(node_id=eval_and_next_solution_response["solution_id"])
 
                 # Update the solution panels with the next solution and best solution (and score)
-                # Figure out if we have a best solution so far
-                if status_response["best_result"] is not None:
-                    best_solution_node = Node(
-                        id=status_response["best_result"]["solution_id"],
-                        parent_id=status_response["best_result"]["parent_id"],
-                        code=status_response["best_result"]["code"],
-                        metric=status_response["best_result"]["metric_value"],
-                        is_buggy=status_response["best_result"]["is_buggy"],
-                    )
-                else:
-                    best_solution_node = None
-
-                current_solution_node = None
-                if status_response.get("nodes"):
-                    for node_data in status_response["nodes"]:
-                        if node_data["solution_id"] == eval_and_next_solution_response["solution_id"]:
-                            current_solution_node = Node(
-                                id=node_data["solution_id"],
-                                parent_id=node_data["parent_id"],
-                                code=node_data["code"],
-                                metric=node_data["metric_value"],
-                                is_buggy=node_data["is_buggy"],
-                            )
+                best_solution_node = get_best_node_from_status(status_response)
+                current_solution_node = find_node_in_status(status_response, eval_and_next_solution_response["solution_id"])
                 if current_solution_node is None:
                     raise ValueError(
                         "Current solution node not found in the optimization status response. This may indicate a synchronization issue with the backend."
@@ -444,26 +615,27 @@ def execute_optimization(
 
                 # Update the solution panels with the current and best solution
                 solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
-                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
                 # Clear evaluation output since we are running a evaluation on a new solution
                 eval_output_panel.clear()
-                smooth_update(
+                update_live_display(
                     live=live,
                     layout=layout,
-                    sections_to_update=[
-                        ("summary", summary_panel.get_display()),
-                        ("tree", tree_panel.get_display(is_done=False)),
-                        ("current_solution", current_solution_panel),
-                        ("best_solution", best_solution_panel),
-                        ("eval_output", eval_output_panel.get_display()),
-                    ],
+                    summary_panel=summary_panel,
+                    tree_panel=tree_panel,
+                    solution_panels=solution_panels,
+                    eval_output_panel=eval_output_panel,
+                    current_step=step,
+                    is_done=False,
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
-                # Save logs if requested
-                if save_logs:
-                    save_execution_output(runs_dir, step=step, output=term_out)
-                eval_output_panel.update(output=term_out)
+                term_out = run_and_log_evaluation(
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    save_logs=save_logs,
+                    runs_dir=runs_dir,
+                    step=step,
+                    eval_output_panel=eval_output_panel,
+                )
                 smooth_update(
                     live=live,
                     layout=layout,
@@ -501,16 +673,7 @@ def execute_optimization(
                 # No neeed to update the current solution panel since we have finished the optimization
                 # We only need to update the best solution panel
                 # Figure out if we have a best solution so far
-                if status_response["best_result"] is not None:
-                    best_solution_node = Node(
-                        id=status_response["best_result"]["solution_id"],
-                        parent_id=status_response["best_result"]["parent_id"],
-                        code=status_response["best_result"]["code"],
-                        metric=status_response["best_result"]["metric_value"],
-                        is_buggy=status_response["best_result"]["is_buggy"],
-                    )
-                else:
-                    best_solution_node = None
+                best_solution_node = get_best_node_from_status(status_response)
                 solution_panels.update(current_node=None, best_node=best_solution_node)
                 _, best_solution_panel = solution_panels.get_display(current_step=steps)
                 # Update the end optimization layout
@@ -601,7 +764,7 @@ def execute_optimization(
 
 
 def resume_optimization(
-    run_id: str, skip_validation: bool = False, console: Optional[Console] = None
+    run_id: str, skip_validation: bool = False, log_dir: str = ".runs", console: Optional[Console] = None
 ) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
@@ -609,6 +772,7 @@ def resume_optimization(
     Args:
         run_id: The ID of the run to resume
         skip_validation: Whether to skip environment validation checks
+        log_dir: Directory to store logs and results
         console: Rich console for output
 
     Returns:
@@ -658,10 +822,10 @@ def resume_optimization(
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs = resume_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
-    log_dir = resume_info.get("log_dir", ".runs")  # Get log_dir from API
+    # Use the provided log_dir parameter instead of getting from API
 
     if save_logs:
-        console.print("[dim]Local logging enabled (from original run)[/]"
+        console.print("[dim]Local logging enabled (from original run)[/]")
 
     # Debug: Log what we received from API
     console.print(f"[dim]Debug: API returned last_completed_step={last_step}, total_steps={total_steps}[/]")
@@ -796,12 +960,14 @@ def resume_optimization(
     heartbeat_thread.start()
 
     # Initialize panels for display
-    summary_panel = SummaryPanel(
+    source_fp = pathlib.Path(source_path)
+    summary_panel, solution_panels, evaluation_output_panel, metric_tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
         model=model,
-        runs_dir=log_dir,
+        log_dir=log_dir,
+        source_fp=source_fp,
         run_id=run_id,
         run_name=run_name,
     )
@@ -811,10 +977,6 @@ def resume_optimization(
         summary_panel.set_run_name(run_name)
     # Set the initial progress to the last completed step
     summary_panel.set_step(last_step)
-    metric_tree_panel = MetricTreePanel(maximize=maximize)
-    evaluation_output_panel = EvaluationOutputPanel()
-    source_fp = pathlib.Path(source_path)
-    solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
 
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
@@ -888,11 +1050,14 @@ def resume_optimization(
                 else:
                     # Run evaluation for the current solution
                     evaluation_output_panel.clear()
-                    execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
-                    # Save logs if requested
-                    if save_logs:
-                        save_execution_output(run_log_dir, step=step - 1, output=execution_output)
-                    evaluation_output_panel.update(execution_output)
+                    execution_output = run_and_log_evaluation(
+                        eval_command=evaluation_command,
+                        eval_timeout=eval_timeout,
+                        save_logs=save_logs,
+                        runs_dir=run_log_dir,
+                        step=step - 1,
+                        eval_output_panel=evaluation_output_panel,
+                    )
 
                 # Get next solution
                 response = evaluate_feedback_then_suggest_next_solution(
@@ -910,8 +1075,12 @@ def resume_optimization(
 
                 # Update panels with new solution
                 if response.get("code"):
-                    write_to_path(pathlib.Path(source_path), response["code"])
-                    write_to_path(run_log_dir / f"step_{step}.py", response["code"])
+                    write_solution_files(
+                        code=response["code"],
+                        source_fp=pathlib.Path(source_path),
+                        runs_dir=run_log_dir,
+                        step=step,
+                    )
 
                 # Update progress bar now that we have the new solution
                 summary_panel.set_step(step)
@@ -933,28 +1102,8 @@ def resume_optimization(
                             pass  # Node might not exist yet
 
                     # Update solution panels with current and best nodes
-                    current_solution_node = None
-                    for node_data in status_response["nodes"]:
-                        if node_data["solution_id"] == response.get("solution_id"):
-                            current_solution_node = Node(
-                                id=node_data["solution_id"],
-                                parent_id=node_data.get("parent_id"),
-                                code=node_data.get("code"),
-                                metric=node_data.get("metric_value"),
-                                is_buggy=node_data.get("is_buggy"),
-                            )
-                            break
-
-                    best_solution_node = None
-                    if status_response.get("best_result"):
-                        best_result = status_response["best_result"]
-                        best_solution_node = Node(
-                            id=best_result["solution_id"],
-                            parent_id=best_result.get("parent_id"),
-                            code=best_result.get("code"),
-                            metric=best_result.get("metric_value"),
-                            is_buggy=best_result.get("is_buggy", False),
-                        )
+                    current_solution_node = find_node_in_status(status_response, response.get("solution_id"))
+                    best_solution_node = get_best_node_from_status(status_response)
 
                     if current_solution_node:
                         solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
@@ -980,17 +1129,15 @@ def resume_optimization(
                     )
 
                 # Update the display
-                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
-                smooth_update(
+                update_live_display(
                     live=live,
                     layout=layout,
-                    sections_to_update=[
-                        ("summary", summary_panel.get_display()),
-                        ("tree", metric_tree_panel.get_display(is_done=False)),
-                        ("current_solution", current_solution_panel),
-                        ("best_solution", best_solution_panel),
-                        ("eval_output", evaluation_output_panel.get_display()),
-                    ],
+                    summary_panel=summary_panel,
+                    tree_panel=metric_tree_panel,
+                    solution_panels=solution_panels,
+                    eval_output_panel=evaluation_output_panel,
+                    current_step=step,
+                    is_done=False,
                     transition_delay=0.08,
                 )
 
@@ -1004,11 +1151,14 @@ def resume_optimization(
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
                 evaluation_output_panel.clear()
-                final_output = run_evaluation(evaluation_command, timeout=eval_timeout)
-                # Save final evaluation logs if requested
-                if save_logs:
-                    save_execution_output(run_log_dir, step=step, output=final_output)
-                evaluation_output_panel.update(final_output)
+                run_and_log_evaluation(
+                    eval_command=evaluation_command,
+                    eval_timeout=eval_timeout,
+                    save_logs=save_logs,
+                    runs_dir=run_log_dir,
+                    step=step,
+                    eval_output_panel=evaluation_output_panel,
+                )
 
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
@@ -1067,7 +1217,7 @@ def resume_optimization(
 
 
 def extend_optimization(
-    run_id: str, additional_steps: int, console: Optional[Console] = None
+    run_id: str, additional_steps: int, log_dir: str = ".runs", console: Optional[Console] = None
 ) -> bool:
     """
     Extend a completed optimization run with additional steps.
@@ -1075,6 +1225,7 @@ def extend_optimization(
     Args:
         run_id: The ID of the completed run to extend
         additional_steps: Number of additional steps to add
+        log_dir: Directory to store logs and results
         console: Rich console for output
 
     Returns:
@@ -1133,16 +1284,16 @@ def extend_optimization(
     total_steps = extend_info["new_total_steps"]
     evaluation_command = extend_info["evaluation_command"]
     source_code = extend_info["source_code"]
-    # For extend, we use the best solution as the starting point
-    best_solution = extend_info.get("best_solution")
+    # For extend, we use the last completed solution as the starting point
+    last_solution = extend_info.get("last_solution")
     run_name = extend_info.get("run_name", run_id)
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs = extend_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
-    log_dir = extend_info.get("log_dir", ".runs")  # Get log_dir from API
+    # Use the provided log_dir parameter instead of getting from API
 
     if save_logs:
-        console.print("[dim]Local logging enabled (from original run)[/]"
+        console.print("[dim]Local logging enabled (from original run)[/]")
 
     # Get metric info from run_status
     objective = run_status.get("objective", {})
@@ -1156,8 +1307,8 @@ def extend_optimization(
     console.print(f"[cyan]Previous steps:[/] {last_step}")
     console.print(f"[cyan]Additional steps:[/] {additional_steps}")
     console.print(f"[cyan]New total steps:[/] [bold green]{total_steps}[/]")
-    if best_solution:
-        console.print(f"[cyan]Best Metric:[/] {best_solution.get('metric_value', 'N/A')}")
+    if last_solution:
+        console.print(f"[cyan]Last Step Metric:[/] {last_solution.get('metric_value', 'N/A')}")
     console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
 
     # Get optimizer config for model info
@@ -1191,15 +1342,16 @@ def extend_optimization(
                 console.print(f"[bold red]Source file not found: {source_path}[/]")
                 return False
 
-    # Write the best solution (starting point) to the source file
-    if best_solution and best_solution.get("code"):
-        write_to_path(pathlib.Path(source_path), best_solution["code"])
-        write_to_path(run_log_dir / f"step_{last_step}.py", best_solution["code"])
-        console.print(f"\n[green]Starting from best solution (metric: {best_solution.get('metric_value')}):[/] {source_path}")
+    # Write the last completed solution (starting point) to the source file
+    # We continue from where we left off (last completed step)
+    if last_solution and last_solution.get("code"):
+        write_to_path(pathlib.Path(source_path), last_solution["code"])
+        write_to_path(run_log_dir / f"step_{last_step}.py", last_solution["code"])
+        console.print(f"\n[green]Continuing from step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}")
     else:
-        # Fallback to original source code if no best solution
+        # Fallback to original source code if no solution available
         write_to_path(pathlib.Path(source_path), source_code)
-        console.print(f"\n[yellow]No best solution found, starting from original source:[/] {source_path}")
+        console.print(f"\n[yellow]No last solution found, starting from original source:[/] {source_path}")
 
     console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
     console.print(f"[cyan]Extending from step {last_step} to {total_steps}[/]\n")
@@ -1242,12 +1394,13 @@ def extend_optimization(
 
     # Initialize panels for display
     source_fp = pathlib.Path(source_path)
-    summary_panel = SummaryPanel(
+    summary_panel, solution_panels, evaluation_output_panel, metric_tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
         model=model,
-        runs_dir=log_dir,
+        log_dir=log_dir,
+        source_fp=source_fp,
         run_id=run_id,
         run_name=run_name,
     )
@@ -1256,26 +1409,22 @@ def extend_optimization(
         summary_panel.set_run_name(run_name)
     summary_panel.set_step(last_step)  # Start from where we left off
 
-    metric_tree_panel = MetricTreePanel(maximize=maximize)
-    evaluation_output_panel = EvaluationOutputPanel()
-    solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
-
     # Load previous history
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status and run_status["nodes"]:
         metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
 
-    # Initialize with best solution
-    best_node = None
-    if best_solution:
-        best_node = Node(
-            id=best_solution.get("solution_id", ""),
-            parent_id=best_solution.get("parent_id"),
-            code=best_solution.get("code"),
-            metric=best_solution.get("metric_value"),
-            is_buggy=best_solution.get("is_buggy", False),
+    # Initialize with last solution
+    last_node = None
+    if last_solution:
+        last_node = Node(
+            id=last_solution.get("solution_id", ""),
+            parent_id=last_solution.get("parent_id"),
+            code=last_solution.get("code"),
+            metric=last_solution.get("metric_value"),
+            is_buggy=last_solution.get("is_buggy", False),
         )
-        solution_panels.update(current_node=best_node, best_node=best_node)
+        solution_panels.update(current_node=last_node, best_node=last_node)
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
@@ -1291,13 +1440,16 @@ def extend_optimization(
 
     try:
         with Live(layout, console=console, refresh_per_second=4) as live:
-            # Run evaluation on the best solution first
-            console.print("[cyan]Evaluating current best solution...[/]")
-            execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
-            # Save initial evaluation logs if requested
-            if save_logs:
-                save_execution_output(run_log_dir, step=last_step, output=execution_output)
-            evaluation_output_panel.update(execution_output)
+            # Run evaluation on the last solution first
+            console.print("[cyan]Evaluating last completed solution...[/]")
+            execution_output = run_and_log_evaluation(
+                eval_command=evaluation_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                runs_dir=run_log_dir,
+                step=last_step,
+                eval_output_panel=evaluation_output_panel,
+            )
 
             # Continue from last_step + 1 to total_steps
             for step in range(last_step + 1, total_steps + 1):
@@ -1325,8 +1477,12 @@ def extend_optimization(
 
                 # Update panels with new solution
                 if response.get("code"):
-                    write_to_path(pathlib.Path(source_path), response["code"])
-                    write_to_path(run_log_dir / f"step_{step}.py", response["code"])
+                    write_solution_files(
+                        code=response["code"],
+                        source_fp=pathlib.Path(source_path),
+                        runs_dir=run_log_dir,
+                        step=step,
+                    )
 
                 # Update progress bar
                 summary_panel.set_step(step)
@@ -1347,28 +1503,8 @@ def extend_optimization(
                             pass
 
                     # Update solution panels
-                    current_solution_node = None
-                    for node_data in status_response["nodes"]:
-                        if node_data["solution_id"] == response.get("solution_id"):
-                            current_solution_node = Node(
-                                id=node_data["solution_id"],
-                                parent_id=node_data.get("parent_id"),
-                                code=node_data.get("code"),
-                                metric=node_data.get("metric_value"),
-                                is_buggy=node_data.get("is_buggy"),
-                            )
-                            break
-
-                    best_solution_node = None
-                    if status_response.get("best_result"):
-                        best_result = status_response["best_result"]
-                        best_solution_node = Node(
-                            id=best_result["solution_id"],
-                            parent_id=best_result.get("parent_id"),
-                            code=best_result.get("code"),
-                            metric=best_result.get("metric_value"),
-                            is_buggy=best_result.get("is_buggy", False),
-                        )
+                    current_solution_node = find_node_in_status(status_response, response.get("solution_id"))
+                    best_solution_node = get_best_node_from_status(status_response)
 
                     if current_solution_node:
                         solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
@@ -1380,17 +1516,15 @@ def extend_optimization(
                     summary_panel.update_thinking(thinking=response["plan"])
 
                 # Update the display
-                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
-                smooth_update(
+                update_live_display(
                     live=live,
                     layout=layout,
-                    sections_to_update=[
-                        ("summary", summary_panel.get_display()),
-                        ("tree", metric_tree_panel.get_display(is_done=False)),
-                        ("current_solution", current_solution_panel),
-                        ("best_solution", best_solution_panel),
-                        ("eval_output", evaluation_output_panel.get_display()),
-                    ],
+                    summary_panel=summary_panel,
+                    tree_panel=metric_tree_panel,
+                    solution_panels=solution_panels,
+                    eval_output_panel=evaluation_output_panel,
+                    current_step=step,
+                    is_done=False,
                     transition_delay=0.08,
                 )
 
@@ -1403,11 +1537,14 @@ def extend_optimization(
                 # Run evaluation for next iteration
                 if step < total_steps:  # Don't evaluate if this is the last step
                     evaluation_output_panel.clear()
-                    execution_output = run_evaluation(evaluation_command, timeout=eval_timeout)
-                    # Save evaluation logs if requested
-                    if save_logs:
-                        save_execution_output(run_log_dir, step=step, output=execution_output)
-                    evaluation_output_panel.update(execution_output)
+                    execution_output = run_and_log_evaluation(
+                        eval_command=evaluation_command,
+                        eval_timeout=eval_timeout,
+                        save_logs=save_logs,
+                        runs_dir=run_log_dir,
+                        step=step,
+                        eval_output_panel=evaluation_output_panel,
+                    )
 
             # Final handling
             if optimization_completed_normally or step == total_steps:

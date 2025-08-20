@@ -260,6 +260,7 @@ class MetricTreePanel:
         try:
             root_node = self.metric_tree.get_root_node()
         except ValueError:
+            # ValueError raised during resume/extend as node data is being fetched from the backend
             # No valid root node found, return a placeholder
             return Tree("[bold yellow]Loading optimization history...")
 

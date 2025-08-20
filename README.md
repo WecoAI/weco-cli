@@ -201,7 +201,7 @@ weco resume 0002e071-1b67-411f-a514-36947f0c4b31 --skip-validation
 | Argument | Description | Example |
 |----------|-------------|---------|
 | `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
-| `--skip-validation` | Skip environment validation checks | `--skip-validation` |
+| `--skip-validation` | Skip environment validation checks (confirmation that evaluation script, target optimization file, and additional instructions haven't changed) | `--skip-validation` |
 
 **Important notes:**
 - The resume feature only works for interrupted runs (status: error, terminated, etc.)
@@ -232,7 +232,7 @@ weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50
 **Important notes:**
 - The extend feature only works for completed runs
 - For interrupted runs, use the `weco resume` command instead
-- The optimization will continue from the best solution found in the original run
+- The optimization will continue from the last completed step
 - The extended run will have a new total step count (original + additional)
 
 ### Model Selection
