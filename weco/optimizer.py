@@ -601,7 +601,7 @@ def execute_optimization(
 
 
 def resume_optimization(
-    run_id: str, skip_validation: bool = False, save_logs: Optional[bool] = None, console: Optional[Console] = None
+    run_id: str, skip_validation: bool = False, console: Optional[Console] = None
 ) -> bool:
     """
     Resume an interrupted optimization run from the last completed step.
@@ -609,7 +609,6 @@ def resume_optimization(
     Args:
         run_id: The ID of the run to resume
         skip_validation: Whether to skip environment validation checks
-        save_logs: Override for saving execution outputs locally (None = inherit from original run)
         console: Rich console for output
 
     Returns:
@@ -658,17 +657,11 @@ def resume_optimization(
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
-    save_logs_from_api = resume_info.get("save_logs", False)  # Get save_logs from API
+    save_logs = resume_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
     log_dir = resume_info.get("log_dir", ".runs")  # Get log_dir from API
 
-    # Determine final save_logs setting: command-line override or inherit from run
-    if save_logs is None:
-        save_logs = save_logs_from_api
-        if save_logs:
-            console.print("[dim]Continuing with local logging enabled (from original run)[/]")
-    else:
-        if save_logs != save_logs_from_api:
-            console.print(f"[dim]Overriding save_logs: original={save_logs_from_api}, now={save_logs}[/]")
+    if save_logs:
+        console.print("[dim]Local logging enabled (from original run)[/]"
 
     # Debug: Log what we received from API
     console.print(f"[dim]Debug: API returned last_completed_step={last_step}, total_steps={total_steps}[/]")
@@ -1074,7 +1067,7 @@ def resume_optimization(
 
 
 def extend_optimization(
-    run_id: str, additional_steps: int, save_logs: Optional[bool] = None, console: Optional[Console] = None
+    run_id: str, additional_steps: int, console: Optional[Console] = None
 ) -> bool:
     """
     Extend a completed optimization run with additional steps.
@@ -1082,7 +1075,6 @@ def extend_optimization(
     Args:
         run_id: The ID of the completed run to extend
         additional_steps: Number of additional steps to add
-        save_logs: Override for saving execution outputs locally (None = inherit from original run)
         console: Rich console for output
 
     Returns:
@@ -1146,17 +1138,11 @@ def extend_optimization(
     run_name = extend_info.get("run_name", run_id)
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
-    save_logs_from_api = extend_info.get("save_logs", False)  # Get save_logs from API
+    save_logs = extend_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
     log_dir = extend_info.get("log_dir", ".runs")  # Get log_dir from API
 
-    # Determine final save_logs setting: command-line override or inherit from run
-    if save_logs is None:
-        save_logs = save_logs_from_api
-        if save_logs:
-            console.print("[dim]Continuing with local logging enabled (from original run)[/]")
-    else:
-        if save_logs != save_logs_from_api:
-            console.print(f"[dim]Overriding save_logs: original={save_logs_from_api}, now={save_logs}[/]")
+    if save_logs:
+        console.print("[dim]Local logging enabled (from original run)[/]"
 
     # Get metric info from run_status
     objective = run_status.get("objective", {})

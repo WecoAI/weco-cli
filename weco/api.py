@@ -31,6 +31,7 @@ def start_optimization_run(
     source_path: Optional[str] = None,
     eval_timeout: Optional[int] = None,
     save_logs: bool = False,
+    log_dir: str = ".runs",
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -55,6 +56,7 @@ def start_optimization_run(
                         "source_path": source_path,
                         "eval_timeout": eval_timeout,
                         "save_logs": save_logs,
+                        "log_dir": log_dir,
                         **api_keys,
                     },
                 },

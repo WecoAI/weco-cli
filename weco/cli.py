@@ -99,16 +99,8 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command to resume an interrupted run."""
     from .optimizer import resume_optimization
 
-    # Determine save_logs preference: explicit flags override database setting
-    save_logs = None
-    if args.save_logs:
-        save_logs = True
-    elif args.no_save_logs:
-        save_logs = False
-    # If neither flag is set, save_logs remains None and will inherit from database
-
     success = resume_optimization(
-        run_id=args.run_id, skip_validation=args.skip_validation, save_logs=save_logs, console=console
+        run_id=args.run_id, skip_validation=args.skip_validation, console=console
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -118,15 +110,7 @@ def execute_extend_command(args: argparse.Namespace) -> None:
     """Execute the 'weco extend' command to extend a completed run."""
     from .optimizer import extend_optimization
 
-    # Determine save_logs preference: explicit flags override database setting
-    save_logs = None
-    if args.save_logs:
-        save_logs = True
-    elif args.no_save_logs:
-        save_logs = False
-    # If neither flag is set, save_logs remains None and will inherit from database
-
-    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, save_logs=save_logs, console=console)
+    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, console=console)
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
@@ -169,16 +153,6 @@ def main() -> None:
     resume_parser.add_argument(
         "--skip-validation", action="store_true", help="Skip environment validation checks and resume immediately"
     )
-    resume_parser.add_argument(
-        "--save-logs",
-        action="store_true",
-        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)",
-    )
-    resume_parser.add_argument(
-        "--no-save-logs",
-        action="store_true",
-        help="Disable saving execution output locally even if original run had --save-logs",
-    )
 
     # --- Extend Command Parser Setup ---
     extend_parser = subparsers.add_parser(
@@ -188,16 +162,6 @@ def main() -> None:
         "run_id", type=str, help="The UUID of the completed run to extend (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
     )
     extend_parser.add_argument("steps", type=int, help="Number of additional steps to add to the completed run (e.g., 20)")
-    extend_parser.add_argument(
-        "--save-logs",
-        action="store_true",
-        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt (inherits from original run by default)",
-    )
-    extend_parser.add_argument(
-        "--no-save-logs",
-        action="store_true",
-        help="Disable saving execution output locally even if original run had --save-logs",
-    )
 
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
