@@ -148,11 +148,10 @@ def get_optimization_run_status(
         return result
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
-        return None
+        raise
     except Exception as e:
         console.print(f"[bold red]Error getting run status: {e}[/]")
-        # Return None instead of raising to allow calling code to continue gracefully
-        return None
+        raise
 
 
 def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
