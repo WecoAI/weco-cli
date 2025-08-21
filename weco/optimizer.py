@@ -160,6 +160,7 @@ class HeartbeatSender(threading.Thread):
 # Helper Functions for Common Optimization Patterns
 # ============================================================================
 
+
 def initialize_panels(
     maximize: bool,
     metric_name: str,
@@ -172,7 +173,7 @@ def initialize_panels(
 ) -> tuple:
     """
     Initialize all panels used in optimization.
-    
+
     Returns:
         tuple: (summary_panel, solution_panels, eval_output_panel, tree_panel)
     """
@@ -188,7 +189,7 @@ def initialize_panels(
     solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
     eval_output_panel = EvaluationOutputPanel()
     tree_panel = MetricTreePanel(maximize=maximize)
-    
+
     return summary_panel, solution_panels, eval_output_panel, tree_panel
 
 
@@ -234,7 +235,7 @@ def find_node_in_status(status_response: dict, solution_id: str) -> Optional[Nod
     """Find and create a Node from status response by solution ID."""
     if not status_response.get("nodes"):
         return None
-    
+
     for node_data in status_response["nodes"]:
         if node_data["solution_id"] == solution_id:
             return create_node_from_status(node_data)
@@ -245,7 +246,7 @@ def get_best_node_from_status(status_response: dict) -> Optional[Node]:
     """Extract the best solution node from status response."""
     if not status_response.get("best_result"):
         return None
-    
+
     best_result = status_response["best_result"]
     return Node(
         id=best_result["solution_id"],
@@ -266,50 +267,37 @@ def run_and_log_evaluation(
 ) -> str:
     """Run evaluation, optionally save logs, and update output panel."""
     execution_output = run_evaluation(eval_command, timeout=eval_timeout)
-    
+
     if save_logs:
         save_execution_output(runs_dir, step=step, output=execution_output)
-    
+
     eval_output_panel.update(execution_output)
     return execution_output
 
 
-def write_solution_files(
-    code: str,
-    source_fp: pathlib.Path,
-    runs_dir: pathlib.Path,
-    step: int,
-) -> None:
+def write_solution_files(code: str, source_fp: pathlib.Path, runs_dir: pathlib.Path, step: int) -> None:
     """Write solution code to both source file and log directory."""
     write_to_path(fp=source_fp, content=code)
     write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
 
 
 def check_run_status_for_stop(
-    console: Console,
-    run_id: str,
-    auth_headers: dict,
-    stop_heartbeat_event: threading.Event,
+    console: Console, run_id: str, auth_headers: dict, stop_heartbeat_event: threading.Event
 ) -> tuple[dict, bool]:
     """
     Check run status and detect if user requested stop.
-    
+
     Returns:
         tuple: (run_status, user_stop_requested)
     """
-    run_status = get_optimization_run_status(
-        console,
-        run_id,
-        include_history=False,
-        auth_headers=auth_headers,
-    )
-    
+    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+
     user_stop_requested = False
     if run_status and run_status.get("status") == "stopping":
         user_stop_requested = True
         console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
         stop_heartbeat_event.set()
-    
+
     return run_status, user_stop_requested
 
 
@@ -321,22 +309,23 @@ def setup_signal_handler(
     auth_headers: Optional[dict] = None,
 ) -> None:
     """Setup signal handler for graceful shutdown."""
+
     def signal_handler(signum, frame):
         """Handle interrupt signals gracefully."""
         signal_name = signal.Signals(signum).name
         console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
-        
+
         # Stop heartbeat thread
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.join(timeout=2)
-        
+
         # Report termination if run_id is available
         if run_id and auth_headers:
             report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
-        
+
         sys.exit(1)
-    
+
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
@@ -439,12 +428,7 @@ def execute_optimization(
 
         # --- Panel Initialization ---
         summary_panel, solution_panels, eval_output_panel, tree_panel = initialize_panels(
-            maximize=maximize,
-            metric_name=metric,
-            total_steps=steps,
-            model=model,
-            log_dir=log_dir,
-            source_fp=source_fp,
+            maximize=maximize, metric_name=metric, total_steps=steps, model=model, log_dir=log_dir, source_fp=source_fp
         )
         layout = create_optimization_layout()
         end_optimization_layout = create_end_optimization_layout()
@@ -588,10 +572,7 @@ def execute_optimization(
                 )
                 # Save next solution to both source file and log directory
                 write_solution_files(
-                    code=eval_and_next_solution_response["code"],
-                    source_fp=source_fp,
-                    runs_dir=runs_dir,
-                    step=step,
+                    code=eval_and_next_solution_response["code"], source_fp=source_fp, runs_dir=runs_dir, step=step
                 )
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
@@ -1076,10 +1057,7 @@ def resume_optimization(
                 # Update panels with new solution
                 if response.get("code"):
                     write_solution_files(
-                        code=response["code"],
-                        source_fp=pathlib.Path(source_path),
-                        runs_dir=run_log_dir,
-                        step=step,
+                        code=response["code"], source_fp=pathlib.Path(source_path), runs_dir=run_log_dir, step=step
                     )
 
                 # Update progress bar now that we have the new solution
@@ -1216,9 +1194,7 @@ def resume_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def extend_optimization(
-    run_id: str, additional_steps: int, log_dir: str = ".runs", console: Optional[Console] = None
-) -> bool:
+def extend_optimization(run_id: str, additional_steps: int, log_dir: str = ".runs", console: Optional[Console] = None) -> bool:
     """
     Extend a completed optimization run with additional steps.
 
@@ -1347,7 +1323,9 @@ def extend_optimization(
     if last_solution and last_solution.get("code"):
         write_to_path(pathlib.Path(source_path), last_solution["code"])
         write_to_path(run_log_dir / f"step_{last_step}.py", last_solution["code"])
-        console.print(f"\n[green]Continuing from step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}")
+        console.print(
+            f"\n[green]Continuing from step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}"
+        )
     else:
         # Fallback to original source code if no solution available
         write_to_path(pathlib.Path(source_path), source_code)
@@ -1478,10 +1456,7 @@ def extend_optimization(
                 # Update panels with new solution
                 if response.get("code"):
                     write_solution_files(
-                        code=response["code"],
-                        source_fp=pathlib.Path(source_path),
-                        runs_dir=run_log_dir,
-                        step=step,
+                        code=response["code"], source_fp=pathlib.Path(source_path), runs_dir=run_log_dir, step=step
                     )
 
                 # Update progress bar
