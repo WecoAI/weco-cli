@@ -94,6 +94,9 @@ def configure_extend_parser(extend_parser: argparse.ArgumentParser) -> None:
     )
     extend_parser.add_argument("steps", type=int, help="Number of additional steps to add to the completed run (e.g., 20)")
     extend_parser.add_argument(
+        "--skip-validation", action="store_true", help="Skip environment validation checks and extend immediately"
+    )
+    extend_parser.add_argument(
         "-l", "--log-dir", type=str, default=".runs", help="Directory to store logs and results. Defaults to `.runs`."
     )
 
@@ -134,7 +137,13 @@ def execute_extend_command(args: argparse.Namespace) -> None:
     """Execute the 'weco extend' command to extend a completed run."""
     from .optimizer import extend_optimization
 
-    success = extend_optimization(run_id=args.run_id, additional_steps=args.steps, log_dir=args.log_dir, console=console)
+    success = extend_optimization(
+        run_id=args.run_id,
+        additional_steps=args.steps,
+        skip_validation=args.skip_validation,
+        log_dir=args.log_dir,
+        console=console,
+    )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 

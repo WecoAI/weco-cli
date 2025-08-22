@@ -220,6 +220,9 @@ weco extend 0002e071-1b67-411f-a514-36947f0c4b31 20
 
 # Extend with 50 more steps
 weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50
+
+# Skip validation prompts and extend immediately
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 30 --skip-validation
 ```
 
 **Arguments for `weco extend`:**
@@ -228,10 +231,12 @@ weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50
 |----------|-------------|---------|
 | `run-id` | The UUID of the completed run to extend | `0002e071-1b67-411f-a514-36947f0c4b31` |
 | `steps` | Number of additional steps to add | `20` |
+| `--skip-validation` | Skip environment validation checks and extend immediately | `--skip-validation` |
 
 **Important notes:**
 - The extend feature only works for completed runs
 - For interrupted runs, use the `weco resume` command instead
+- You'll be prompted to confirm that your evaluation environment hasn't changed since the original run
 - The optimization will continue from the last completed step
 - The extended run will have a new total step count (original + additional)
 

@@ -894,7 +894,9 @@ def execute_optimization(
         if optimization_completed_normally:
             # Run completed successfully - show extend option
             if run_id:
-                console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
+                console.print(
+                    f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
+                )
         elif user_stop_requested_flag:
             # Run was terminated by user - show resume option
             console.print("[yellow]Run terminated by user request.[/]")
@@ -1212,10 +1214,11 @@ def resume_optimization(
                     step=step,
                     eval_output_panel=evaluation_output_panel,
                 )
-                
+
                 # If we completed all steps but API didn't mark as done, make explicit completion call
                 if not optimization_completed_normally and step == total_steps:
                     from .api import report_termination
+
                     try:
                         # Mark run as completed since we finished all steps
                         report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
@@ -1279,7 +1282,9 @@ def resume_optimization(
 
         # Show completion message for resume
         if optimization_completed_normally:
-            console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
+            console.print(
+                f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
+            )
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -1610,6 +1615,8 @@ def extend_optimization(
 
         # Show completion message for extend
         if optimization_completed_normally:
-            console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
+            console.print(
+                f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
+            )
 
     return optimization_completed_normally or user_stop_requested_flag
