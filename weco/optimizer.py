@@ -887,8 +887,13 @@ def execute_optimization(
 
             report_termination(run_id, status, reason, details, current_auth_headers_for_heartbeat)
 
-        # Handle exit
-        if user_stop_requested_flag:
+        # Handle exit messages
+        if optimization_completed_normally:
+            # Run completed successfully - show extend option
+            if run_id:
+                console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
+        elif user_stop_requested_flag:
+            # Run was terminated by user - show resume option
             console.print("[yellow]Run terminated by user request.[/]")
             if run_id:
                 console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
@@ -1258,6 +1263,10 @@ def resume_optimization(
 
             report_termination(run_id, status, reason, details, auth_headers)
 
+        # Show completion message for resume
+        if optimization_completed_normally:
+            console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
+
     return optimization_completed_normally or user_stop_requested_flag
 
 
@@ -1582,5 +1591,9 @@ def extend_optimization(
                 details = "Extension failed due to an error"
 
             report_termination(run_id, status, reason, details, auth_headers)
+
+        # Show completion message for extend
+        if optimization_completed_normally:
+            console.print(f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
