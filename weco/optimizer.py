@@ -482,6 +482,63 @@ def run_optimization_loop(
     return optimization_completed_normally, user_stop_requested_flag
 
 
+def prime_live_layout(
+    layout,
+    summary_panel,
+    metric_tree_panel,
+    solution_panels,
+    evaluation_output_panel,
+    current_step: int,
+    is_done: bool = False,
+):
+    """
+    Helper function to hydrate the Live layout with current panel states.
+
+    Args:
+        layout: The layout dictionary to update
+        summary_panel: The summary panel instance
+        metric_tree_panel: The metric tree panel instance
+        solution_panels: The solution panels instance
+        evaluation_output_panel: The evaluation output panel instance
+        current_step: The current optimization step
+        is_done: Whether optimization is complete
+    """
+    layout["summary"].update(summary_panel.get_display())
+    layout["tree"].update(metric_tree_panel.get_display(is_done=is_done))
+    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
+    layout["current_solution"].update(current_solution_panel)
+    layout["best_solution"].update(best_solution_panel)
+    layout["eval_output"].update(evaluation_output_panel.get_display())
+
+
+def evaluate_and_refresh_eval_panel(
+    eval_command: str, eval_timeout: Optional[int], save_logs: bool, runs_dir: pathlib.Path, step: int, evaluation_output_panel
+) -> str:
+    """
+    Helper function to run evaluation and refresh the evaluation panel.
+
+    Args:
+        eval_command: The evaluation command to run
+        eval_timeout: Timeout for evaluation in seconds
+        save_logs: Whether to save logs
+        runs_dir: Directory for run logs
+        step: Current optimization step
+        evaluation_output_panel: The evaluation output panel instance
+
+    Returns:
+        str: The execution output from evaluation
+    """
+    evaluation_output_panel.clear()
+    return run_and_log_evaluation(
+        eval_command=eval_command,
+        eval_timeout=eval_timeout,
+        save_logs=save_logs,
+        runs_dir=runs_dir,
+        step=step,
+        eval_output_panel=evaluation_output_panel,
+    )
+
+
 def execute_optimization(
     source: str,
     eval_command: str,
@@ -957,7 +1014,7 @@ def resume_optimization(
     # Extract resume information
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
-    remaining_steps = total_steps - last_step  # Calculate remaining steps
+    remaining_steps = total_steps - last_step  # noqa: F841 - Calculate remaining steps (kept for potential future use)
     evaluation_command = resume_info["evaluation_command"]
     source_code = resume_info["source_code"]  # noqa: F841 - Keep for potential fallback scenarios
     last_solution = resume_info["last_solution"]
@@ -1163,13 +1220,16 @@ def resume_optimization(
     # Create the layout for display
     layout = create_optimization_layout()
 
-    # Initialize layout with panel content
-    layout["summary"].update(summary_panel.get_display())
-    layout["tree"].update(metric_tree_panel.get_display(is_done=False))
-    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=last_step)
-    layout["current_solution"].update(current_solution_panel)
-    layout["best_solution"].update(best_solution_panel)
-    layout["eval_output"].update(evaluation_output_panel.get_display())
+    # Initialize layout with panel content using helper
+    prime_live_layout(
+        layout=layout,
+        summary_panel=summary_panel,
+        metric_tree_panel=metric_tree_panel,
+        solution_panels=solution_panels,
+        evaluation_output_panel=evaluation_output_panel,
+        current_step=last_step,
+        is_done=False,
+    )
 
     try:
         with Live(layout, console=console, refresh_per_second=4) as live:
@@ -1205,14 +1265,13 @@ def resume_optimization(
 
             # Final evaluation if completed normally
             if optimization_completed_normally or step == total_steps:
-                evaluation_output_panel.clear()
-                run_and_log_evaluation(
+                evaluate_and_refresh_eval_panel(
                     eval_command=evaluation_command,
                     eval_timeout=eval_timeout,
                     save_logs=save_logs,
                     runs_dir=run_log_dir,
                     step=step,
-                    eval_output_panel=evaluation_output_panel,
+                    evaluation_output_panel=evaluation_output_panel,
                 )
 
                 # If we completed all steps but API didn't mark as done, make explicit completion call
@@ -1534,24 +1593,29 @@ def extend_optimization(
 
     # Create the layout for display
     layout = create_optimization_layout()
-    layout["summary"].update(summary_panel.get_display())
-    layout["tree"].update(metric_tree_panel.get_display(is_done=False))
-    current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=last_step)
-    layout["current_solution"].update(current_solution_panel)
-    layout["best_solution"].update(best_solution_panel)
-    layout["eval_output"].update(evaluation_output_panel.get_display())
+
+    # Initialize layout with panel content using helper
+    prime_live_layout(
+        layout=layout,
+        summary_panel=summary_panel,
+        metric_tree_panel=metric_tree_panel,
+        solution_panels=solution_panels,
+        evaluation_output_panel=evaluation_output_panel,
+        current_step=last_step,
+        is_done=False,
+    )
 
     try:
         with Live(layout, console=console, refresh_per_second=4) as live:
             # Run evaluation on the last solution first
             console.print("[cyan]Evaluating last completed solution...[/]")
-            execution_output = run_and_log_evaluation(
+            execution_output = evaluate_and_refresh_eval_panel(
                 eval_command=evaluation_command,
                 eval_timeout=eval_timeout,
                 save_logs=save_logs,
                 runs_dir=run_log_dir,
                 step=last_step,
-                eval_output_panel=evaluation_output_panel,
+                evaluation_output_panel=evaluation_output_panel,
             )
 
             # Continue from last_step + 1 to total_steps using shared optimization loop
