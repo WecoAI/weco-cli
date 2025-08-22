@@ -1212,6 +1212,17 @@ def resume_optimization(
                     step=step,
                     eval_output_panel=evaluation_output_panel,
                 )
+                
+                # If we completed all steps but API didn't mark as done, make explicit completion call
+                if not optimization_completed_normally and step == total_steps:
+                    from .api import report_termination
+                    try:
+                        # Mark run as completed since we finished all steps
+                        report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
+                        console.print(f"[dim]Marked run as completed (step {step}/{total_steps})[/]")
+                        optimization_completed_normally = True
+                    except Exception as e:
+                        console.print(f"[dim yellow]Warning: Could not update run status to completed: {e}[/]")
 
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
