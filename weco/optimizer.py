@@ -1320,11 +1320,8 @@ def extend_optimization(
     original_steps = run_status.get("optimizer", {}).get("steps", 0)
     current_step = run_status.get("current_step", 0)
 
-    # Check if run is actually completed
-    # Handle edge case where run completed all steps but status is still "error"
-    is_actually_completed = (current_step >= original_steps) or current_status == "completed"
-    
-    if not is_actually_completed:
+    # Check if run is completed - trust database status as single source of truth
+    if current_status != "completed":
         console.print(f"[bold red]Run is not completed (status: {current_status}).[/]")
         if current_status in ["interrupted", "terminated", "error"]:
             console.print(
@@ -1333,10 +1330,6 @@ def extend_optimization(
         else:
             console.print(f"[cyan]Current status: {current_status}. Only completed runs can be extended.[/]")
         return False
-    
-    # If status shows error but run actually completed all steps, show a note
-    if current_status != "completed" and current_step >= original_steps:
-        console.print(f"[yellow]Note: Run shows status '{current_status}' but completed all {original_steps} steps. Proceeding with extend.[/]")
 
     # Use extend endpoint for completed runs
     console.print(
