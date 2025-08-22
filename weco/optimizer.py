@@ -534,6 +534,9 @@ def execute_optimization(
             console.print(
                 f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {current_run_id_for_heartbeat}[/]"
             )
+        else:
+            # If run_id not available yet, show generic message
+            console.print("\n[bold cyan]Run interrupted. Check .runs/ directory for run ID to resume.[/]")
 
         # Exit gracefully
         sys.exit(0)
