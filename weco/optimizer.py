@@ -1083,6 +1083,8 @@ def resume_optimization(
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
         report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        # Show resume message
+        console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
@@ -1452,6 +1454,8 @@ def extend_optimization(
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
         report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        # Show resume message
+        console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
     signal.signal(signal.SIGINT, signal_handler)
