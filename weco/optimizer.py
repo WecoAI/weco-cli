@@ -485,7 +485,7 @@ def run_optimization_loop(
 def prime_live_layout(
     layout,
     summary_panel,
-    metric_tree_panel,
+    tree_panel,
     solution_panels,
     evaluation_output_panel,
     current_step: int,
@@ -497,14 +497,14 @@ def prime_live_layout(
     Args:
         layout: The layout dictionary to update
         summary_panel: The summary panel instance
-        metric_tree_panel: The metric tree panel instance
+        tree_panel: The metric tree panel instance
         solution_panels: The solution panels instance
         evaluation_output_panel: The evaluation output panel instance
         current_step: The current optimization step
         is_done: Whether optimization is complete
     """
     layout["summary"].update(summary_panel.get_display())
-    layout["tree"].update(metric_tree_panel.get_display(is_done=is_done))
+    layout["tree"].update(tree_panel.get_display(is_done=is_done))
     current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
     layout["current_solution"].update(current_solution_panel)
     layout["best_solution"].update(best_solution_panel)
@@ -1163,7 +1163,7 @@ def resume_optimization(
 
     # Initialize panels for display
     source_fp = pathlib.Path(source_path)
-    summary_panel, solution_panels, evaluation_output_panel, metric_tree_panel = initialize_panels(
+    summary_panel, solution_panels, evaluation_output_panel, tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
@@ -1224,7 +1224,7 @@ def resume_optimization(
     prime_live_layout(
         layout=layout,
         summary_panel=summary_panel,
-        metric_tree_panel=metric_tree_panel,
+        tree_panel=tree_panel,
         solution_panels=solution_panels,
         evaluation_output_panel=evaluation_output_panel,
         current_step=last_step,
@@ -1252,7 +1252,7 @@ def resume_optimization(
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
                 evaluation_output_panel=evaluation_output_panel,
-                metric_tree_panel=metric_tree_panel,
+                tree_panel=tree_panel,
                 api_keys=api_keys,
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
@@ -1556,7 +1556,7 @@ def extend_optimization(
 
     # Initialize panels for display
     source_fp = pathlib.Path(source_path)
-    summary_panel, solution_panels, evaluation_output_panel, metric_tree_panel = initialize_panels(
+    summary_panel, solution_panels, evaluation_output_panel, tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
@@ -1598,7 +1598,7 @@ def extend_optimization(
     prime_live_layout(
         layout=layout,
         summary_panel=summary_panel,
-        metric_tree_panel=metric_tree_panel,
+        tree_panel=tree_panel,
         solution_panels=solution_panels,
         evaluation_output_panel=evaluation_output_panel,
         current_step=last_step,
@@ -1634,7 +1634,7 @@ def extend_optimization(
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
                 evaluation_output_panel=evaluation_output_panel,
-                metric_tree_panel=metric_tree_panel,
+                tree_panel=tree_panel,
                 api_keys=api_keys,
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
