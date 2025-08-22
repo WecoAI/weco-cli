@@ -355,13 +355,13 @@ def run_optimization_loop(
 ) -> tuple[bool, bool]:
     """
     Shared optimization loop logic for execute, resume, and extend operations.
-    
+
     Returns:
         tuple: (optimization_completed_normally, user_stop_requested_flag)
     """
     optimization_completed_normally = False
     user_stop_requested_flag = False
-    
+
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
         run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
@@ -375,20 +375,18 @@ def run_optimization_loop(
         if step == start_step and initial_execution_output:
             execution_output = initial_execution_output
         else:
-            # Run evaluation for the current solution (except for the very first step)
-            if step > start_step:
-                evaluation_output_panel.clear()
-                execution_output = run_and_log_evaluation(
-                    eval_command=eval_command,
-                    eval_timeout=eval_timeout,
-                    save_logs=save_logs,
-                    runs_dir=runs_dir,
-                    step=step - 1,
-                    eval_output_panel=evaluation_output_panel,
-                )
-            else:
-                # This handles cases where we don't have initial execution output
-                execution_output = ""
+            # Run evaluation for the current solution
+            # For resume operations, we need to evaluate from the first step
+            # For new runs, we skip evaluation on step 0 (the baseline)
+            evaluation_output_panel.clear()
+            execution_output = run_and_log_evaluation(
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                runs_dir=runs_dir,
+                step=step,
+                eval_output_panel=evaluation_output_panel,
+            )
 
         # Get next solution
         response = evaluate_feedback_then_suggest_next_solution(
@@ -1189,7 +1187,7 @@ def resume_optimization(
                 initial_execution_output=last_solution.get("execution_output", "") if last_solution else "",
                 additional_instructions=None,
             )
-            
+
             # Get the final step value for later use
             step = total_steps
 
@@ -1261,7 +1259,13 @@ def resume_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def extend_optimization(run_id: str, additional_steps: int, skip_validation: bool = False, log_dir: str = ".runs", console: Optional[Console] = None) -> bool:
+def extend_optimization(
+    run_id: str,
+    additional_steps: int,
+    skip_validation: bool = False,
+    log_dir: str = ".runs",
+    console: Optional[Console] = None,
+) -> bool:
     """
     Extend a completed optimization run with additional steps.
 
@@ -1361,14 +1365,17 @@ def extend_optimization(run_id: str, additional_steps: int, skip_validation: boo
         console.print("\n[bold cyan]Extension Validation[/]")
         console.print("This will continue optimization from where the original run completed.")
         console.print(f"The run will be extended from {last_step} to {total_steps} total steps.")
-        
+
         # Validation prompts
         console.print("\n[bold yellow]Please confirm:[/]")
         console.print("1. Your evaluation script hasn't been modified since the original run")
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. The extension parameters are correct for your optimization goals")
 
-        if console.input(f"\n[bold]Continue extending run {run_id}? [[y]]es/[[N]]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
+        if console.input(f"\n[bold]Continue extending run {run_id}? [[y]]es/[[N]]o (default=no): [/]").lower().strip() not in [
+            "y",
+            "yes",
+        ]:
             console.print("[yellow]Extension cancelled by user.[/]")
             return False
 
@@ -1537,7 +1544,7 @@ def extend_optimization(run_id: str, additional_steps: int, skip_validation: boo
                 additional_instructions=None,
                 eval_after_solution=True,  # Extend function evaluates after each solution
             )
-            
+
             # Get the final step value for later use
             step = total_steps
 
