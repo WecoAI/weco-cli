@@ -1316,14 +1316,16 @@ def extend_optimization(
         return False
 
     current_status = run_status.get("status")
-    completed_steps = run_status.get("completed_steps", 0)
+    # Get the total steps from optimizer config, not completed_steps which may be 0
+    original_steps = run_status.get("optimizer", {}).get("steps", 0)
+    current_step = run_status.get("current_step", 0)
 
     # Check if run is actually completed
     if current_status != "completed":
         console.print(f"[bold red]Run is not completed (status: {current_status}).[/]")
         if current_status in ["interrupted", "terminated", "error"]:
             console.print(
-                f"[cyan]This run was interrupted after {completed_steps} steps. Use 'weco resume {run_id}' to continue it.[/]"
+                f"[cyan]This run was interrupted after {current_step} steps. Use 'weco resume {run_id}' to continue it.[/]"
             )
         else:
             console.print(f"[cyan]Current status: {current_status}. Only completed runs can be extended.[/]")
@@ -1331,7 +1333,7 @@ def extend_optimization(
 
     # Use extend endpoint for completed runs
     console.print(
-        f"[cyan]Extending completed run (originally {completed_steps} steps) with {additional_steps} additional steps...[/]"
+        f"[cyan]Extending completed run (originally {original_steps} steps) with {additional_steps} additional steps...[/]"
     )
     extend_info = extend_optimization_run(
         console=console, run_id=run_id, additional_steps=additional_steps, api_keys=api_keys, auth_headers=auth_headers
@@ -1343,7 +1345,7 @@ def extend_optimization(
 
     # Extract extend information
     last_step = extend_info["previous_steps"]  # The completed steps
-    total_steps = extend_info["new_total_steps"]
+    total_steps = last_step + additional_steps  # Calculate new total steps
     evaluation_command = extend_info["evaluation_command"]
     source_code = extend_info["source_code"]
     # For extend, we use the last completed solution as the starting point
