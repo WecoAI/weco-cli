@@ -999,7 +999,7 @@ def resume_optimization(
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. You haven't modified any of the generated solutions")
 
-        if console.input("\n[bold]Continue with resume? [[y]]es/[[N]]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
+        if console.input("\n[bold]Continue with resume? [y]es/[N]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
 
@@ -1372,7 +1372,7 @@ def extend_optimization(
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. The extension parameters are correct for your optimization goals")
 
-        if console.input(f"\n[bold]Continue extending run {run_id}? [[y]]es/[[N]]o (default=no): [/]").lower().strip() not in [
+        if console.input(f"\n[bold]Continue extending run {run_id}? [y]es/[N]o (default=no): [/]").lower().strip() not in [
             "y",
             "yes",
         ]:
