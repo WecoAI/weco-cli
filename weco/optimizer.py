@@ -1001,7 +1001,7 @@ def resume_optimization(
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. You haven't modified any of the generated solutions")
 
-        if console.input("\n[bold]Continue with resume? (yes/no, default=no): [/]").lower().strip() not in ["y", "yes"]:
+        if console.input("\n[bold]Continue with resume? [[y]]es/[[n]]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Resume cancelled by user.[/]")
             return False
 
@@ -1368,7 +1368,7 @@ def extend_optimization(run_id: str, additional_steps: int, skip_validation: boo
         console.print("2. Your test environment is the same (dependencies, data files, etc.)")
         console.print("3. The extension parameters are correct for your optimization goals")
 
-        if console.input(f"\n[bold]Continue extending run {run_id}? (yes/no, default=no): [/]").lower().strip() not in ["y", "yes"]:
+        if console.input(f"\n[bold]Continue extending run {run_id}? [[y]]es/[[n]]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
             console.print("[yellow]Extension cancelled by user.[/]")
             return False
 
