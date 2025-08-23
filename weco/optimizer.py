@@ -944,7 +944,6 @@ def resume_optimization(
     if not skip_validation:
         console.print("\n[bold cyan]Resume Validation[/]")
         console.print(f"Run ID: {run_id}")
-        console.print(f"Run Name: {run_status.get('name', run_id)}")
         console.print(f"Status: {current_status}")
 
         # Validation prompts
@@ -1121,10 +1120,11 @@ def resume_optimization(
         # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
         if last_step < total_steps:
             next_step_id = f"next_step_{last_step + 1}"
+            parent_id = last_solution.get("solution_id") if last_solution and last_solution.get("solution_id") else None
             tree_panel.build_metric_tree(
                 nodes=run_status["nodes"] + [{
                     "solution_id": next_step_id,
-                    "parent_id": last_solution.get("solution_id") if last_solution else None,
+                    "parent_id": parent_id,
                     "step": last_step + 1,
                     "code": None,
                     "metric_value": None,
@@ -1352,7 +1352,6 @@ def extend_optimization(
         return False
 
     # Get basic info for validation (before changing DB status)
-    run_name = run_status.get("name", run_id)
     objective = run_status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
     maximize = objective.get("maximize", True)
@@ -1361,7 +1360,6 @@ def extend_optimization(
     # Show extension preview and get confirmation first
     console.print("\n[bold green]Extension Preview:[/]")
     console.print(f"[cyan]Run ID:[/] {run_id}")
-    console.print(f"[cyan]Run Name:[/] {run_name}")
     console.print(f"[cyan]Original Steps:[/] {original_steps}")
     console.print(f"[cyan]Additional Steps:[/] {additional_steps}")
     console.print(f"[cyan]New Total Steps:[/] {original_steps + additional_steps}")
@@ -1539,10 +1537,11 @@ def extend_optimization(
         # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
         if last_step < total_steps:
             next_step_id = f"next_step_{last_step + 1}"
+            parent_id = last_solution.get("solution_id") if last_solution and last_solution.get("solution_id") else None
             tree_panel.build_metric_tree(
                 nodes=run_status["nodes"] + [{
                     "solution_id": next_step_id,
-                    "parent_id": last_solution.get("solution_id") if last_solution else None,
+                    "parent_id": parent_id,
                     "step": last_step + 1,
                     "code": None,
                     "metric_value": None,
