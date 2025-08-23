@@ -929,7 +929,31 @@ def resume_optimization(
         console.print("[bold red]Run is already completed. Use 'weco extend' command to add more steps.[/]")
         return False
 
-    # Use resume endpoint for interrupted runs
+    # Get basic info for user confirmation (before changing DB status)
+    run_name = run_status.get("name", run_id)
+    total_steps = run_status.get("steps", 0)
+    evaluation_command = run_status.get("evaluation_command", "")
+    
+    # Environment validation (unless skipped) - moved before API call
+    if not skip_validation:
+        console.print("\n[bold cyan]Resume Validation[/]")
+        console.print(f"Run ID: {run_id}")
+        console.print(f"Run Name: {run_name}")
+        console.print(f"Status: {current_status}")
+        console.print(f"Total steps: {total_steps}")
+        console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
+
+        # Validation prompts
+        console.print("\n[bold yellow]Please confirm:[/]")
+        console.print("1. Your evaluation script hasn't been modified since the run started")
+        console.print("2. Your test environment is the same (dependencies, data files, etc.)")
+        console.print("3. You haven't modified any of the generated solutions")
+
+        if console.input("\n[bold]Continue with resume? \\[y]es/\\[N]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
+            console.print("[yellow]Resume cancelled by user.[/]")
+            return False
+
+    # Now call resume endpoint (this changes DB status to "running")
     resume_info = resume_optimization_run(console=console, run_id=run_id, api_keys=api_keys, auth_headers=auth_headers)
     if not resume_info:
         console.print("[bold red]Failed to resume run. Please check the run ID and try again.[/]")
@@ -973,24 +997,6 @@ def resume_optimization(
 
     # Log directory was already retrieved from resume_info above
     run_log_dir = pathlib.Path(log_dir) / run_id
-
-    # Environment validation (unless skipped)
-    if not skip_validation:
-        console.print("\n[bold cyan]Resume Validation[/]")
-        console.print(f"Run ID: {run_id}")
-        console.print(f"Run Name: {run_name}")
-        console.print(f"Last completed: Step {last_step}/{total_steps}")
-        console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
-
-        # Validation prompts
-        console.print("\n[bold yellow]Please confirm:[/]")
-        console.print("1. Your evaluation script hasn't been modified since the run started")
-        console.print("2. Your test environment is the same (dependencies, data files, etc.)")
-        console.print("3. You haven't modified any of the generated solutions")
-
-        if console.input("\n[bold]Continue with resume? \\[y]es/\\[N]o (default=no): [/]").lower().strip() not in ["y", "yes"]:
-            console.print("[yellow]Resume cancelled by user.[/]")
-            return False
 
     # Ensure log directory exists
     run_log_dir.mkdir(parents=True, exist_ok=True)
@@ -1324,7 +1330,42 @@ def extend_optimization(
             console.print(f"[cyan]Current status: {current_status}. Only completed runs can be extended.[/]")
         return False
 
-    # Use extend endpoint for completed runs
+    # Get basic info for validation (before changing DB status)
+    run_name = run_status.get("name", run_id)
+    objective = run_status.get("objective", {})
+    metric_name = objective.get("metric_name", "metric")
+    maximize = objective.get("maximize", True)
+    evaluation_command = run_status.get("evaluation_command", "")
+    
+    # Show extension preview and get confirmation first
+    console.print("\n[bold green]Extension Preview:[/]")
+    console.print(f"[cyan]Run ID:[/] {run_id}")
+    console.print(f"[cyan]Run Name:[/] {run_name}")
+    console.print(f"[cyan]Original Steps:[/] {original_steps}")
+    console.print(f"[cyan]Additional Steps:[/] {additional_steps}")
+    console.print(f"[cyan]New Total Steps:[/] {original_steps + additional_steps}")
+    console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
+    console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
+
+    # Environment validation (unless skipped) - moved before API call
+    if not skip_validation:
+        console.print("\n[bold cyan]Extension Validation[/]")
+        console.print("This will continue optimization from where the original run completed.")
+
+        # Validation prompts
+        console.print("\n[bold yellow]Please confirm:[/]")
+        console.print("1. Your evaluation script hasn't been modified since the original run")
+        console.print("2. Your test environment is the same (dependencies, data files, etc.)")
+        console.print("3. The extension parameters are correct for your optimization goals")
+
+        if console.input(f"\n[bold]Continue extending run {run_id}? \\[y]es/\\[N]o (default=no): [/]").lower().strip() not in [
+            "y",
+            "yes",
+        ]:
+            console.print("[yellow]Extension cancelled by user.[/]")
+            return False
+
+    # Now call extend endpoint (this changes DB status to "running")
     console.print(
         f"[cyan]Extending completed run (originally {original_steps} steps) with {additional_steps} additional steps...[/]"
     )
@@ -1356,37 +1397,6 @@ def extend_optimization(
     objective = run_status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
     maximize = objective.get("maximize", True)
-
-    # Display run information
-    console.print("\n[bold green]Extending Completed Run[/]")
-    console.print(f"[cyan]Run Name:[/] {run_name}")
-    console.print(f"[cyan]Run ID:[/] {run_id}")
-    console.print(f"[cyan]Previous steps:[/] {last_step}")
-    console.print(f"[cyan]Additional steps:[/] {additional_steps}")
-    console.print(f"[cyan]New total steps:[/] [bold green]{total_steps}[/]")
-    if last_solution:
-        console.print(f"[cyan]Last Step Metric:[/] {last_solution.get('metric_value', 'N/A')}")
-    console.print(f"[cyan]Metric:[/] {'Maximizing' if maximize else 'Minimizing'} {metric_name}")
-    console.print(f"[cyan]Evaluation Command:[/] {evaluation_command}")
-
-    # Environment validation (unless skipped)
-    if not skip_validation:
-        console.print("\n[bold cyan]Extension Validation[/]")
-        console.print("This will continue optimization from where the original run completed.")
-        console.print(f"The run will be extended from {last_step} to {total_steps} total steps.")
-
-        # Validation prompts
-        console.print("\n[bold yellow]Please confirm:[/]")
-        console.print("1. Your evaluation script hasn't been modified since the original run")
-        console.print("2. Your test environment is the same (dependencies, data files, etc.)")
-        console.print("3. The extension parameters are correct for your optimization goals")
-
-        if console.input(f"\n[bold]Continue extending run {run_id}? \\[y]es/\\[N]o (default=no): [/]").lower().strip() not in [
-            "y",
-            "yes",
-        ]:
-            console.print("[yellow]Extension cancelled by user.[/]")
-            return False
 
     # Get optimizer config for model info
     optimizer_config = run_status.get("optimizer", {})
