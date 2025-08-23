@@ -765,7 +765,7 @@ def execute_optimization(
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
                 eval_output_panel=eval_output_panel,
-                metric_tree_panel=tree_panel,
+                tree_panel=tree_panel,
                 api_keys=llm_api_keys,
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
