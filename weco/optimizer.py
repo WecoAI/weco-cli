@@ -982,7 +982,6 @@ def resume_optimization(
     console.print(f"[cyan]Last completed step:[/] {last_step}/{total_steps}")
     console.print(f"[cyan]Will resume from step:[/] {last_step + 1}")
     console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
-    
 
     # Note if the last solution was buggy
     actual_last_completed_step = last_step  # Keep original for file naming
@@ -1339,7 +1338,7 @@ def extend_optimization(
     metric_name = objective.get("metric_name", "metric")
     maximize = objective.get("maximize", True)
     evaluation_command = run_status.get("evaluation_command", "")
-    
+
     # Show extension preview and get confirmation first
     console.print("\n[bold green]Extension Preview:[/]")
     console.print(f"[cyan]Run ID:[/] {run_id}")
@@ -1394,7 +1393,7 @@ def extend_optimization(
 
     if save_logs:
         console.print("[dim]Local logging enabled (from original run)[/]")
-    
+
     # Show detailed extend information now that we have it
     console.print("\n[bold green]Extension Details:[/]")
     console.print(f"[cyan]Run Name:[/] {run_name}")
@@ -1516,20 +1515,23 @@ def extend_optimization(
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status and run_status["nodes"]:
         tree_panel.build_metric_tree(nodes=run_status["nodes"])
-        
+
         # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
         if last_step < total_steps:
             next_step_id = f"next_step_{last_step + 1}"
             parent_id = last_solution.get("solution_id") if last_solution and last_solution.get("solution_id") else None
             tree_panel.build_metric_tree(
-                nodes=run_status["nodes"] + [{
-                    "solution_id": next_step_id,
-                    "parent_id": parent_id,
-                    "step": last_step + 1,
-                    "code": None,
-                    "metric_value": None,
-                    "is_buggy": None,
-                }]
+                nodes=run_status["nodes"]
+                + [
+                    {
+                        "solution_id": next_step_id,
+                        "parent_id": parent_id,
+                        "step": last_step + 1,
+                        "code": None,
+                        "metric_value": None,
+                        "is_buggy": None,
+                    }
+                ]
             )
             # Mark the next step as unevaluated to show "evaluating..." indicator
             tree_panel.set_unevaluated_node(node_id=next_step_id)
