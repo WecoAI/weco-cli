@@ -1,6 +1,5 @@
 import pathlib
 import math
-import requests
 import threading
 import signal
 import sys
@@ -1109,7 +1108,7 @@ def resume_optimization(
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status and run_status["nodes"]:
         # Build the metric tree with all previous nodes (only if not empty)
-        metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
+        tree_panel.build_metric_tree(nodes=run_status["nodes"])
 
     # Initialize solution panels with current and best solutions
     current_node = None
@@ -1233,7 +1232,7 @@ def resume_optimization(
                             layout=layout,
                             sections_to_update=[
                                 ("summary", summary_panel.get_display()),
-                                ("tree", metric_tree_panel.get_display(is_done=True)),
+                                ("tree", tree_panel.get_display(is_done=True)),
                                 ("current_solution", current_solution_panel),
                                 ("best_solution", best_solution_panel),
                                 ("eval_output", evaluation_output_panel.get_display()),
@@ -1499,7 +1498,7 @@ def extend_optimization(
     # Load previous history
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status and run_status["nodes"]:
-        metric_tree_panel.build_metric_tree(nodes=run_status["nodes"])
+        tree_panel.build_metric_tree(nodes=run_status["nodes"])
 
     # Initialize with last solution
     last_node = None
