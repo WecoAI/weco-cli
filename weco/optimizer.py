@@ -294,8 +294,8 @@ def run_optimization_loop(
     source_fp: pathlib.Path,
     summary_panel,
     solution_panels,
-    evaluation_output_panel,
-    metric_tree_panel,
+    eval_output_panel,
+    tree_panel,
     api_keys: dict,
     auth_headers: dict,
     stop_heartbeat_event: threading.Event,
@@ -335,14 +335,14 @@ def run_optimization_loop(
         if step == start_step and initial_execution_output:
             execution_output = initial_execution_output
         elif not eval_after_solution:  # resume/extend pattern - evaluate before getting solution
-            evaluation_output_panel.clear()
+            eval_output_panel.clear()
             execution_output = run_and_log_evaluation(
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
                 save_logs=save_logs,
                 runs_dir=runs_dir,
                 step=step,
-                eval_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
             )
 
         # Get next solution
@@ -374,12 +374,12 @@ def run_optimization_loop(
 
         # Rebuild the metric tree with all nodes
         if status_response and status_response.get("nodes"):
-            metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
+            tree_panel.build_metric_tree(nodes=status_response["nodes"])
 
             # Mark the current node as unevaluated if it's a new one
             if response.get("solution_id"):
                 try:
-                    metric_tree_panel.set_unevaluated_node(node_id=response["solution_id"])
+                    tree_panel.set_unevaluated_node(node_id=response["solution_id"])
                 except Exception:
                     pass  # Node might not exist yet
 
@@ -411,9 +411,9 @@ def run_optimization_loop(
             live=live,
             layout=layout,
             summary_panel=summary_panel,
-            tree_panel=metric_tree_panel,
+            tree_panel=tree_panel,
             solution_panels=solution_panels,
-            eval_output_panel=evaluation_output_panel,
+            eval_output_panel=eval_output_panel,
             current_step=step,
             is_done=False,
             transition_delay=0.08,
@@ -428,14 +428,14 @@ def run_optimization_loop(
         # Handle evaluation after solution (for execute function pattern)
         if eval_after_solution:
             # Clear evaluation output since we are running evaluation on a new solution
-            evaluation_output_panel.clear()
+            eval_output_panel.clear()
             update_live_display(
                 live=live,
                 layout=layout,
                 summary_panel=summary_panel,
-                tree_panel=metric_tree_panel,
+                tree_panel=tree_panel,
                 solution_panels=solution_panels,
-                eval_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
                 current_step=step,
                 is_done=False,
                 transition_delay=0.08,
@@ -446,12 +446,12 @@ def run_optimization_loop(
                 save_logs=save_logs,
                 runs_dir=runs_dir,
                 step=step,
-                eval_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
             )
             smooth_update(
                 live=live,
                 layout=layout,
-                sections_to_update=[("eval_output", evaluation_output_panel.get_display())],
+                sections_to_update=[("eval_output", eval_output_panel.get_display())],
                 transition_delay=0.1,
             )
 
@@ -475,7 +475,7 @@ def run_optimization_loop(
 
         # Update panels with final status
         if status_response and status_response.get("nodes"):
-            metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
+            tree_panel.build_metric_tree(nodes=status_response["nodes"])
             best_solution_node = get_best_node_from_status(status_response)
             solution_panels.update(current_node=best_solution_node, best_node=best_solution_node)
 
@@ -485,7 +485,7 @@ def run_optimization_loop(
 
 
 def prime_live_layout(
-    layout, summary_panel, tree_panel, solution_panels, evaluation_output_panel, current_step: int, is_done: bool = False
+    layout, summary_panel, tree_panel, solution_panels, eval_output_panel, current_step: int, is_done: bool = False
 ):
     """
     Helper function to hydrate the Live layout with current panel states.
@@ -495,7 +495,7 @@ def prime_live_layout(
         summary_panel: The summary panel instance
         tree_panel: The metric tree panel instance
         solution_panels: The solution panels instance
-        evaluation_output_panel: The evaluation output panel instance
+        eval_output_panel: The evaluation output panel instance
         current_step: The current optimization step
         is_done: Whether optimization is complete
     """
@@ -504,11 +504,11 @@ def prime_live_layout(
     current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
     layout["current_solution"].update(current_solution_panel)
     layout["best_solution"].update(best_solution_panel)
-    layout["eval_output"].update(evaluation_output_panel.get_display())
+    layout["eval_output"].update(eval_output_panel.get_display())
 
 
 def evaluate_and_refresh_eval_panel(
-    eval_command: str, eval_timeout: Optional[int], save_logs: bool, runs_dir: pathlib.Path, step: int, evaluation_output_panel
+    eval_command: str, eval_timeout: Optional[int], save_logs: bool, runs_dir: pathlib.Path, step: int, eval_output_panel
 ) -> str:
     """
     Helper function to run evaluation and refresh the evaluation panel.
@@ -519,19 +519,19 @@ def evaluate_and_refresh_eval_panel(
         save_logs: Whether to save logs
         runs_dir: Directory for run logs
         step: Current optimization step
-        evaluation_output_panel: The evaluation output panel instance
+        eval_output_panel: The evaluation output panel instance
 
     Returns:
         str: The execution output from evaluation
     """
-    evaluation_output_panel.clear()
+    eval_output_panel.clear()
     return run_and_log_evaluation(
         eval_command=eval_command,
         eval_timeout=eval_timeout,
         save_logs=save_logs,
         runs_dir=runs_dir,
         step=step,
-        eval_output_panel=evaluation_output_panel,
+        eval_output_panel=eval_output_panel,
     )
 
 
@@ -764,7 +764,7 @@ def execute_optimization(
                 source_fp=source_fp,
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
-                evaluation_output_panel=eval_output_panel,
+                eval_output_panel=eval_output_panel,
                 metric_tree_panel=tree_panel,
                 api_keys=llm_api_keys,
                 auth_headers=auth_headers,
@@ -1087,7 +1087,7 @@ def resume_optimization(
 
     # Initialize panels for display
     source_fp = pathlib.Path(source_path)
-    summary_panel, solution_panels, evaluation_output_panel, tree_panel = initialize_panels(
+    summary_panel, solution_panels, eval_output_panel, tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
@@ -1150,7 +1150,7 @@ def resume_optimization(
         summary_panel=summary_panel,
         tree_panel=tree_panel,
         solution_panels=solution_panels,
-        evaluation_output_panel=evaluation_output_panel,
+        eval_output_panel=eval_output_panel,
         current_step=last_step,
         is_done=False,
     )
@@ -1175,7 +1175,7 @@ def resume_optimization(
                 source_fp=pathlib.Path(source_path),
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
-                evaluation_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
                 tree_panel=tree_panel,
                 api_keys=api_keys,
                 auth_headers=auth_headers,
@@ -1195,7 +1195,7 @@ def resume_optimization(
                     save_logs=save_logs,
                     runs_dir=run_log_dir,
                     step=step,
-                    evaluation_output_panel=evaluation_output_panel,
+                    eval_output_panel=eval_output_panel,
                 )
 
                 # If we completed all steps but API didn't mark as done, make explicit completion call
@@ -1235,7 +1235,7 @@ def resume_optimization(
                                 ("tree", tree_panel.get_display(is_done=True)),
                                 ("current_solution", current_solution_panel),
                                 ("best_solution", best_solution_panel),
-                                ("eval_output", evaluation_output_panel.get_display()),
+                                ("eval_output", eval_output_panel.get_display()),
                             ],
                             transition_delay=0.08,
                         )
@@ -1480,7 +1480,7 @@ def extend_optimization(
 
     # Initialize panels for display
     source_fp = pathlib.Path(source_path)
-    summary_panel, solution_panels, evaluation_output_panel, tree_panel = initialize_panels(
+    summary_panel, solution_panels, eval_output_panel, tree_panel = initialize_panels(
         maximize=maximize,
         metric_name=metric_name,
         total_steps=total_steps,
@@ -1524,7 +1524,7 @@ def extend_optimization(
         summary_panel=summary_panel,
         tree_panel=tree_panel,
         solution_panels=solution_panels,
-        evaluation_output_panel=evaluation_output_panel,
+        eval_output_panel=eval_output_panel,
         current_step=last_step,
         is_done=False,
     )
@@ -1539,7 +1539,7 @@ def extend_optimization(
                 save_logs=save_logs,
                 runs_dir=run_log_dir,
                 step=last_step,
-                evaluation_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
             )
 
             # Continue from last_step + 1 to total_steps using shared optimization loop
@@ -1557,7 +1557,7 @@ def extend_optimization(
                 source_fp=pathlib.Path(source_path),
                 summary_panel=summary_panel,
                 solution_panels=solution_panels,
-                evaluation_output_panel=evaluation_output_panel,
+                eval_output_panel=eval_output_panel,
                 tree_panel=tree_panel,
                 api_keys=api_keys,
                 auth_headers=auth_headers,
