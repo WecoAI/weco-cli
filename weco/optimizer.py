@@ -281,8 +281,6 @@ def write_solution_files(code: str, source_fp: pathlib.Path, runs_dir: pathlib.P
     write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
 
 
-
-
 def run_optimization_loop(
     live,
     layout,
@@ -319,14 +317,12 @@ def run_optimization_loop(
 
     # For execute_optimization, we use the initial execution output from step 0 baseline
     execution_output = initial_execution_output
-    
+
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
         try:
             run_status = get_optimization_run_status(
-                console, run_id, include_history=False, 
-                timeout=api_timeout,
-                auth_headers=auth_headers
+                console, run_id, include_history=False, timeout=api_timeout, auth_headers=auth_headers
             )
             if run_status and run_status.get("status") == "stopping":
                 user_stop_requested_flag = True
@@ -477,26 +473,20 @@ def run_optimization_loop(
         status_response = get_optimization_run_status(
             console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
-        
+
         # Update panels with final status
         if status_response and status_response.get("nodes"):
             metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
             best_solution_node = get_best_node_from_status(status_response)
             solution_panels.update(current_node=best_solution_node, best_node=best_solution_node)
-        
+
         optimization_completed_normally = True
 
     return optimization_completed_normally, user_stop_requested_flag
 
 
 def prime_live_layout(
-    layout,
-    summary_panel,
-    tree_panel,
-    solution_panels,
-    evaluation_output_panel,
-    current_step: int,
-    is_done: bool = False,
+    layout, summary_panel, tree_panel, solution_panels, evaluation_output_panel, current_step: int, is_done: bool = False
 ):
     """
     Helper function to hydrate the Live layout with current panel states.
@@ -786,21 +776,21 @@ def execute_optimization(
                 api_timeout=api_timeout,
                 run_final_evaluation=True,  # execute pattern: run final evaluation
             )
-            
+
             # Handle end-of-optimization display and file saving
             if optimization_completed_normally:
                 # Get final status for display
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
                 )
-                
+
                 # Update final display
                 # Update tree panel and solution panels for final display
                 nodes_list_from_status_final = status_response.get("nodes")
                 tree_panel.build_metric_tree(
                     nodes=nodes_list_from_status_final if nodes_list_from_status_final is not None else []
                 )
-                
+
                 best_solution_node = get_best_node_from_status(status_response)
                 solution_panels.update(current_node=None, best_node=best_solution_node)
                 _, best_solution_panel = solution_panels.get_display(current_step=steps)
