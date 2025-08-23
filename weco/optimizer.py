@@ -938,9 +938,7 @@ def resume_optimization(
     # Extract resume information
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
-    remaining_steps = total_steps - last_step  # noqa: F841 - Calculate remaining steps (kept for potential future use)
     evaluation_command = resume_info["evaluation_command"]
-    source_code = resume_info["source_code"]  # noqa: F841 - Keep for potential fallback scenarios
     last_solution = resume_info["last_solution"]
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
@@ -1054,8 +1052,7 @@ def resume_optimization(
         console.print("[dim]Continuing with local execution logging[/]")
 
     # Display resume information
-    # Note: last_step is 0-indexed (0=baseline, 1=first optimization, etc.)
-    console.print(f"\n[bold green]Resuming optimization from step {last_step}/{total_steps}[/]")
+    console.print(f"\n[bold green]Resuming optimization from step {last_step + 1}/{total_steps}[/]")
     console.print(f"[dim]Will run steps {last_step + 1} through {total_steps}[/]")
 
     # Continue optimization from the next step
@@ -1158,9 +1155,6 @@ def resume_optimization(
     try:
         with Live(layout, console=console, refresh_per_second=4) as live:
             # Continue from the next step using shared optimization loop
-            # Note: Steps are 0-indexed internally (0=baseline, 1-N=optimization steps)
-            # But total_steps is the count of optimization steps (excludes baseline)
-            # So if total_steps=5, we have steps 0,1,2,3,4,5 (6 total)
             optimization_completed_normally, user_stop_requested_flag = run_optimization_loop(
                 live=live,
                 layout=layout,
@@ -1431,14 +1425,14 @@ def extend_optimization(
         write_to_path(pathlib.Path(source_path), last_solution["code"])
         write_to_path(run_log_dir / f"step_{last_step}.py", last_solution["code"])
         console.print(
-            f"\n[green]Continuing from step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}"
+            f"\n[green]Extending from last completed step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}"
         )
     else:
         # Fallback to original source code if no solution available
         write_to_path(pathlib.Path(source_path), source_code)
         console.print(f"\n[yellow]No last solution found, starting from original source:[/] {source_path}")
 
-    console.print(f"[cyan]Extending from step {last_step} to {total_steps}[/]\n")
+    console.print(f"[cyan]Extending from step {last_step + 1} to {total_steps}[/]\n")
 
     # Initialize/append logging structure if save_logs is enabled
     if save_logs:
