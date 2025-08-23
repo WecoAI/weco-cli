@@ -364,13 +364,19 @@ def run_optimization_loop(
         if response.get("code"):
             write_solution_files(code=response["code"], source_fp=source_fp, runs_dir=runs_dir, step=step)
 
-        # Update progress bar
-        summary_panel.set_step(step)
-
         # Refresh the entire tree from the status to avoid synchronization issues
         status_response = get_optimization_run_status(
             console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
+
+        # Use the actual current step from the API response for consistency
+        if status_response:
+            current_step_from_api = status_response.get("current_step", step)
+            # Update progress bar with API step to ensure consistency
+            summary_panel.set_step(current_step_from_api)
+        else:
+            # Fallback to loop step if API response is unavailable
+            summary_panel.set_step(step)
 
         # Rebuild the metric tree with all nodes
         if status_response and status_response.get("nodes"):
@@ -467,15 +473,20 @@ def run_optimization_loop(
             timeout=api_timeout,
             auth_headers=auth_headers,
         )
-        summary_panel.set_step(step=total_steps)
         summary_panel.update_token_counts(usage=response["usage"])
         status_response = get_optimization_run_status(
             console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
 
-        # Update panels with final status
-        if status_response and status_response.get("nodes"):
-            tree_panel.build_metric_tree(nodes=status_response["nodes"])
+        # Update panels with final status using consistent step from API
+        if status_response:
+            final_step = status_response.get("current_step", total_steps)
+            summary_panel.set_step(step=final_step)
+            if status_response.get("nodes"):
+                tree_panel.build_metric_tree(nodes=status_response["nodes"])
+        else:
+            # Fallback if no API response
+            summary_panel.set_step(step=total_steps)
             best_solution_node = get_best_node_from_status(status_response)
             solution_panels.update(current_node=best_solution_node, best_node=best_solution_node)
 
