@@ -1101,8 +1101,8 @@ def resume_optimization(
     summary_panel.set_dashboard_url(run_id)
     if run_name:
         summary_panel.set_run_name(run_name)
-    # Set the initial progress to the last completed step
-    summary_panel.set_step(last_step)
+    # Set the initial progress to the step we're about to work on
+    summary_panel.set_step(last_step + 1)
 
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
@@ -1493,7 +1493,7 @@ def extend_optimization(
     summary_panel.set_dashboard_url(run_id)
     if run_name:
         summary_panel.set_run_name(run_name)
-    summary_panel.set_step(last_step)  # Start from where we left off
+    summary_panel.set_step(last_step + 1)  # Show the step we're about to work on
 
     # Load previous history
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
