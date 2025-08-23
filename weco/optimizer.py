@@ -929,19 +929,12 @@ def resume_optimization(
         console.print("[bold red]Run is already completed. Use 'weco extend' command to add more steps.[/]")
         return False
 
-    # Get basic info for user confirmation (before changing DB status)
-    run_name = run_status.get("name", run_id)
-    total_steps = run_status.get("steps", 0)
-    evaluation_command = run_status.get("evaluation_command", "")
-    
     # Environment validation (unless skipped) - moved before API call
     if not skip_validation:
         console.print("\n[bold cyan]Resume Validation[/]")
         console.print(f"Run ID: {run_id}")
-        console.print(f"Run Name: {run_name}")
+        console.print(f"Run Name: {run_status.get('name', run_id)}")
         console.print(f"Status: {current_status}")
-        console.print(f"Total steps: {total_steps}")
-        console.print(f"\nEvaluation command: [cyan]{evaluation_command}[/]")
 
         # Validation prompts
         console.print("\n[bold yellow]Please confirm:[/]")
@@ -973,12 +966,13 @@ def resume_optimization(
     if save_logs:
         console.print("[dim]Local logging enabled (from original run)[/]")
 
-    # Debug: Log what we received from API
-    console.print(f"[dim]Debug: API returned last_completed_step={last_step}, total_steps={total_steps}[/]")
-    if last_solution:
-        console.print(
-            f"[dim]Debug: Last solution - step={last_solution.get('step')}, is_buggy={last_solution.get('is_buggy')}[/]"
-        )
+    # Show detailed resume information now that we have it
+    console.print("\n[bold green]Resume Details:[/]")
+    console.print(f"[cyan]Run Name:[/] {run_name}")
+    console.print(f"[cyan]Last completed step:[/] {last_step}/{total_steps}")
+    console.print(f"[cyan]Will resume from step:[/] {last_step + 1}")
+    console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
+    
 
     # Note if the last solution was buggy
     actual_last_completed_step = last_step  # Keep original for file naming
@@ -1392,6 +1386,17 @@ def extend_optimization(
 
     if save_logs:
         console.print("[dim]Local logging enabled (from original run)[/]")
+    
+    # Show detailed extend information now that we have it
+    console.print("\n[bold green]Extension Details:[/]")
+    console.print(f"[cyan]Run Name:[/] {run_name}")
+    console.print(f"[cyan]Previous steps completed:[/] {last_step}")
+    console.print(f"[cyan]Additional steps:[/] {additional_steps}")
+    console.print(f"[cyan]New total steps:[/] {total_steps}")
+    console.print(f"[cyan]Will continue from step:[/] {last_step + 1}")
+    console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
+    if last_solution:
+        console.print(f"[cyan]Last step metric:[/] {last_solution.get('metric_value', 'N/A')}")
 
     # Get metric info from run_status
     objective = run_status.get("objective", {})
