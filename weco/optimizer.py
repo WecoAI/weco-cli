@@ -7,7 +7,7 @@ import sys
 import traceback
 import json
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union, Tuple
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
@@ -281,53 +281,6 @@ def write_solution_files(code: str, source_fp: pathlib.Path, runs_dir: pathlib.P
     write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
 
 
-def check_run_status_for_stop(
-    console: Console, run_id: str, auth_headers: dict, stop_heartbeat_event: threading.Event
-) -> tuple[dict, bool]:
-    """
-    Check run status and detect if user requested stop.
-
-    Returns:
-        tuple: (run_status, user_stop_requested)
-    """
-    run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-
-    user_stop_requested = False
-    if run_status and run_status.get("status") == "stopping":
-        user_stop_requested = True
-        console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
-        stop_heartbeat_event.set()
-
-    return run_status, user_stop_requested
-
-
-def setup_signal_handler(
-    stop_heartbeat_event: threading.Event,
-    heartbeat_thread: Optional[threading.Thread],
-    console: Console,
-    run_id: Optional[str] = None,
-    auth_headers: Optional[dict] = None,
-) -> None:
-    """Setup signal handler for graceful shutdown."""
-
-    def signal_handler(signum, frame):
-        """Handle interrupt signals gracefully."""
-        signal_name = signal.Signals(signum).name
-        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
-
-        # Stop heartbeat thread
-        stop_heartbeat_event.set()
-        if heartbeat_thread and heartbeat_thread.is_alive():
-            heartbeat_thread.join(timeout=2)
-
-        # Report termination if run_id is available
-        if run_id and auth_headers:
-            report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
-
-        sys.exit(1)
-
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
 
 
 def run_optimization_loop(
@@ -352,6 +305,8 @@ def run_optimization_loop(
     initial_execution_output: str = "",
     additional_instructions: Optional[str] = None,
     eval_after_solution: bool = False,  # For extend function pattern
+    api_timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    run_final_evaluation: bool = False,  # For execute function final step
 ) -> tuple[bool, bool]:
     """
     Shared optimization loop logic for execute, resume, and extend operations.
@@ -362,22 +317,29 @@ def run_optimization_loop(
     optimization_completed_normally = False
     user_stop_requested_flag = False
 
+    # For execute_optimization, we use the initial execution output from step 0 baseline
+    execution_output = initial_execution_output
+    
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
-        run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-        if run_status and run_status.get("status") == "stopping":
-            user_stop_requested_flag = True
-            console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
-            stop_heartbeat_event.set()
-            break
+        try:
+            run_status = get_optimization_run_status(
+                console, run_id, include_history=False, 
+                timeout=api_timeout,
+                auth_headers=auth_headers
+            )
+            if run_status and run_status.get("status") == "stopping":
+                user_stop_requested_flag = True
+                console.print("\n[yellow]User requested stop via dashboard. Stopping optimization...[/]")
+                stop_heartbeat_event.set()
+                break
+        except Exception as e:
+            console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
-        # Handle execution output for the first step
+        # Handle execution output for the first step (resume/extend pattern only)
         if step == start_step and initial_execution_output:
             execution_output = initial_execution_output
-        else:
-            # Run evaluation for the current solution
-            # For resume operations, we need to evaluate from the first step
-            # For new runs, we skip evaluation on step 0 (the baseline)
+        elif not eval_after_solution:  # resume/extend pattern - evaluate before getting solution
             evaluation_output_panel.clear()
             execution_output = run_and_log_evaluation(
                 eval_command=eval_command,
@@ -396,6 +358,7 @@ def run_optimization_loop(
             additional_instructions=additional_instructions,
             api_keys=api_keys,
             auth_headers=auth_headers,
+            timeout=api_timeout,
         )
 
         if not response:
@@ -411,7 +374,7 @@ def run_optimization_loop(
 
         # Refresh the entire tree from the status to avoid synchronization issues
         status_response = get_optimization_run_status(
-            console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+            console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
 
         # Rebuild the metric tree with all nodes
@@ -467,9 +430,21 @@ def run_optimization_loop(
             stop_heartbeat_event.set()
             break
 
-        # Handle evaluation after solution (for extend function pattern)
-        if eval_after_solution and step < total_steps:  # Don't evaluate if this is the last step
+        # Handle evaluation after solution (for execute function pattern)
+        if eval_after_solution:
+            # Clear evaluation output since we are running evaluation on a new solution
             evaluation_output_panel.clear()
+            update_live_display(
+                live=live,
+                layout=layout,
+                summary_panel=summary_panel,
+                tree_panel=metric_tree_panel,
+                solution_panels=solution_panels,
+                eval_output_panel=evaluation_output_panel,
+                current_step=step,
+                is_done=False,
+                transition_delay=0.08,
+            )
             execution_output = run_and_log_evaluation(
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
@@ -478,6 +453,38 @@ def run_optimization_loop(
                 step=step,
                 eval_output_panel=evaluation_output_panel,
             )
+            smooth_update(
+                live=live,
+                layout=layout,
+                sections_to_update=[("eval_output", evaluation_output_panel.get_display())],
+                transition_delay=0.1,
+            )
+
+    # Handle final evaluation for execute pattern
+    if not user_stop_requested_flag and run_final_evaluation:
+        # Re-evaluate the final solution
+        response = evaluate_feedback_then_suggest_next_solution(
+            console=console,
+            run_id=run_id,
+            execution_output=execution_output,
+            additional_instructions=additional_instructions,
+            api_keys=api_keys,
+            timeout=api_timeout,
+            auth_headers=auth_headers,
+        )
+        summary_panel.set_step(step=total_steps)
+        summary_panel.update_token_counts(usage=response["usage"])
+        status_response = get_optimization_run_status(
+            console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
+        )
+        
+        # Update panels with final status
+        if status_response and status_response.get("nodes"):
+            metric_tree_panel.build_metric_tree(nodes=status_response["nodes"])
+            best_solution_node = get_best_node_from_status(status_response)
+            solution_panels.update(current_node=best_solution_node, best_node=best_solution_node)
+        
+        optimization_completed_normally = True
 
     return optimization_completed_normally, user_stop_requested_flag
 
@@ -753,119 +760,47 @@ def execute_optimization(
                 transition_delay=0.1,
             )
 
-            # Starting from step 1 to steps (inclusive) because the baseline solution is step 0, so we want to optimize for steps worth of steps
-            for step in range(1, steps + 1):
-                # Re-read instructions from the original source (file path or string) BEFORE each suggest call
-                current_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
-                if run_id:
-                    try:
-                        current_status_response = get_optimization_run_status(
-                            console=console, run_id=run_id, include_history=False, timeout=(10, 30), auth_headers=auth_headers
-                        )
-                        current_run_status_val = current_status_response.get("status")
-                        if current_run_status_val == "stopping":
-                            console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
-                            user_stop_requested_flag = True
-                            break
-                    except requests.exceptions.RequestException as e:
-                        console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
-                    except Exception as e:
-                        console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
-
-                # Send feedback and get next suggestion
-                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    run_id=run_id,
-                    execution_output=term_out,
-                    additional_instructions=current_additional_instructions,
-                    api_keys=llm_api_keys,
-                    auth_headers=auth_headers,
-                    timeout=api_timeout,
-                )
-                # Save next solution to both source file and log directory
-                write_solution_files(
-                    code=eval_and_next_solution_response["code"], source_fp=source_fp, runs_dir=runs_dir, step=step
-                )
+            # Use shared optimization loop for steps 1 to steps (inclusive)
+            optimization_completed_normally, user_stop_requested_flag = run_optimization_loop(
+                live=live,
+                layout=layout,
+                console=console,
+                run_id=run_id,
+                start_step=1,
+                total_steps=steps,
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                runs_dir=runs_dir,
+                source_fp=source_fp,
+                summary_panel=summary_panel,
+                solution_panels=solution_panels,
+                evaluation_output_panel=eval_output_panel,
+                metric_tree_panel=tree_panel,
+                api_keys=llm_api_keys,
+                auth_headers=auth_headers,
+                stop_heartbeat_event=stop_heartbeat_event,
+                initial_execution_output=term_out,
+                additional_instructions=processed_additional_instructions,
+                eval_after_solution=True,  # execute pattern: evaluate after getting solution
+                api_timeout=api_timeout,
+                run_final_evaluation=True,  # execute pattern: run final evaluation
+            )
+            
+            # Handle end-of-optimization display and file saving
+            if optimization_completed_normally:
+                # Get final status for display
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
                 )
-                # Update the step of the progress bar, token counts, plan and metric tree
-                summary_panel.set_step(step=step)
-                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
-                summary_panel.update_thinking(thinking=eval_and_next_solution_response["plan"])
-
-                nodes_list_from_status = status_response.get("nodes")
-                tree_panel.build_metric_tree(nodes=nodes_list_from_status if nodes_list_from_status is not None else [])
-                tree_panel.set_unevaluated_node(node_id=eval_and_next_solution_response["solution_id"])
-
-                # Update the solution panels with the next solution and best solution (and score)
-                best_solution_node = get_best_node_from_status(status_response)
-                current_solution_node = find_node_in_status(status_response, eval_and_next_solution_response["solution_id"])
-                if current_solution_node is None:
-                    raise ValueError(
-                        "Current solution node not found in the optimization status response. This may indicate a synchronization issue with the backend."
-                    )
-
-                # Update the solution panels with the current and best solution
-                solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
-                # Clear evaluation output since we are running a evaluation on a new solution
-                eval_output_panel.clear()
-                update_live_display(
-                    live=live,
-                    layout=layout,
-                    summary_panel=summary_panel,
-                    tree_panel=tree_panel,
-                    solution_panels=solution_panels,
-                    eval_output_panel=eval_output_panel,
-                    current_step=step,
-                    is_done=False,
-                    transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
-                )
-                term_out = run_and_log_evaluation(
-                    eval_command=eval_command,
-                    eval_timeout=eval_timeout,
-                    save_logs=save_logs,
-                    runs_dir=runs_dir,
-                    step=step,
-                    eval_output_panel=eval_output_panel,
-                )
-                smooth_update(
-                    live=live,
-                    layout=layout,
-                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                    transition_delay=0.1,
-                )
-
-            if not user_stop_requested_flag:
-                # Re-read instructions from the original source (file path or string) BEFORE each suggest call
-                current_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
-                # Evaluate the final solution thats been generated
-                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    run_id=run_id,
-                    execution_output=term_out,
-                    additional_instructions=current_additional_instructions,
-                    api_keys=llm_api_keys,
-                    timeout=api_timeout,
-                    auth_headers=auth_headers,
-                )
-                summary_panel.set_step(step=steps)
-                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
-                status_response = get_optimization_run_status(
-                    console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
-                )
-                # No need to update the plan panel since we have finished the optimization
-                # Get the optimization run status for
-                # the best solution, its score, and the history to plot the tree
+                
+                # Update final display
+                # Update tree panel and solution panels for final display
                 nodes_list_from_status_final = status_response.get("nodes")
                 tree_panel.build_metric_tree(
                     nodes=nodes_list_from_status_final if nodes_list_from_status_final is not None else []
                 )
-                # No need to set any solution to unevaluated since we have finished the optimization
-                # and all solutions have been evaluated
-                # No neeed to update the current solution panel since we have finished the optimization
-                # We only need to update the best solution panel
-                # Figure out if we have a best solution so far
+                
                 best_solution_node = get_best_node_from_status(status_response)
                 solution_panels.update(current_node=None, best_node=best_solution_node)
                 _, best_solution_panel = solution_panels.get_display(current_step=steps)
