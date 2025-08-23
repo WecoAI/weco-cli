@@ -1117,6 +1117,22 @@ def resume_optimization(
     if run_status and "nodes" in run_status and run_status["nodes"]:
         # Build the metric tree with all previous nodes (only if not empty)
         tree_panel.build_metric_tree(nodes=run_status["nodes"])
+        
+        # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
+        if last_step < total_steps:
+            next_step_id = f"next_step_{last_step + 1}"
+            tree_panel.build_metric_tree(
+                nodes=run_status["nodes"] + [{
+                    "solution_id": next_step_id,
+                    "parent_id": last_solution.get("solution_id") if last_solution else None,
+                    "step": last_step + 1,
+                    "code": None,
+                    "metric_value": None,
+                    "is_buggy": None,
+                }]
+            )
+            # Mark the next step as unevaluated to show "evaluating..." indicator
+            tree_panel.set_unevaluated_node(node_id=next_step_id)
 
     # Initialize solution panels with current and best solutions
     current_node = None
@@ -1519,6 +1535,22 @@ def extend_optimization(
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
     if run_status and "nodes" in run_status and run_status["nodes"]:
         tree_panel.build_metric_tree(nodes=run_status["nodes"])
+        
+        # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
+        if last_step < total_steps:
+            next_step_id = f"next_step_{last_step + 1}"
+            tree_panel.build_metric_tree(
+                nodes=run_status["nodes"] + [{
+                    "solution_id": next_step_id,
+                    "parent_id": last_solution.get("solution_id") if last_solution else None,
+                    "step": last_step + 1,
+                    "code": None,
+                    "metric_value": None,
+                    "is_buggy": None,
+                }]
+            )
+            # Mark the next step as unevaluated to show "evaluating..." indicator
+            tree_panel.set_unevaluated_node(node_id=next_step_id)
 
     # Initialize with last solution
     last_node = None
