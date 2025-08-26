@@ -966,6 +966,7 @@ def resume_optimization(
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
     evaluation_command = resume_info["evaluation_command"]
+    source_code = resume_info["source_code"]
     last_solution = resume_info["last_solution"]
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
@@ -1044,6 +1045,10 @@ def resume_optimization(
     if last_solution.get("code"):
         write_to_path(pathlib.Path(source_path), last_solution["code"])
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
+    else:
+        # Fallback to original source code if no solution available
+        write_to_path(pathlib.Path(source_path), source_code)
+        console.print(f"[yellow]No last solution found, restored original source code to {source_path}[/]")
 
     # Initialize/append logging structure if save_logs is enabled
     if save_logs:
