@@ -125,15 +125,23 @@ def smooth_update(
 
 
 # Other helper functions
-DEFAULT_MAX_LINES = 50
-DEFAULT_MAX_CHARS = 5000
+DEFAULT_MAX_LINES = 100
+DEFAULT_MAX_CHARS = 10000
 
 
-def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
+def truncate_output(
+    output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS, metric_name: str = None
+) -> str:
     """Truncate the output to a reasonable size while preserving lines with metrics.
 
     This function identifies and preserves important metric lines even when truncating,
     ensuring that evaluation scores and metrics are not lost in multi-threaded output.
+
+    Args:
+        output: The output string to truncate
+        max_lines: Maximum number of lines to preserve
+        max_chars: Maximum number of characters to preserve
+        metric_name: Optional specific metric name to prioritize (from --metric argument)
     """
     lines = output.splitlines()
 
@@ -141,27 +149,19 @@ def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: 
     if len(lines) <= max_lines and len(output) <= max_chars:
         return output
 
-    # Patterns that identify important metric lines
-    # These patterns are case-insensitive and look for common metric formats
-    metric_patterns = [
-        # Final scores/metrics with various formats
-        r"(?i)final[\s_-]*(?:score|metric|accuracy|result).*?[:\s=]+[\d.]+",
-        r"(?i)(?:test|eval|evaluation)[\s_-]*(?:score|metric|accuracy).*?[:\s=]+[\d.]+",
-        r"(?i)total[\s_-]*(?:score|metric|accuracy|result).*?[:\s=]+[\d.]+",
-        # Standalone metric lines
-        r"(?i)^[\s]*(?:score|accuracy|precision|recall|f1|loss|error|metric)[\s]*[:\s=]+[\s]*[\d.]+",
-        # Percentage formats
-        r"(?i)(?:score|accuracy|pass[\s_-]*rate).*?[:\s=]+[\s]*[\d.]+[\s]*%",
-        # Test results summary
-        r"(?i)(?:passed|failed|tests?).*?(\d+[\s]*/[\s]*\d+)",
-        r"(?i)(\d+[\s]*/[\s]*\d+).*?(?:passed|failed|tests?)",
-        # JSON-like metric lines
-        r'["\'](?:score|metric|accuracy|result)["\'][\s]*:[\s]*[\d.]+',
-        # Common evaluation framework outputs
-        r"(?i)PASS:[\s]*[\d.]+",
-        r"(?i)FAIL:[\s]*[\d.]+",
-        r"(?i)Result:[\s]*[\d.]+",
-    ]
+    # Build patterns based on the specific metric name if provided
+    metric_patterns = []
+
+    if metric_name:
+        # Escape special regex characters in the metric name
+        escaped_metric = re.escape(metric_name)
+
+        # Create patterns specifically for the user-specified metric
+        metric_patterns = [
+            # Look for lines containing the metric name with a numeric value
+            rf"(?i).*{escaped_metric}.*[:\s=]+[\s]*[\d.-]+",
+            rf"(?i).*{escaped_metric}.*?[\d.-]+",
+        ]
 
     # Compile patterns for efficiency
     compiled_patterns = [re.compile(pattern) for pattern in metric_patterns]
@@ -256,8 +256,14 @@ def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: 
     return output
 
 
-def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
-    """Run the evaluation command on the code and return the output."""
+def run_evaluation(eval_command: str, timeout: int | None = None, metric_name: str = None) -> str:
+    """Run the evaluation command on the code and return the output.
+
+    Args:
+        eval_command: The command to execute for evaluation
+        timeout: Optional timeout in seconds
+        metric_name: Optional metric name to preserve during output truncation
+    """
 
     # Run the eval command as is
     try:
@@ -268,7 +274,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
             if len(output) > 0:
                 output += "\n"
             output += result.stdout
-        return truncate_output(output)
+        return truncate_output(output, metric_name=metric_name)
     except subprocess.TimeoutExpired:
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
