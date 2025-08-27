@@ -159,7 +159,7 @@ def truncate_output(
         # Create patterns specifically for the user-specified metric
         metric_patterns = [
             # Look for lines containing the metric name with a numeric value
-            rf"(?i).*{escaped_metric}.*[:\s=]+[\s]*[+-]?\d+(?:\.\d+)?",
+            rf"(?i).*\\b{escaped_metric}\\b.*[:\s=]+\s*[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?",
             rf"(?i).*{escaped_metric}.*?[+-]?\d+(?:\.\d+)?",
         ]
 
