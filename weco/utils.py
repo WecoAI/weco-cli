@@ -3,6 +3,7 @@ import json
 import os
 import time
 import subprocess
+import re
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -129,30 +130,128 @@ DEFAULT_MAX_CHARS = 5000
 
 
 def truncate_output(output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS) -> str:
-    """Truncate the output to a reasonable size."""
+    """Truncate the output to a reasonable size while preserving lines with metrics.
+
+    This function identifies and preserves important metric lines even when truncating,
+    ensuring that evaluation scores and metrics are not lost in multi-threaded output.
+    """
     lines = output.splitlines()
 
-    # Determine what truncations are needed based on original output
-    lines_truncated = len(lines) > max_lines
-    chars_truncated = len(output) > max_chars
+    # If output is already small enough, return as is
+    if len(lines) <= max_lines and len(output) <= max_chars:
+        return output
 
-    # Apply truncations to the original output
-    if lines_truncated:
-        output = "\n".join(lines[-max_lines:])
+    # Patterns that identify important metric lines
+    # These patterns are case-insensitive and look for common metric formats
+    metric_patterns = [
+        # Final scores/metrics with various formats
+        r"(?i)final[\s_-]*(?:score|metric|accuracy|result).*?[:\s=]+[\d.]+",
+        r"(?i)(?:test|eval|evaluation)[\s_-]*(?:score|metric|accuracy).*?[:\s=]+[\d.]+",
+        r"(?i)total[\s_-]*(?:score|metric|accuracy|result).*?[:\s=]+[\d.]+",
+        # Standalone metric lines
+        r"(?i)^[\s]*(?:score|accuracy|precision|recall|f1|loss|error|metric)[\s]*[:\s=]+[\s]*[\d.]+",
+        # Percentage formats
+        r"(?i)(?:score|accuracy|pass[\s_-]*rate).*?[:\s=]+[\s]*[\d.]+[\s]*%",
+        # Test results summary
+        r"(?i)(?:passed|failed|tests?).*?(\d+[\s]*/[\s]*\d+)",
+        r"(?i)(\d+[\s]*/[\s]*\d+).*?(?:passed|failed|tests?)",
+        # JSON-like metric lines
+        r'["\'](?:score|metric|accuracy|result)["\'][\s]*:[\s]*[\d.]+',
+        # Common evaluation framework outputs
+        r"(?i)PASS:[\s]*[\d.]+",
+        r"(?i)FAIL:[\s]*[\d.]+",
+        r"(?i)Result:[\s]*[\d.]+",
+    ]
 
-    if chars_truncated:
-        output = output[-max_chars:]
+    # Compile patterns for efficiency
+    compiled_patterns = [re.compile(pattern) for pattern in metric_patterns]
 
-    # Add prefixes for truncations that were applied
-    prefixes = []
-    if lines_truncated:
-        prefixes.append(f"truncated to last {max_lines} lines")
-    if chars_truncated:
-        prefixes.append(f"truncated to last {max_chars} characters")
+    # Separate lines into important (metrics) and regular
+    metric_lines = []
+    metric_line_indices = []
 
-    if prefixes:
-        prefix_text = ", ".join(prefixes)
-        output = f"... ({prefix_text})\n{output}"
+    for i, line in enumerate(lines):
+        # Check if line contains any metric pattern
+        if any(pattern.search(line) for pattern in compiled_patterns):
+            metric_lines.append((i, line))
+            metric_line_indices.append(i)
+
+    # Strategy: Preserve metric lines and as much context as possible
+    if metric_lines:
+        # Reserve space for metric lines (max 20 metric lines to prevent abuse)
+        max_metric_lines = min(20, len(metric_lines))
+        # Prioritize recent metrics (last N metric lines)
+        preserved_metrics = metric_lines[-max_metric_lines:]
+        preserved_indices = set(idx for idx, _ in preserved_metrics)
+
+        # Calculate remaining space for context
+        remaining_lines = max_lines - max_metric_lines
+
+        if remaining_lines > 0:
+            # Get non-metric lines
+            context_lines = [(i, line) for i, line in enumerate(lines) if i not in preserved_indices]
+
+            # Take the most recent context lines
+            if len(context_lines) > remaining_lines:
+                context_lines = context_lines[-remaining_lines:]
+
+            # Combine and sort by original index to maintain order
+            all_lines = context_lines + preserved_metrics
+            all_lines.sort(key=lambda x: x[0])
+
+            # Extract just the lines
+            result_lines = [line for _, line in all_lines]
+        else:
+            # If no space for context, just keep metrics
+            result_lines = [line for _, line in preserved_metrics]
+
+        output = "\n".join(result_lines)
+
+        # Apply character limit if needed, but try to keep last metric
+        if len(output) > max_chars:
+            # Find the last metric line in the output
+            last_metric_pos = -1
+            for _, line in reversed(preserved_metrics):
+                pos = output.rfind(line)
+                if pos != -1:
+                    last_metric_pos = pos + len(line)
+                    break
+
+            if last_metric_pos > 0 and last_metric_pos <= max_chars:
+                # Truncate but ensure we include the last metric
+                output = output[-max_chars:]
+                # Make sure we didn't cut off the last metric line
+                if not any(pattern.search(output.split("\n")[-1]) for pattern in compiled_patterns):
+                    # Try to include at least the last metric line
+                    for _, line in reversed(preserved_metrics):
+                        if len(line) < max_chars:
+                            output = "...\n" + line
+                            break
+            else:
+                output = output[-max_chars:]
+
+        # Add truncation notice
+        truncation_notice = f"... (truncated to {len(result_lines)} lines with {max_metric_lines} metric lines preserved)\n"
+        output = truncation_notice + output
+
+    else:
+        # No metrics found, fall back to simple truncation
+        if len(lines) > max_lines:
+            output = "\n".join(lines[-max_lines:])
+
+        if len(output) > max_chars:
+            output = output[-max_chars:]
+
+        # Add truncation notice
+        prefixes = []
+        if len(lines) > max_lines:
+            prefixes.append(f"truncated to last {max_lines} lines")
+        if len(output) > max_chars:
+            prefixes.append(f"truncated to last {max_chars} characters")
+
+        if prefixes:
+            prefix_text = ", ".join(prefixes)
+            output = f"... ({prefix_text})\n{output}"
 
     return output
 
