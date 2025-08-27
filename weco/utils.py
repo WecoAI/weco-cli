@@ -159,8 +159,8 @@ def truncate_output(
         # Create patterns specifically for the user-specified metric
         metric_patterns = [
             # Look for lines containing the metric name with a numeric value
-            rf"(?i).*{escaped_metric}.*[:\s=]+[\s]*[\d.-]+",
-            rf"(?i).*{escaped_metric}.*?[\d.-]+",
+            rf"(?i).*{escaped_metric}.*[:\s=]+[\s]*[+-]?\d+(?:\.\d+)?",
+            rf"(?i).*{escaped_metric}.*?[+-]?\d+(?:\.\d+)?",
         ]
 
     # Compile patterns for efficiency
@@ -221,7 +221,9 @@ def truncate_output(
                 # Truncate but ensure we include the last metric
                 output = output[-max_chars:]
                 # Make sure we didn't cut off the last metric line
-                if not any(pattern.search(output.split("\n")[-1]) for pattern in compiled_patterns):
+                output_lines = output.split("\n")
+                last_line = output_lines[-1] if output_lines else ""
+                if not any(pattern.search(last_line) for pattern in compiled_patterns):
                     # Try to include at least the last metric line
                     for _, line in reversed(preserved_metrics):
                         if len(line) < max_chars:
