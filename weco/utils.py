@@ -11,6 +11,8 @@ import pathlib
 import requests
 from packaging.version import parse as parse_version
 
+from .constants import DEFAULT_MAX_LINES, DEFAULT_MAX_CHARS, MAX_PRESERVED_METRIC_LINES
+
 
 # Env/arg helper functions
 def read_api_keys_from_env() -> Dict[str, Any]:
@@ -125,10 +127,6 @@ def smooth_update(
 
 
 # Other helper functions
-DEFAULT_MAX_LINES = 100
-DEFAULT_MAX_CHARS = 10000
-
-
 def truncate_output(
     output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS, metric_name: str = None
 ) -> str:
@@ -158,9 +156,9 @@ def truncate_output(
 
         # Create patterns specifically for the user-specified metric
         metric_patterns = [
-            # Look for lines containing the metric name with a numeric value
+            # Look for lines containing the metric name with a numeric value (incl. scientific notation)
             rf"(?i).*\\b{escaped_metric}\\b.*[:\s=]+\s*[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?",
-            rf"(?i).*{escaped_metric}.*?[+-]?\d+(?:\.\d+)?",
+            rf"(?i).*{escaped_metric}.*?[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?",
         ]
 
     # Compile patterns for efficiency
@@ -178,8 +176,8 @@ def truncate_output(
 
     # Strategy: Preserve metric lines and as much context as possible
     if metric_lines:
-        # Reserve space for metric lines (max 20 metric lines to prevent abuse)
-        max_metric_lines = min(20, len(metric_lines))
+        # Reserve space for metric lines (cap to prevent abuse)
+        max_metric_lines = min(MAX_PRESERVED_METRIC_LINES, len(metric_lines))
         # Prioritize recent metrics (last N metric lines)
         preserved_metrics = metric_lines[-max_metric_lines:]
         preserved_indices = set(idx for idx, _ in preserved_metrics)
@@ -232,8 +230,10 @@ def truncate_output(
             else:
                 output = output[-max_chars:]
 
-        # Add truncation notice
-        truncation_notice = f"... (truncated to {len(result_lines)} lines with {max_metric_lines} metric lines preserved)\n"
+        # Add truncation notice (report actual preserved count)
+        truncation_notice = (
+            f"... (truncated to {len(result_lines)} lines with {len(preserved_metrics)} metric lines preserved)\n"
+        )
         output = truncation_notice + output
 
     else:
