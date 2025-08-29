@@ -939,7 +939,7 @@ def resume_optimization(
     if current_status == "completed":
         console.print("[bold red]Run is already completed. Use 'weco extend' command to add more steps.[/]")
         return False
-    
+
     # Check if run is already running
     if current_status == "running":
         console.print("[bold red]Run is already running. Please wait for it to complete or stop it first.[/]")
@@ -1100,6 +1100,7 @@ def resume_optimization(
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
     import time
+
     time.sleep(2)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
@@ -1504,6 +1505,7 @@ def extend_optimization(
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
     import time
+
     time.sleep(2)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
