@@ -939,6 +939,11 @@ def resume_optimization(
     if current_status == "completed":
         console.print("[bold red]Run is already completed. Use 'weco extend' command to add more steps.[/]")
         return False
+    
+    # Check if run is already running
+    if current_status == "running":
+        console.print("[bold red]Run is already running. Please wait for it to complete or stop it first.[/]")
+        return False
 
     # Environment validation (unless skipped) - moved before API call
     if not skip_validation:
