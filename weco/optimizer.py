@@ -1092,7 +1092,10 @@ def resume_optimization(
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Start heartbeat thread
+    # Start heartbeat thread with a small delay to ensure DB status update propagates
+    # This prevents the heartbeat from failing immediately after resume/extend
+    import time
+    time.sleep(2)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
@@ -1208,8 +1211,6 @@ def resume_optimization(
 
                 # If we completed all steps but API didn't mark as done, make explicit completion call
                 if not optimization_completed_normally and step == total_steps:
-                    from .api import report_termination
-
                     try:
                         # Mark run as completed since we finished all steps
                         report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
@@ -1495,7 +1496,10 @@ def extend_optimization(
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
 
-    # Start heartbeat thread
+    # Start heartbeat thread with a small delay to ensure DB status update propagates
+    # This prevents the heartbeat from failing immediately after resume/extend
+    import time
+    time.sleep(2)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
