@@ -37,7 +37,6 @@ from .utils import (
     run_evaluation,
     smooth_update,
     format_number,
-    truncate_output,
 )
 from .constants import DEFAULT_API_TIMEOUT
 
@@ -66,13 +65,7 @@ def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> Non
 
     # Append to centralized JSONL index
     jsonl_file = runs_dir / "exec_output.jsonl"
-    entry = {
-        "step": step,
-        "timestamp": timestamp,
-        "output_file": f"outputs/step_{step}.out.txt",
-        "output_length": len(output),
-        "output_preview": truncate_output(output, max_lines=10, max_chars=500),
-    }
+    entry = {"step": step, "timestamp": timestamp, "output_file": f"outputs/step_{step}.out.txt", "output_length": len(output)}
     with open(jsonl_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 

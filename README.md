@@ -244,7 +244,6 @@ The `exec_output.jsonl` file contains one JSON object per line with:
 - `timestamp`: When the execution occurred
 - `output_file`: Relative path to the full output file
 - `output_length`: Total length of the output
-- `output_preview`: A truncated preview of the output
 
 This is particularly useful for:
 - Debugging why certain optimizations fail

@@ -5,6 +5,7 @@ from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
 from .constants import DEFAULT_API_TIMEOUT
+from .utils import truncate_output
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
@@ -78,10 +79,13 @@ def evaluate_feedback_then_suggest_next_solution(
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
+        # Truncate the execution output before sending to backend
+        truncated_output = truncate_output(execution_output)
+
         response = requests.post(
             f"{__base_url__}/runs/{run_id}/suggest",
             json={
-                "execution_output": execution_output,
+                "execution_output": truncated_output,
                 "additional_instructions": additional_instructions,
                 "metadata": {**api_keys},
             },

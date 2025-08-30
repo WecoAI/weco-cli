@@ -169,7 +169,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
             if len(output) > 0:
                 output += "\n"
             output += result.stdout
-        return truncate_output(output)
+        return output  # Return full output, no truncation
     except subprocess.TimeoutExpired:
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
