@@ -272,6 +272,8 @@ Final speedup value = 1.5
 
 Weco will parse this output to extract the numerical value (1.5 in this case) associated with the metric name ('speedup').
 
+**Note on Output Truncation:** When evaluation output exceeds 51,000 characters, Weco truncates it to show the first 25,000 and last 25,000 characters. For best results, ensure your evaluation script prints the metric value near the end of its output.
+
 ## Supported Models
 
 Weco supports the following LLM models:

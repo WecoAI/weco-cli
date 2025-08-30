@@ -11,7 +11,7 @@ import pathlib
 import requests
 from packaging.version import parse as parse_version
 
-from .constants import DEFAULT_MAX_LINES, DEFAULT_MAX_CHARS, MAX_PRESERVED_METRIC_LINES
+from .constants import DEFAULT_API_TIMEOUT
 
 
 # Env/arg helper functions
@@ -127,135 +127,30 @@ def smooth_update(
 
 
 # Other helper functions
-def truncate_output(
-    output: str, max_lines: int = DEFAULT_MAX_LINES, max_chars: int = DEFAULT_MAX_CHARS, metric_name: str = None
-) -> str:
-    """Truncate the output to a reasonable size while preserving lines with metrics.
+def truncate_output(output: str) -> str:
+    """Truncate long output to a manageable size.
 
-    This function identifies and preserves important metric lines even when truncating,
-    ensuring that evaluation scores and metrics are not lost in multi-threaded output.
+    If output exceeds 51,000 characters, keeps the first 25,000
+    and last 25,000 characters with a truncation message.
 
     Args:
         output: The output string to truncate
-        max_lines: Maximum number of lines to preserve
-        max_chars: Maximum number of characters to preserve
-        metric_name: Optional specific metric name to prioritize (from --metric argument)
     """
-    lines = output.splitlines()
+    # Truncation thresholds
+    threshold = 51000  # Maximum length before truncation
+    k = 25000  # Characters to keep from beginning and end
 
-    # If output is already small enough, return as is
-    if len(lines) <= max_lines and len(output) <= max_chars:
-        return output
+    # Check if the length of the string is longer than the threshold
+    if len(output) > threshold:
+        # Output the first k and last k characters
+        first_k_chars = output[:k]
+        last_k_chars = output[-k:]
 
-    # Build patterns based on the specific metric name if provided
-    metric_patterns = []
+        truncated_len = len(output) - 2 * k
 
-    if metric_name:
-        # Escape special regex characters in the metric name
-        escaped_metric = re.escape(metric_name)
-
-        # Create patterns specifically for the user-specified metric
-        metric_patterns = [
-            # Look for lines containing the metric name with a numeric value (incl. scientific notation)
-            rf"(?i).*\\b{escaped_metric}\\b.*[:\s=]+\s*[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?%?",
-            rf"(?i).*{escaped_metric}.*?[+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?",
-        ]
-
-    # Compile patterns for efficiency
-    compiled_patterns = [re.compile(pattern) for pattern in metric_patterns]
-
-    # Separate lines into important (metrics) and regular
-    metric_lines = []
-    metric_line_indices = []
-
-    for i, line in enumerate(lines):
-        # Check if line contains any metric pattern
-        if any(pattern.search(line) for pattern in compiled_patterns):
-            metric_lines.append((i, line))
-            metric_line_indices.append(i)
-
-    # Strategy: Preserve metric lines and as much context as possible
-    if metric_lines:
-        # Reserve space for metric lines (cap to prevent abuse)
-        max_metric_lines = min(MAX_PRESERVED_METRIC_LINES, len(metric_lines))
-        # Prioritize recent metrics (last N metric lines)
-        preserved_metrics = metric_lines[-max_metric_lines:]
-        preserved_indices = set(idx for idx, _ in preserved_metrics)
-
-        # Calculate remaining space for context
-        remaining_lines = max_lines - max_metric_lines
-
-        if remaining_lines > 0:
-            # Get non-metric lines
-            context_lines = [(i, line) for i, line in enumerate(lines) if i not in preserved_indices]
-
-            # Take the most recent context lines
-            if len(context_lines) > remaining_lines:
-                context_lines = context_lines[-remaining_lines:]
-
-            # Combine and sort by original index to maintain order
-            all_lines = context_lines + preserved_metrics
-            all_lines.sort(key=lambda x: x[0])
-
-            # Extract just the lines
-            result_lines = [line for _, line in all_lines]
-        else:
-            # If no space for context, just keep metrics
-            result_lines = [line for _, line in preserved_metrics]
-
-        output = "\n".join(result_lines)
-
-        # Apply character limit if needed, but try to keep last metric
-        if len(output) > max_chars:
-            # Find the last metric line in the output
-            last_metric_pos = -1
-            for _, line in reversed(preserved_metrics):
-                pos = output.rfind(line)
-                if pos != -1:
-                    last_metric_pos = pos + len(line)
-                    break
-
-            if last_metric_pos > 0 and last_metric_pos <= max_chars:
-                # Truncate but ensure we include the last metric
-                output = output[-max_chars:]
-                # Make sure we didn't cut off the last metric line
-                output_lines = output.split("\n")
-                last_line = output_lines[-1] if output_lines else ""
-                if not any(pattern.search(last_line) for pattern in compiled_patterns):
-                    # Try to include at least the last metric line
-                    for _, line in reversed(preserved_metrics):
-                        if len(line) < max_chars:
-                            output = "...\n" + line
-                            break
-            else:
-                output = output[-max_chars:]
-
-        # Add truncation notice (report actual preserved count)
-        truncation_notice = (
-            f"... (truncated to {len(result_lines)} lines with {len(preserved_metrics)} metric lines preserved)\n"
-        )
-        output = truncation_notice + output
-
+        return f"{first_k_chars}\n ... [{truncated_len} characters truncated] ... \n{last_k_chars}"
     else:
-        # No metrics found, fall back to simple truncation
-        if len(lines) > max_lines:
-            output = "\n".join(lines[-max_lines:])
-
-        if len(output) > max_chars:
-            output = output[-max_chars:]
-
-        # Add truncation notice
-        prefixes = []
-        if len(lines) > max_lines:
-            prefixes.append(f"truncated to last {max_lines} lines")
-        if len(output) > max_chars:
-            prefixes.append(f"truncated to last {max_chars} characters")
-
-        if prefixes:
-            prefix_text = ", ".join(prefixes)
-            output = f"... ({prefix_text})\n{output}"
-
-    return output
+        return output
 
 
 def run_evaluation(eval_command: str, timeout: int | None = None, metric_name: str = None) -> str:
@@ -264,7 +159,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None, metric_name: s
     Args:
         eval_command: The command to execute for evaluation
         timeout: Optional timeout in seconds
-        metric_name: Optional metric name to preserve during output truncation
+        metric_name: Optional metric name (kept for API compatibility but not used)
     """
 
     # Run the eval command as is
@@ -276,7 +171,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None, metric_name: s
             if len(output) > 0:
                 output += "\n"
             output += result.stdout
-        return truncate_output(output, metric_name=metric_name)
+        return truncate_output(output)
     except subprocess.TimeoutExpired:
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
