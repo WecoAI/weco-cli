@@ -1208,13 +1208,13 @@ def resume_optimization(
 
             # If we completed all steps but API didn't mark as done, make explicit completion call
             if not optimization_completed_normally and step == total_steps:
-                    try:
-                        # Mark run as completed since we finished all steps
-                        report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
-                        console.print(f"[dim]Marked run as completed (step {step}/{total_steps})[/]")
-                        optimization_completed_normally = True
-                    except Exception as e:
-                        console.print(f"[dim yellow]Warning: Could not update run status to completed: {e}[/]")
+                try:
+                    # Mark run as completed since we finished all steps
+                    report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
+                    console.print(f"[dim]Marked run as completed (step {step}/{total_steps})[/]")
+                    optimization_completed_normally = True
+                except Exception as e:
+                    console.print(f"[dim yellow]Warning: Could not update run status to completed: {e}[/]")
 
                 # Display final results
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
@@ -1229,16 +1229,14 @@ def resume_optimization(
                             is_buggy=best.get("is_buggy", False),
                         )
                         solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
-                        
+
                         # Format score for the comment
                         best_score_str = (
-                            format_number(best.get('metric_value'))
-                            if best.get('metric_value') is not None and isinstance(best.get('metric_value'), (int, float))
+                            format_number(best.get("metric_value"))
+                            if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
                             else "N/A"
                         )
-                        best_solution_content = (
-                            f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                        )
+                        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
                         # Save best solution to .runs/<run-id>/best.<extension>
                         write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
                         # write the best solution to the source file
@@ -1635,13 +1633,11 @@ def extend_optimization(
                     if best.get("code"):
                         # Format score for the comment
                         best_score_str = (
-                            format_number(best.get('metric_value'))
-                            if best.get('metric_value') is not None and isinstance(best.get('metric_value'), (int, float))
+                            format_number(best.get("metric_value"))
+                            if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
                             else "N/A"
                         )
-                        best_solution_content = (
-                            f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                        )
+                        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
                         # Save best solution to .runs/<run-id>/best.<extension>
                         write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
                         # write the best solution to the source file
