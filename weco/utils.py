@@ -150,14 +150,8 @@ def truncate_output(output: str) -> str:
         return output
 
 
-def run_evaluation(eval_command: str, timeout: int | None = None, metric_name: str = None) -> str:
-    """Run the evaluation command on the code and return the output.
-
-    Args:
-        eval_command: The command to execute for evaluation
-        timeout: Optional timeout in seconds
-        metric_name: Optional metric name (kept for API compatibility but not used)
-    """
+def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
+    """Run the evaluation command on the code and return the output."""
 
     # Run the eval command as is
     try:
