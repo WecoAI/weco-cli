@@ -1199,24 +1199,15 @@ def resume_optimization(
                 stop_heartbeat_event=stop_heartbeat_event,
                 initial_execution_output=last_solution.get("execution_output", "") if last_solution else "",
                 additional_instructions=None,
+                eval_after_solution=True,  # resume pattern: evaluate after getting solution
+                run_final_evaluation=True,  # resume pattern: run final evaluation
             )
 
             # Get the final step value for later use
             step = total_steps
 
-            # Final evaluation if completed normally
-            if optimization_completed_normally or step == total_steps:
-                evaluate_and_refresh_eval_panel(
-                    eval_command=evaluation_command,
-                    eval_timeout=eval_timeout,
-                    save_logs=save_logs,
-                    runs_dir=run_log_dir,
-                    step=step,
-                    eval_output_panel=eval_output_panel,
-                )
-
-                # If we completed all steps but API didn't mark as done, make explicit completion call
-                if not optimization_completed_normally and step == total_steps:
+            # If we completed all steps but API didn't mark as done, make explicit completion call
+            if not optimization_completed_normally and step == total_steps:
                     try:
                         # Mark run as completed since we finished all steps
                         report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
@@ -1238,7 +1229,20 @@ def resume_optimization(
                             is_buggy=best.get("is_buggy", False),
                         )
                         solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
-                        write_to_path(run_log_dir / "best.py", best["code"])
+                        
+                        # Format score for the comment
+                        best_score_str = (
+                            format_number(best.get('metric_value'))
+                            if best.get('metric_value') is not None and isinstance(best.get('metric_value'), (int, float))
+                            else "N/A"
+                        )
+                        best_solution_content = (
+                            f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
+                        )
+                        # Save best solution to .runs/<run-id>/best.<extension>
+                        write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
+                        # write the best solution to the source file
+                        write_to_path(pathlib.Path(source_path), best_solution_content)
 
                         # Final display update
                         current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
@@ -1617,6 +1621,7 @@ def extend_optimization(
                 initial_execution_output=execution_output,
                 additional_instructions=None,
                 eval_after_solution=True,  # Extend function evaluates after each solution
+                run_final_evaluation=True,  # extend pattern: run final evaluation
             )
 
             # Get the final step value for later use
@@ -1628,7 +1633,19 @@ def extend_optimization(
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
                     if best.get("code"):
-                        write_to_path(run_log_dir / "best.py", best["code"])
+                        # Format score for the comment
+                        best_score_str = (
+                            format_number(best.get('metric_value'))
+                            if best.get('metric_value') is not None and isinstance(best.get('metric_value'), (int, float))
+                            else "N/A"
+                        )
+                        best_solution_content = (
+                            f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
+                        )
+                        # Save best solution to .runs/<run-id>/best.<extension>
+                        write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
+                        # write the best solution to the source file
+                        write_to_path(pathlib.Path(source_path), best_solution_content)
                         console.print(f"\n[bold green]Extension complete! Best metric: {best.get('metric_value')}[/]")
 
                 optimization_completed_normally = True
