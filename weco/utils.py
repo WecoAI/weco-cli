@@ -3,15 +3,12 @@ import json
 import os
 import time
 import subprocess
-import re
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
-
-from .constants import DEFAULT_API_TIMEOUT
 
 
 # Env/arg helper functions
