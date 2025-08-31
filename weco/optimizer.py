@@ -315,7 +315,8 @@ def run_optimization_loop(
     user_stop_requested_flag = False
 
     # For execute_optimization, we use the initial execution output from step 0 baseline
-    execution_output = initial_execution_output
+    # Treat empty string as None (no valid execution output)
+    execution_output = initial_execution_output if initial_execution_output else None
 
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
@@ -332,9 +333,10 @@ def run_optimization_loop(
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
         # Handle execution output for the first step (resume/extend pattern only)
-        if step == start_step and initial_execution_output:
+        # Treat empty string as None for proper evaluation
+        if step == start_step and initial_execution_output and initial_execution_output.strip():
             execution_output = initial_execution_output
-        elif not eval_after_solution:  # resume/extend pattern - evaluate before getting solution
+        elif not eval_after_solution:  # normal pattern - evaluate before getting solution
             eval_output_panel.clear()
             execution_output = run_and_log_evaluation(
                 eval_command=eval_command,
@@ -342,6 +344,22 @@ def run_optimization_loop(
                 save_logs=save_logs,
                 runs_dir=runs_dir,
                 step=step,
+                eval_output_panel=eval_output_panel,
+            )
+        elif (
+            eval_after_solution
+            and step == start_step
+            and (not initial_execution_output or not initial_execution_output.strip())
+        ):
+            # For resume/extend when the last node wasn't evaluated yet (no execution_output or empty)
+            # We need to evaluate it before proceeding to suggest
+            eval_output_panel.clear()
+            execution_output = run_and_log_evaluation(
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                runs_dir=runs_dir,
+                step=step - 1,  # Evaluate the previous step's solution that was just restored
                 eval_output_panel=eval_output_panel,
             )
 
@@ -972,7 +990,7 @@ def resume_optimization(
     total_steps = resume_info["total_steps"]
     evaluation_command = resume_info["evaluation_command"]
     source_code = resume_info["source_code"]
-    last_solution = resume_info["last_solution"]
+    last_node = resume_info["last_solution"]  # API returns last_solution but it's actually the last node
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
@@ -991,7 +1009,7 @@ def resume_optimization(
 
     # Note if the last solution was buggy
     actual_last_completed_step = last_step  # Keep original for file naming
-    last_was_buggy = last_solution.get("is_buggy", False)
+    last_was_buggy = last_node.get("is_buggy", False)
     if last_was_buggy:
         console.print(f"[yellow]Note: Step {last_step} resulted in a bug. Continuing optimization.[/]")
 
@@ -1012,8 +1030,8 @@ def resume_optimization(
 
     # Write the last solution to the appropriate file (always overwrite to ensure it's current)
     last_solution_path = run_log_dir / f"step_{actual_last_completed_step}.py"
-    if last_solution.get("code"):
-        write_to_path(last_solution_path, last_solution["code"])
+    if last_node.get("code"):
+        write_to_path(last_solution_path, last_node["code"])
 
     # Use source path from API if available, otherwise ask the user
     if source_path_from_api and pathlib.Path(source_path_from_api).exists():
@@ -1047,8 +1065,8 @@ def resume_optimization(
                 return False
 
     # Write last solution to source file
-    if last_solution.get("code"):
-        write_to_path(pathlib.Path(source_path), last_solution["code"])
+    if last_node.get("code"):
+        write_to_path(pathlib.Path(source_path), last_node["code"])
         console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
     else:
         # Fallback to original source code if no solution available
@@ -1134,14 +1152,14 @@ def resume_optimization(
     current_node = None
     best_node = None
 
-    # Set the current solution to the last completed solution
-    if last_solution:
+    # Set the current node from the resumed state
+    if last_node:
         current_node = Node(
-            id=last_solution.get("solution_id", ""),
-            parent_id=last_solution.get("parent_id"),
-            code=last_solution.get("code"),
-            metric=last_solution.get("metric_value"),
-            is_buggy=last_solution.get("is_buggy"),
+            id=last_node.get("solution_id", ""),
+            parent_id=last_node.get("parent_id"),
+            code=last_node.get("code"),
+            metric=last_node.get("metric_value"),
+            is_buggy=last_node.get("is_buggy"),
         )
 
     # Set the best solution if available
@@ -1197,7 +1215,7 @@ def resume_optimization(
                 api_keys=api_keys,
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
-                initial_execution_output=last_solution.get("execution_output", "") if last_solution else "",
+                initial_execution_output=last_node.get("execution_output") if last_node else None,
                 additional_instructions=None,
                 eval_after_solution=True,  # resume pattern: evaluate after getting solution
                 run_final_evaluation=True,  # resume pattern: run final evaluation
@@ -1397,8 +1415,8 @@ def extend_optimization(
     total_steps = last_step + additional_steps  # Calculate new total steps
     evaluation_command = extend_info["evaluation_command"]
     source_code = extend_info["source_code"]
-    # For extend, we use the last completed solution as the starting point
-    last_solution = extend_info.get("last_solution")
+    # For extend, we use the last node as the starting point
+    last_node = extend_info.get("last_solution")  # API returns last_solution but it's actually the last node
     run_name = extend_info.get("run_name", run_id)
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
@@ -1416,8 +1434,8 @@ def extend_optimization(
     console.print(f"[cyan]New total steps:[/] {total_steps}")
     console.print(f"[cyan]Will continue from step:[/] {last_step + 1}")
     console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
-    if last_solution:
-        console.print(f"[cyan]Last step metric:[/] {last_solution.get('metric_value', 'N/A')}")
+    if last_node:
+        console.print(f"[cyan]Last step metric:[/] {last_node.get('metric_value', 'N/A')}")
 
     # Get metric info from run_status
     objective = run_status.get("objective", {})
@@ -1457,11 +1475,11 @@ def extend_optimization(
 
     # Write the last completed solution (starting point) to the source file
     # We continue from where we left off (last completed step)
-    if last_solution and last_solution.get("code"):
-        write_to_path(pathlib.Path(source_path), last_solution["code"])
-        write_to_path(run_log_dir / f"step_{last_step}.py", last_solution["code"])
+    if last_node and last_node.get("code"):
+        write_to_path(pathlib.Path(source_path), last_node["code"])
+        write_to_path(run_log_dir / f"step_{last_step}.py", last_node["code"])
         console.print(
-            f"\n[green]Extending from last completed step {last_step} (metric: {last_solution.get('metric_value', 'N/A')}):[/] {source_path}"
+            f"\n[green]Extending from last completed step {last_step} (metric: {last_node.get('metric_value', 'N/A')}):[/] {source_path}"
         )
     else:
         # Fallback to original source code if no solution available
@@ -1537,7 +1555,7 @@ def extend_optimization(
         # Add a placeholder node for the next step to be worked on (only if we haven't completed all steps)
         if last_step < total_steps:
             next_step_id = f"next_step_{last_step + 1}"
-            parent_id = last_solution.get("solution_id") if last_solution and last_solution.get("solution_id") else None
+            parent_id = last_node.get("solution_id") if last_node and last_node.get("solution_id") else None
             tree_panel.build_metric_tree(
                 nodes=run_status["nodes"]
                 + [
@@ -1555,16 +1573,16 @@ def extend_optimization(
             tree_panel.set_unevaluated_node(node_id=next_step_id)
 
     # Initialize with last solution
-    last_node = None
-    if last_solution:
-        last_node = Node(
-            id=last_solution.get("solution_id", ""),
-            parent_id=last_solution.get("parent_id"),
-            code=last_solution.get("code"),
-            metric=last_solution.get("metric_value"),
-            is_buggy=last_solution.get("is_buggy", False),
+    last_node_obj = None
+    if last_node:
+        last_node_obj = Node(
+            id=last_node.get("solution_id", ""),
+            parent_id=last_node.get("parent_id"),
+            code=last_node.get("code"),
+            metric=last_node.get("metric_value"),
+            is_buggy=last_node.get("is_buggy", False),
         )
-        solution_panels.update(current_node=last_node, best_node=last_node)
+        solution_panels.update(current_node=last_node_obj, best_node=last_node_obj)
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
