@@ -310,7 +310,7 @@ def execute_optimization(
             )
 
             # Run evaluation on the initial solution
-            term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout, metric_name=metric)
+            term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
             # Save logs if requested
             if save_logs:
                 save_execution_output(runs_dir, step=0, output=term_out)
@@ -414,7 +414,7 @@ def execute_optimization(
                     ],
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout, metric_name=metric)
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
                 # Save logs if requested
                 if save_logs:
                     save_execution_output(runs_dir, step=step, output=term_out)
