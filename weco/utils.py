@@ -10,6 +10,8 @@ import pathlib
 import requests
 from packaging.version import parse as parse_version
 
+from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH
+
 
 # Env/arg helper functions
 def read_api_keys_from_env() -> Dict[str, Any]:
@@ -127,23 +129,20 @@ def smooth_update(
 def truncate_output(output: str) -> str:
     """Truncate long output to a manageable size.
 
-    If output exceeds 51,000 characters, keeps the first 25,000
-    and last 25,000 characters with a truncation message.
+    If output exceeds TRUNCATION_THRESHOLD characters, keeps the first
+    TRUNCATION_KEEP_LENGTH and last TRUNCATION_KEEP_LENGTH characters
+    with a truncation message.
 
     Args:
         output: The output string to truncate
     """
-    # Truncation thresholds
-    threshold = 51000  # Maximum length before truncation
-    k = 25000  # Characters to keep from beginning and end
-
     # Check if the length of the string is longer than the threshold
-    if len(output) > threshold:
-        # Output the first k and last k characters
-        first_k_chars = output[:k]
-        last_k_chars = output[-k:]
+    if len(output) > TRUNCATION_THRESHOLD:
+        # Output the first TRUNCATION_KEEP_LENGTH and last TRUNCATION_KEEP_LENGTH characters
+        first_k_chars = output[:TRUNCATION_KEEP_LENGTH]
+        last_k_chars = output[-TRUNCATION_KEEP_LENGTH:]
 
-        truncated_len = len(output) - 2 * k
+        truncated_len = len(output) - 2 * TRUNCATION_KEEP_LENGTH
 
         return f"{first_k_chars}\n ... [{truncated_len} characters truncated] ... \n{last_k_chars}"
     else:
