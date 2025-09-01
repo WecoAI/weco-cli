@@ -71,8 +71,7 @@ def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> Non
         "timestamp": timestamp,
         "output_file": f"outputs/step_{step}.out.txt",
         "output_length": len(output),
-        "output_preview": truncate_output(output)[:500],  # Just show first 500 chars for preview
-    }
+        "output_preview": truncate_output(output, max_lines=10, max_chars=500),    }
     with open(jsonl_file, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
