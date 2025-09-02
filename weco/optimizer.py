@@ -327,10 +327,7 @@ def run_optimization_loop(
         # Treat empty string as None for proper evaluation
         if step == start_step and initial_execution_output and initial_execution_output.strip():
             execution_output = initial_execution_output
-        elif (
-            step == start_step
-            and (not initial_execution_output or not initial_execution_output.strip())
-        ):
+        elif step == start_step and (not initial_execution_output or not initial_execution_output.strip()):
             # For resume/extend when the last node wasn't evaluated yet (no execution_output or empty)
             # We need to evaluate it before proceeding to suggest
             eval_output_panel.clear()
@@ -429,8 +426,8 @@ def run_optimization_loop(
             stop_heartbeat_event.set()
             break
 
-        # Handle evaluation after solution
-        # Always evaluate after getting solution (this is the pattern for all calls)
+            # Handle evaluation after solution
+            # Always evaluate after getting solution (this is the pattern for all calls)
             # Clear evaluation output since we are running evaluation on a new solution
             eval_output_panel.clear()
             update_live_display(
@@ -515,8 +512,6 @@ def prime_live_layout(
     layout["current_solution"].update(current_solution_panel)
     layout["best_solution"].update(best_solution_panel)
     layout["eval_output"].update(eval_output_panel.get_display())
-
-
 
 
 def execute_optimization(
@@ -976,6 +971,7 @@ def resume_optimization(
     if not model:
         # Use helper function to determine default model based on API keys
         from .utils import determine_default_model
+
         model = determine_default_model(api_keys)
 
     # Log directory was already retrieved from resume_info above
@@ -1429,6 +1425,7 @@ def extend_optimization(
     if not model:
         # Use helper function to determine default model based on API keys
         from .utils import determine_default_model
+
         model = determine_default_model(api_keys)
 
     # Log directory was already retrieved from extend_info above
@@ -1464,7 +1461,7 @@ def extend_optimization(
         # If the last node doesn't have code, we can't extend
         console.print("[bold red]Error: Last solution node doesn't have code. Cannot extend this run.[/]")
         return False
-    
+
     write_to_path(pathlib.Path(source_path), last_node["code"])
     write_to_path(run_log_dir / f"step_{last_step}.py", last_node["code"])
     console.print(
@@ -1651,7 +1648,7 @@ def extend_optimization(
                         write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
                         # write the best solution to the source file
                         write_to_path(pathlib.Path(source_path), best_solution_content)
-                        
+
                         # Final display with end optimization layout
                         _, best_solution_panel = solution_panels.get_display(current_step=step)
                         final_message = (
