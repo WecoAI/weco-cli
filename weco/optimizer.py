@@ -426,35 +426,35 @@ def run_optimization_loop(
             stop_heartbeat_event.set()
             break
 
-            # Handle evaluation after solution
-            # Always evaluate after getting solution (this is the pattern for all calls)
-            # Clear evaluation output since we are running evaluation on a new solution
-            eval_output_panel.clear()
-            update_live_display(
-                live=live,
-                layout=layout,
-                summary_panel=summary_panel,
-                tree_panel=tree_panel,
-                solution_panels=solution_panels,
-                eval_output_panel=eval_output_panel,
-                current_step=step,
-                is_done=False,
-                transition_delay=0.08,
-            )
-            execution_output = run_and_log_evaluation(
-                eval_command=eval_command,
-                eval_timeout=eval_timeout,
-                save_logs=save_logs,
-                runs_dir=runs_dir,
-                step=step,
-                eval_output_panel=eval_output_panel,
-            )
-            smooth_update(
-                live=live,
-                layout=layout,
-                sections_to_update=[("eval_output", eval_output_panel.get_display())],
-                transition_delay=0.1,
-            )
+        # Handle evaluation after solution
+        # Always evaluate after getting solution (this is the pattern for all calls)
+        # Clear evaluation output since we are running evaluation on a new solution
+        eval_output_panel.clear()
+        update_live_display(
+            live=live,
+            layout=layout,
+            summary_panel=summary_panel,
+            tree_panel=tree_panel,
+            solution_panels=solution_panels,
+            eval_output_panel=eval_output_panel,
+            current_step=step,
+            is_done=False,
+            transition_delay=0.08,
+        )
+        execution_output = run_and_log_evaluation(
+            eval_command=eval_command,
+            eval_timeout=eval_timeout,
+            save_logs=save_logs,
+            runs_dir=runs_dir,
+            step=step,
+            eval_output_panel=eval_output_panel,
+        )
+        smooth_update(
+            live=live,
+            layout=layout,
+            sections_to_update=[("eval_output", eval_output_panel.get_display())],
+            transition_delay=0.1,
+        )
 
     # Handle final evaluation
     if not user_stop_requested_flag:
