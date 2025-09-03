@@ -144,6 +144,8 @@ def truncate_output(output: str) -> str:
 
         truncated_len = len(output) - 2 * TRUNCATION_KEEP_LENGTH
 
+        if truncated_len <= 0:
+            return output
         return f"{first_k_chars}\n ... [{truncated_len} characters truncated] ... \n{last_k_chars}"
     else:
         return output

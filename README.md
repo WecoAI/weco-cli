@@ -106,16 +106,6 @@ weco run --source optimize.py \
      --steps 15 \
      --additional-instructions "Fuse operations in the forward method while ensuring the max float deviation remains small. Maintain the same format of the code."
 
-# Run with execution logs saved to disk for debugging
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py --device cpu" \
-     --metric speedup \
-     --goal maximize \
-     --steps 15 \
-     --save-logs \
-     --additional-instructions "Fuse operations in the forward method while ensuring the max float deviation remains small. Maintain the same format of the code."
-```
-
 **Note:** If you have an NVIDIA GPU, change the device in the `--eval-command` to `cuda`. If you are running this on Apple Silicon, set it to `mps`.
 
 For more advanced examples, including [Triton](/examples/triton/README.md), [CUDA kernel optimization](/examples/cuda/README.md), [ML model optimization](/examples/spaceship-titanic/README.md), and [prompt engineering for math problems](examples/prompt/README.md), please see the `README.md` files within the corresponding subdirectories under the [`examples/`](examples/) folder.
