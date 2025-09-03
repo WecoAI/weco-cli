@@ -1040,8 +1040,8 @@ def resume_optimization(
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
 
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
@@ -1212,11 +1212,24 @@ def resume_optimization(
                     live.update(end_optimization_layout)
 
     except Exception as e:
-        console.print(f"\n[bold red]Error during optimization: {e}[/]")
-        traceback.print_exc()
+        # Catch errors during the optimization loop (following execute_optimization pattern)
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        # Ensure optimization_completed_normally is False
+        optimization_completed_normally = False
+        # Suggest resume command if we have a run_id
+        if run_id:
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     finally:
-        # Stop heartbeat
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+
+        # Stop heartbeat thread
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
@@ -1453,8 +1466,8 @@ def extend_optimization(
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
 
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
@@ -1610,11 +1623,24 @@ def extend_optimization(
                     live.update(end_optimization_layout)
 
     except Exception as e:
-        console.print(f"\n[bold red]Error during extension: {e}[/]")
-        traceback.print_exc()
+        # Catch errors during the optimization loop (following execute_optimization pattern)
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        # Ensure optimization_completed_normally is False
+        optimization_completed_normally = False
+        # Suggest resume command if we have a run_id
+        if run_id:
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     finally:
-        # Stop heartbeat
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+
+        # Stop heartbeat thread
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
