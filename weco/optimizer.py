@@ -320,23 +320,24 @@ def run_optimization_loop(
         except Exception as e:
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
-        # Handle execution output for the first step
-        # For execute_optimization: initial_execution_output contains the evaluation from step 0
-        # For resume/extend: initial_execution_output may contain cached output or need evaluation
-        if step == start_step and initial_execution_output and initial_execution_output.strip():
-            # Use the provided initial execution output
-            execution_output = initial_execution_output
-        elif step == start_step and (not initial_execution_output or not initial_execution_output.strip()):
-            # No valid initial output provided - need to evaluate the previous step's solution
-            eval_output_panel.clear()
-            execution_output = run_and_log_evaluation(
-                eval_command=eval_command,
-                eval_timeout=eval_timeout,
-                save_logs=save_logs,
-                runs_dir=runs_dir,
-                step=step - 1,  # Evaluate the previous step's solution that was just restored
-                eval_output_panel=eval_output_panel,
-            )
+        # Handle execution output for the first step of the loop
+        # - execute: has evaluation from step 0
+        # - resume/extend: may have cached output or empty if interrupted during eval
+        if step == start_step:
+            if initial_execution_output and initial_execution_output.strip():
+                # Use the provided initial execution output
+                execution_output = initial_execution_output
+            else:
+                # Empty/missing output - re-evaluate the previous step's solution
+                eval_output_panel.clear()
+                execution_output = run_and_log_evaluation(
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    save_logs=save_logs,
+                    runs_dir=runs_dir,
+                    step=step - 1,  # Evaluate the previous step's solution that was just restored
+                    eval_output_panel=eval_output_panel,
+                )
 
         # Get next solution
         response = evaluate_feedback_then_suggest_next_solution(
