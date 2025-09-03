@@ -39,6 +39,11 @@ from .utils import (
 )
 from .constants import DEFAULT_API_TIMEOUT
 
+# Common timeout and delay constants
+HEARTBEAT_JOIN_TIMEOUT = 2  # seconds to wait for heartbeat thread to stop
+HEARTBEAT_STARTUP_DELAY = 2  # seconds to wait before starting heartbeat (for DB sync)
+SIGNAL_HANDLER_TIMEOUT = 3  # seconds for report_termination in signal handlers
+
 
 def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
     """
@@ -271,6 +276,67 @@ def write_solution_files(code: str, source_fp: pathlib.Path, runs_dir: pathlib.P
     """Write solution code to both source file and log directory."""
     write_to_path(fp=source_fp, content=code)
     write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
+
+
+def save_best_solution(best_solution_node: Optional[Node], source_fp: pathlib.Path, runs_dir: pathlib.Path) -> None:
+    """Save the best solution to both the source file and runs directory."""
+    if best_solution_node and best_solution_node.code and best_solution_node.metric is not None:
+        # Format score for the comment
+        best_score_str = (
+            format_number(best_solution_node.metric) if isinstance(best_solution_node.metric, (int, float)) else "N/A"
+        )
+        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best_solution_node.code}"
+    else:
+        # Fallback to original solution if no better solution found
+        original_solution = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
+        best_solution_content = f"# Weco could not find a better solution\n\n{original_solution}"
+
+    # Save best solution to .runs/<run-id>/best.<extension>
+    write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
+    # Write the best solution to the source file
+    write_to_path(fp=source_fp, content=best_solution_content)
+
+
+def display_final_results(
+    live,
+    end_optimization_layout,
+    summary_panel,
+    tree_panel,
+    solution_panels,
+    best_solution_node: Optional[Node],
+    metric_name: str,
+    maximize: bool,
+    total_steps: int,
+) -> None:
+    """Update the display with final optimization results."""
+    solution_panels.update(current_node=None, best_node=best_solution_node)
+    _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
+
+    # Create final message based on results
+    if best_solution_node and best_solution_node.metric is not None:
+        final_message = (
+            f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! "
+            f"Best solution {metric_name.lower()} = [green]{best_solution_node.metric}[/] 🏆"
+        )
+    else:
+        final_message = "[red] No valid solution found.[/]"
+
+    # Update layout components
+    end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
+    end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
+    end_optimization_layout["best_solution"].update(best_solution_panel)
+    live.update(end_optimization_layout)
+
+
+def get_error_details(locals_dict: dict, context: str = "operation") -> str:
+    """Extract error details from locals for error reporting."""
+    if "error_details" in locals_dict:
+        return locals_dict["error_details"]
+
+    if "e" in locals_dict and isinstance(locals_dict["e"], Exception):
+        return traceback.format_exc()
+
+    return f"{context} failed due to an error"
 
 
 def run_optimization_loop(
@@ -547,7 +613,7 @@ def execute_optimization(
         # Stop heartbeat thread
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
-            heartbeat_thread.join(timeout=2)  # Give it a moment to stop
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)  # Give it a moment to stop
 
         # Report termination (best effort)
         if current_run_id_for_heartbeat:
@@ -557,7 +623,7 @@ def execute_optimization(
                 reason=f"user_terminated_{signal_name.lower()}",
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
-                timeout=3,
+                timeout=SIGNAL_HANDLER_TIMEOUT,
             )
             # Suggest resume command
             console.print(
@@ -647,6 +713,10 @@ def execute_optimization(
 
         # --- Start Heartbeat Thread ---
         stop_heartbeat_event.clear()
+        # Add delay to ensure DB status update propagates (consistent with resume/extend)
+        import time
+
+        time.sleep(HEARTBEAT_STARTUP_DELAY)
         heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
         heartbeat_thread.start()
 
@@ -827,7 +897,7 @@ def execute_optimization(
         # Stop heartbeat thread
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
-            heartbeat_thread.join(timeout=2)
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
 
         # Report final status if run exists
         if run_id:
@@ -837,11 +907,7 @@ def execute_optimization(
                 status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
             else:
                 status, reason = "error", "error_cli_internal"
-                details = locals().get("error_details") or (
-                    traceback.format_exc()
-                    if "e" in locals() and isinstance(locals()["e"], Exception)
-                    else "CLI terminated unexpectedly without a specific exception captured."
-                )
+                details = get_error_details(locals(), "CLI terminated unexpectedly")
 
             report_termination(run_id, status, reason, details, current_auth_headers_for_heartbeat)
 
@@ -1035,7 +1101,7 @@ def resume_optimization(
         console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
-            heartbeat_thread.join(timeout=2)
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
         report_termination(
             run_id=run_id,
             status_update="terminated",
@@ -1055,7 +1121,7 @@ def resume_optimization(
     # This prevents the heartbeat from failing immediately after resume/extend
     import time
 
-    time.sleep(2)  # Give the backend time to update status
+    time.sleep(HEARTBEAT_STARTUP_DELAY)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
@@ -1193,31 +1259,22 @@ def resume_optimization(
                         metric=best.get("metric_value"),
                         is_buggy=best.get("is_buggy", False),
                     )
-                    solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
 
-                    # Format score for the comment
-                    best_score_str = (
-                        format_number(best.get("metric_value"))
-                        if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
-                        else "N/A"
-                    )
-                    best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                    # Save best solution to .runs/<run-id>/best.<extension>
-                    write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
-                    # write the best solution to the source file
-                    write_to_path(pathlib.Path(source_path), best_solution_content)
+                    # Save best solution
+                    save_best_solution(best_node, pathlib.Path(source_path), run_log_dir)
 
-                    # Final display with end optimization layout
-                    _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
-                    final_message = (
-                        f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
-                        if best.get("metric_value") is not None
-                        else "[red] No valid solution found.[/]"
+                    # Display final results
+                    display_final_results(
+                        live=live,
+                        end_optimization_layout=end_optimization_layout,
+                        summary_panel=summary_panel,
+                        tree_panel=tree_panel,
+                        solution_panels=solution_panels,
+                        best_solution_node=best_node,
+                        metric_name=metric_name,
+                        maximize=maximize,
+                        total_steps=total_steps,
                     )
-                    end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
-                    end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
-                    end_optimization_layout["best_solution"].update(best_solution_panel)
-                    live.update(end_optimization_layout)
 
     except Exception as e:
         # Catch errors during the optimization loop (following execute_optimization pattern)
@@ -1240,7 +1297,7 @@ def resume_optimization(
         # Stop heartbeat thread
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
-            heartbeat_thread.join(timeout=2)
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
 
         # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
@@ -1249,7 +1306,7 @@ def resume_optimization(
             status_update, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
         else:
             status_update, reason = "error", "error_cli_internal"
-            details = "Resume failed due to an error"
+            details = get_error_details(locals(), "Resume")
 
         report_termination(run_id, status_update, reason, details, auth_headers)
 
@@ -1468,7 +1525,7 @@ def extend_optimization(
         console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
-            heartbeat_thread.join(timeout=2)
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
         report_termination(
             run_id=run_id,
             status_update="terminated",
@@ -1488,7 +1545,7 @@ def extend_optimization(
     # This prevents the heartbeat from failing immediately after resume/extend
     import time
 
-    time.sleep(2)  # Give the backend time to update status
+    time.sleep(HEARTBEAT_STARTUP_DELAY)  # Give the backend time to update status
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
@@ -1613,29 +1670,29 @@ def extend_optimization(
             if run_status and run_status.get("best_result"):
                 best = run_status["best_result"]
                 if best.get("code"):
-                    # Format score for the comment
-                    best_score_str = (
-                        format_number(best.get("metric_value"))
-                        if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
-                        else "N/A"
+                    best_node = Node(
+                        id=best.get("solution_id", ""),
+                        parent_id=best.get("parent_id"),
+                        code=best["code"],
+                        metric=best.get("metric_value"),
+                        is_buggy=best.get("is_buggy", False),
                     )
-                    best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                    # Save best solution to .runs/<run-id>/best.<extension>
-                    write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
-                    # write the best solution to the source file
-                    write_to_path(pathlib.Path(source_path), best_solution_content)
 
-                    # Final display with end optimization layout
-                    _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
-                    final_message = (
-                        f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
-                        if best.get("metric_value") is not None
-                        else "[red] No valid solution found.[/]"
+                    # Save best solution
+                    save_best_solution(best_node, pathlib.Path(source_path), run_log_dir)
+
+                    # Display final results
+                    display_final_results(
+                        live=live,
+                        end_optimization_layout=end_optimization_layout,
+                        summary_panel=summary_panel,
+                        tree_panel=tree_panel,
+                        solution_panels=solution_panels,
+                        best_solution_node=best_node,
+                        metric_name=metric_name,
+                        maximize=maximize,
+                        total_steps=total_steps,
                     )
-                    end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
-                    end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
-                    end_optimization_layout["best_solution"].update(best_solution_panel)
-                    live.update(end_optimization_layout)
 
     except Exception as e:
         # Catch errors during the optimization loop (following execute_optimization pattern)
@@ -1658,7 +1715,7 @@ def extend_optimization(
         # Stop heartbeat thread
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
-            heartbeat_thread.join(timeout=2)
+            heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
 
         # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
@@ -1667,7 +1724,7 @@ def extend_optimization(
             status_update, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
         else:
             status_update, reason = "error", "error_cli_internal"
-            details = "Extension failed due to an error"
+            details = get_error_details(locals(), "Extension")
 
         report_termination(run_id, status_update, reason, details, auth_headers)
 
