@@ -951,11 +951,6 @@ def resume_optimization(
     console.print(f"[cyan]Will resume from step:[/] {last_step + 1}")
     console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
 
-    # Note if the last solution was buggy
-    last_was_buggy = last_node.get("is_buggy", False)
-    if last_was_buggy:
-        console.print(f"[yellow]Note: Step {last_step} resulted in a bug. Continuing optimization.[/]")
-
     # Get metric info from run_status
     objective = run_status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
@@ -1008,9 +1003,10 @@ def resume_optimization(
             # Ask user for source file path
             if not source_path_from_api:
                 console.print(
-                    "\n[yellow]Source path not found in run data (run may have been created with an older version).[/]"
+                    "\n[yellow]The original source file path was not saved with this run.[/]"
                 )
-            console.print("[yellow]Please specify the source file to optimize.[/]")
+                console.print("[dim]This typically happens when resuming runs created with weco CLI versions before 0.2.0[/]")
+            console.print("[yellow]Please specify the source file that was being optimized:[/]")
             source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
             if not pathlib.Path(source_path).exists():
                 console.print(f"[bold red]Source file not found: {source_path}[/]")
