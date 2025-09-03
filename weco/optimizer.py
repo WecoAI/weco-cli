@@ -483,8 +483,6 @@ def run_optimization_loop(
         else:
             # Fallback if no API response
             summary_panel.set_step(step=total_steps)
-            best_solution_node = get_best_node_from_status(status_response)
-            solution_panels.update(current_node=best_solution_node, best_node=best_solution_node)
 
         optimization_completed_normally = True
 
@@ -1391,7 +1389,6 @@ def extend_optimization(
     last_step = extend_info["previous_steps"]  # The completed steps
     total_steps = last_step + additional_steps  # Calculate new total steps
     evaluation_command = extend_info["evaluation_command"]
-    source_code = extend_info["source_code"]
     # For extend, we use the last node as the starting point
     last_node = extend_info.get("last_solution")  # API returns last_solution but it's actually the last node
     run_name = extend_info.get("run_name", run_id)
