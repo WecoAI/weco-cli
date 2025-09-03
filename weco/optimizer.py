@@ -1191,20 +1191,8 @@ def resume_optimization(
                 additional_instructions=None,
             )
 
-            # Get the final step value for later use
-            step = total_steps
-
-            # If we completed all steps but API didn't mark as done, make explicit completion call
-            if not optimization_completed_normally and step == total_steps:
-                try:
-                    # Mark run as completed since we finished all steps
-                    report_termination(run_id, "completed", "completed_successfully", None, auth_headers)
-                    console.print(f"[dim]Marked run as completed (step {step}/{total_steps})[/]")
-                    optimization_completed_normally = True
-                except Exception as e:
-                    console.print(f"[dim yellow]Warning: Could not update run status to completed: {e}[/]")
-
-                # Display final results
+            # Display final results if optimization completed normally
+            if optimization_completed_normally:
                 run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
                 if run_status and run_status.get("best_result"):
                     best = run_status["best_result"]
@@ -1231,7 +1219,7 @@ def resume_optimization(
                         write_to_path(pathlib.Path(source_path), best_solution_content)
 
                         # Final display with end optimization layout
-                        _, best_solution_panel = solution_panels.get_display(current_step=step)
+                        _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
                         final_message = (
                             f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
                             if best.get("metric_value") is not None
@@ -1241,8 +1229,6 @@ def resume_optimization(
                         end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
                         end_optimization_layout["best_solution"].update(best_solution_panel)
                         live.update(end_optimization_layout)
-
-                optimization_completed_normally = True
 
     except Exception as e:
         console.print(f"\n[bold red]Error during optimization: {e}[/]")
