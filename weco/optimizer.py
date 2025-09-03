@@ -933,7 +933,6 @@ def resume_optimization(
     last_step = resume_info["last_completed_step"]
     total_steps = resume_info["total_steps"]
     evaluation_command = resume_info["evaluation_command"]
-    source_code = resume_info["source_code"]
     last_node = resume_info["last_solution"]  # API returns last_solution but it's actually the last node
     run_name = resume_info.get("run_name", run_id)
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
@@ -971,12 +970,8 @@ def resume_optimization(
     # Ensure log directory exists
     run_log_dir.mkdir(parents=True, exist_ok=True)
 
-    # Write the last solution to the appropriate file (always overwrite to ensure it's current)
-    last_solution_path = run_log_dir / f"step_{last_step}.py"
-    if last_node.get("code"):
-        write_to_path(last_solution_path, last_node["code"])
-    else:
-        # If the last node doesn't have code, we can't resume
+    # Check if the last node has code - required for resume
+    if not last_node.get("code"):
         console.print("[bold red]Error: Last solution node doesn't have code. Cannot resume this run.[/]")
         return False
 
@@ -985,39 +980,26 @@ def resume_optimization(
         source_path = source_path_from_api
         console.print(f"[cyan]Using source file from original run: {source_path}[/]")
     else:
-        # Try to find the source file automatically by looking for common patterns
-        # First check if there's a file matching the metric name pattern
-        possible_files = []
-        for pattern in ["train.py", "main.py", "solution.py", "*.py"]:
-            files = list(pathlib.Path(".").glob(pattern))
-            possible_files.extend(files)
+        # Ask user for source file path
+        if not source_path_from_api:
+            console.print("\n[yellow]The original source file path was not saved with this run.[/]")
+            console.print("[dim]This typically happens when resuming runs created with weco CLI versions before 0.2.0[/]")
+        console.print("[yellow]Please specify the source file that was being optimized:[/]")
+        source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
+        if not pathlib.Path(source_path).exists():
+            console.print(f"[bold red]Source file not found: {source_path}[/]")
+            return False
 
-        # Remove duplicates and filter to actual files
-        possible_files = list(set(f for f in possible_files if f.is_file()))
+    # Now we have source_path, get the extension
+    source_extension = pathlib.Path(source_path).suffix
 
-        if len(possible_files) == 1:
-            # Only one Python file found, use it
-            source_path = str(possible_files[0])
-            console.print(f"[cyan]Found source file: {source_path}[/]")
-        else:
-            # Ask user for source file path
-            if not source_path_from_api:
-                console.print("\n[yellow]The original source file path was not saved with this run.[/]")
-                console.print("[dim]This typically happens when resuming runs created with weco CLI versions before 0.2.0[/]")
-            console.print("[yellow]Please specify the source file that was being optimized:[/]")
-            source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
-            if not pathlib.Path(source_path).exists():
-                console.print(f"[bold red]Source file not found: {source_path}[/]")
-                return False
+    # Write the last solution to the appropriate file in log directory
+    last_solution_path = run_log_dir / f"step_{last_step}{source_extension}"
+    write_to_path(last_solution_path, last_node["code"])
 
     # Write last solution to source file
-    if last_node.get("code"):
-        write_to_path(pathlib.Path(source_path), last_node["code"])
-        console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
-    else:
-        # Fallback to original source code if no solution available
-        write_to_path(pathlib.Path(source_path), source_code)
-        console.print(f"[yellow]No last solution found, restored original source code to {source_path}[/]")
+    write_to_path(pathlib.Path(source_path), last_node["code"])
+    console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
 
     # Initialize/append logging structure if save_logs is enabled
     if save_logs:
@@ -1411,38 +1393,29 @@ def extend_optimization(
     run_log_dir = pathlib.Path(log_dir) / run_id
     run_log_dir.mkdir(parents=True, exist_ok=True)
 
+    # Check if the last node has code - required for extend
+    if not last_node or not last_node.get("code"):
+        console.print("[bold red]Error: Last solution node doesn't have code. Cannot extend this run.[/]")
+        return False
+
     # Determine the source file path
     if source_path_from_api and pathlib.Path(source_path_from_api).exists():
         source_path = source_path_from_api
         console.print(f"[cyan]Using source file from original run: {source_path}[/]")
     else:
-        # Try to find the source file
-        possible_files = []
-        for pattern in ["train.py", "main.py", "solution.py", "*.py"]:
-            files = list(pathlib.Path(".").glob(pattern))
-            possible_files.extend(files)
+        # Ask user for source file path
+        console.print("[yellow]Please specify the source file to continue optimizing.[/]")
+        source_path = console.input("[bold]Enter the path to the source file: [/]").strip()
+        if not pathlib.Path(source_path).exists():
+            console.print(f"[bold red]Source file not found: {source_path}[/]")
+            return False
 
-        possible_files = list(set(f for f in possible_files if f.is_file()))
+    # Get the file extension from source path
+    source_extension = pathlib.Path(source_path).suffix
 
-        if len(possible_files) == 1:
-            source_path = str(possible_files[0])
-            console.print(f"[cyan]Found source file: {source_path}[/]")
-        else:
-            console.print("[yellow]Please specify the source file to continue optimizing.[/]")
-            source_path = console.input("[bold]Enter the path to the source file: [/]").strip()
-            if not pathlib.Path(source_path).exists():
-                console.print(f"[bold red]Source file not found: {source_path}[/]")
-                return False
-
-    # Write the last completed solution (starting point) to the source file
-    # We continue from where we left off (last completed step)
-    if not last_node or not last_node.get("code"):
-        # If the last node doesn't have code, we can't extend
-        console.print("[bold red]Error: Last solution node doesn't have code. Cannot extend this run.[/]")
-        return False
-
+    # Write the last completed solution to both source file and log directory
     write_to_path(pathlib.Path(source_path), last_node["code"])
-    write_to_path(run_log_dir / f"step_{last_step}.py", last_node["code"])
+    write_to_path(run_log_dir / f"step_{last_step}{source_extension}", last_node["code"])
     console.print(
         f"\n[green]Extending from last completed step {last_step} (metric: {last_node.get('metric_value', 'N/A')}):[/] {source_path}"
     )
