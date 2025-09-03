@@ -304,10 +304,7 @@ def run_optimization_loop(
     """
     optimization_completed_normally = False
     user_stop_requested_flag = False
-
-    # For execute_optimization, we use the initial execution output from step 0 baseline
-    # Treat empty string as None (no valid execution output)
-    execution_output = initial_execution_output if initial_execution_output else None
+    execution_output = ""  # Initialize for the loop
 
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
@@ -323,13 +320,14 @@ def run_optimization_loop(
         except Exception as e:
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
-        # Handle execution output for the first step (resume/extend pattern only)
-        # Treat empty string as None for proper evaluation
+        # Handle execution output for the first step
+        # For execute_optimization: initial_execution_output contains the evaluation from step 0
+        # For resume/extend: initial_execution_output may contain cached output or need evaluation
         if step == start_step and initial_execution_output and initial_execution_output.strip():
+            # Use the provided initial execution output
             execution_output = initial_execution_output
         elif step == start_step and (not initial_execution_output or not initial_execution_output.strip()):
-            # For resume/extend when the last node wasn't evaluated yet (no execution_output or empty)
-            # We need to evaluate it before proceeding to suggest
+            # No valid initial output provided - need to evaluate the previous step's solution
             eval_output_panel.clear()
             execution_output = run_and_log_evaluation(
                 eval_command=eval_command,
