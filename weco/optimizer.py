@@ -1191,44 +1191,43 @@ def resume_optimization(
                 additional_instructions=None,
             )
 
-            # Display final results if optimization completed normally
-            if optimization_completed_normally:
-                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-                if run_status and run_status.get("best_result"):
-                    best = run_status["best_result"]
-                    if best.get("code"):
-                        best_node = Node(
-                            id=best.get("solution_id", ""),
-                            parent_id=best.get("parent_id"),
-                            code=best["code"],
-                            metric=best.get("metric_value"),
-                            is_buggy=best.get("is_buggy", False),
-                        )
-                        solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
+            # Display final results - always try to show best solution if available
+            run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+            if run_status and run_status.get("best_result"):
+                best = run_status["best_result"]
+                if best.get("code"):
+                    best_node = Node(
+                        id=best.get("solution_id", ""),
+                        parent_id=best.get("parent_id"),
+                        code=best["code"],
+                        metric=best.get("metric_value"),
+                        is_buggy=best.get("is_buggy", False),
+                    )
+                    solution_panels.update(current_node=solution_panels.current_node, best_node=best_node)
 
-                        # Format score for the comment
-                        best_score_str = (
-                            format_number(best.get("metric_value"))
-                            if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
-                            else "N/A"
-                        )
-                        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                        # Save best solution to .runs/<run-id>/best.<extension>
-                        write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
-                        # write the best solution to the source file
-                        write_to_path(pathlib.Path(source_path), best_solution_content)
+                    # Format score for the comment
+                    best_score_str = (
+                        format_number(best.get("metric_value"))
+                        if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
+                        else "N/A"
+                    )
+                    best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
+                    # Save best solution to .runs/<run-id>/best.<extension>
+                    write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
+                    # write the best solution to the source file
+                    write_to_path(pathlib.Path(source_path), best_solution_content)
 
-                        # Final display with end optimization layout
-                        _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
-                        final_message = (
-                            f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
-                            if best.get("metric_value") is not None
-                            else "[red] No valid solution found.[/]"
-                        )
-                        end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
-                        end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
-                        end_optimization_layout["best_solution"].update(best_solution_panel)
-                        live.update(end_optimization_layout)
+                    # Final display with end optimization layout
+                    _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
+                    final_message = (
+                        f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
+                        if best.get("metric_value") is not None
+                        else "[red] No valid solution found.[/]"
+                    )
+                    end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
+                    end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
+                    end_optimization_layout["best_solution"].update(best_solution_panel)
+                    live.update(end_optimization_layout)
 
     except Exception as e:
         console.print(f"\n[bold red]Error during optimization: {e}[/]")
@@ -1240,22 +1239,27 @@ def resume_optimization(
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
 
-        # Report termination status only if not completed normally
-        # (API already marks as completed when is_done=True)
-        if not optimization_completed_normally:
-            if user_stop_requested_flag:
-                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
-            else:
-                status, reason = "error", "error_cli_internal"
-                details = "Resume failed due to an error"
-
-            report_termination(run_id, status, reason, details, auth_headers)
-
-        # Show completion message for resume
+        # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
+            status, reason, details = "completed", "completed_successfully", None
+        elif user_stop_requested_flag:
+            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+        else:
+            status, reason = "error", "error_cli_internal"
+            details = "Resume failed due to an error"
+
+        report_termination(run_id, status, reason, details, auth_headers)
+
+        # Handle exit messages
+        if optimization_completed_normally:
+            # Run completed successfully - show extend option
             console.print(
                 f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
             )
+        elif user_stop_requested_flag:
+            # Run was terminated by user - show resume option
+            console.print("[yellow]Run terminated by user request.[/]")
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -1603,40 +1607,34 @@ def extend_optimization(
                 additional_instructions=None,
             )
 
-            # Get the final step value for later use
-            step = total_steps
+            # Display final results - always try to show best solution if available
+            run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
+            if run_status and run_status.get("best_result"):
+                best = run_status["best_result"]
+                if best.get("code"):
+                    # Format score for the comment
+                    best_score_str = (
+                        format_number(best.get("metric_value"))
+                        if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
+                        else "N/A"
+                    )
+                    best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
+                    # Save best solution to .runs/<run-id>/best.<extension>
+                    write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
+                    # write the best solution to the source file
+                    write_to_path(pathlib.Path(source_path), best_solution_content)
 
-            # Final handling
-            if optimization_completed_normally or step == total_steps:
-                run_status = get_optimization_run_status(console, run_id, include_history=False, auth_headers=auth_headers)
-                if run_status and run_status.get("best_result"):
-                    best = run_status["best_result"]
-                    if best.get("code"):
-                        # Format score for the comment
-                        best_score_str = (
-                            format_number(best.get("metric_value"))
-                            if best.get("metric_value") is not None and isinstance(best.get("metric_value"), (int, float))
-                            else "N/A"
-                        )
-                        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best['code']}"
-                        # Save best solution to .runs/<run-id>/best.<extension>
-                        write_to_path(run_log_dir / f"best{pathlib.Path(source_path).suffix}", best_solution_content)
-                        # write the best solution to the source file
-                        write_to_path(pathlib.Path(source_path), best_solution_content)
-
-                        # Final display with end optimization layout
-                        _, best_solution_panel = solution_panels.get_display(current_step=step)
-                        final_message = (
-                            f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
-                            if best.get("metric_value") is not None
-                            else "[red] No valid solution found.[/]"
-                        )
-                        end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
-                        end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
-                        end_optimization_layout["best_solution"].update(best_solution_panel)
-                        live.update(end_optimization_layout)
-
-                optimization_completed_normally = True
+                    # Final display with end optimization layout
+                    _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
+                    final_message = (
+                        f"{metric_name.capitalize()} {'maximized' if maximize else 'minimized'}! Best solution {metric_name.lower()} = [green]{best.get('metric_value')}[/] 🏆"
+                        if best.get("metric_value") is not None
+                        else "[red] No valid solution found.[/]"
+                    )
+                    end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
+                    end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
+                    end_optimization_layout["best_solution"].update(best_solution_panel)
+                    live.update(end_optimization_layout)
 
     except Exception as e:
         console.print(f"\n[bold red]Error during extension: {e}[/]")
@@ -1648,20 +1646,26 @@ def extend_optimization(
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
 
-        # Report termination status only if not completed normally
-        if not optimization_completed_normally:
-            if user_stop_requested_flag:
-                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
-            else:
-                status, reason = "error", "error_cli_internal"
-                details = "Extension failed due to an error"
-
-            report_termination(run_id, status, reason, details, auth_headers)
-
-        # Show completion message for extend
+        # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
+            status, reason, details = "completed", "completed_successfully", None
+        elif user_stop_requested_flag:
+            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+        else:
+            status, reason = "error", "error_cli_internal"
+            details = "Extension failed due to an error"
+
+        report_termination(run_id, status, reason, details, auth_headers)
+
+        # Handle exit messages
+        if optimization_completed_normally:
+            # Run completed successfully - show extend option
             console.print(
                 f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
             )
+        elif user_stop_requested_flag:
+            # Run was terminated by user - show resume option
+            console.print("[yellow]Run terminated by user request.[/]")
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
