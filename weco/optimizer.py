@@ -1035,10 +1035,17 @@ def resume_optimization(
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
-        report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        report_termination(
+            run_id=run_id,
+            status_update="terminated",
+            reason=f"user_terminated_{signal_name.lower()}",
+            details=f"Process terminated by signal {signal_name} ({signum}).",
+            auth_headers=auth_headers,
+            timeout=3,
+        )
         # Show resume message
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
-        sys.exit(1)
+        sys.exit(0)
 
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
@@ -1236,14 +1243,14 @@ def resume_optimization(
 
         # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
-            status, reason, details = "completed", "completed_successfully", None
+            status_update, reason, details = "completed", "completed_successfully", None
         elif user_stop_requested_flag:
-            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            status_update, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
         else:
-            status, reason = "error", "error_cli_internal"
+            status_update, reason = "error", "error_cli_internal"
             details = "Resume failed due to an error"
 
-        report_termination(run_id, status, reason, details, auth_headers)
+        report_termination(run_id, status_update, reason, details, auth_headers)
 
         # Handle exit messages
         if optimization_completed_normally:
@@ -1461,10 +1468,17 @@ def extend_optimization(
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
-        report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        report_termination(
+            run_id=run_id,
+            status_update="terminated",
+            reason=f"user_terminated_{signal_name.lower()}",
+            details=f"Process terminated by signal {signal_name} ({signum}).",
+            auth_headers=auth_headers,
+            timeout=3,
+        )
         # Show resume message
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
-        sys.exit(1)
+        sys.exit(0)
 
     original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
     original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
@@ -1647,14 +1661,14 @@ def extend_optimization(
 
         # Report final status (following execute_optimization pattern)
         if optimization_completed_normally:
-            status, reason, details = "completed", "completed_successfully", None
+            status_update, reason, details = "completed", "completed_successfully", None
         elif user_stop_requested_flag:
-            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            status_update, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
         else:
-            status, reason = "error", "error_cli_internal"
+            status_update, reason = "error", "error_cli_internal"
             details = "Extension failed due to an error"
 
-        report_termination(run_id, status, reason, details, auth_headers)
+        report_termination(run_id, status_update, reason, details, auth_headers)
 
         # Handle exit messages
         if optimization_completed_normally:
