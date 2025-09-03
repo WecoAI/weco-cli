@@ -1002,9 +1002,7 @@ def resume_optimization(
         else:
             # Ask user for source file path
             if not source_path_from_api:
-                console.print(
-                    "\n[yellow]The original source file path was not saved with this run.[/]"
-                )
+                console.print("\n[yellow]The original source file path was not saved with this run.[/]")
                 console.print("[dim]This typically happens when resuming runs created with weco CLI versions before 0.2.0[/]")
             console.print("[yellow]Please specify the source file that was being optimized:[/]")
             source_path = console.input("[bold]Enter the path to the source file to optimize: [/]").strip()
