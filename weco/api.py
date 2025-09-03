@@ -29,6 +29,10 @@ def start_optimization_run(
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
     api_keys: Dict[str, Any] = {},
+    source_path: Optional[str] = None,
+    eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
+    log_dir: str = ".runs",
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -47,7 +51,15 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                    "metadata": {
+                        "client_name": "cli",
+                        "client_version": __pkg_version__,
+                        "source_path": source_path,
+                        "eval_timeout": eval_timeout,
+                        "save_logs": save_logs,
+                        "log_dir": log_dir,
+                        **api_keys,
+                    },
                 },
                 headers=auth_headers,
                 timeout=timeout,
@@ -352,3 +364,61 @@ def analyze_script_execution_requirements(
     except Exception as e:
         console.print(f"[bold red]Error: {e}[/]")
         return f"python {script_path}"
+
+
+def resume_optimization_run(
+    console: Console,
+    run_id: str,
+    api_keys: Dict[str, Any] = {},
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """Resume an optimization run from the last completed step."""
+    with console.status(f"[bold green]Resuming run {run_id}..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/resume",
+                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys}},
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error resuming run: {e}[/]")
+            return None
+
+
+def extend_optimization_run(
+    console: Console,
+    run_id: str,
+    additional_steps: int,
+    api_keys: Dict[str, Any] = {},
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """Extend a completed optimization run with additional steps."""
+    with console.status(f"[bold green]Extending run {run_id} with {additional_steps} additional steps..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/extend",
+                json={
+                    "additional_steps": additional_steps,
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                },
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error extending run: {e}[/]")
+            return None

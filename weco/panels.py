@@ -256,6 +256,14 @@ class MetricTreePanel:
         if len(self.metric_tree.nodes) == 0:
             return Tree("[bold green]Building first solution...")
 
+        # Check if we have a valid root node
+        try:
+            root_node = self.metric_tree.get_root_node()
+        except ValueError:
+            # ValueError raised during resume/extend as node data is being fetched from the backend
+            # No valid root node found, return a placeholder
+            return Tree("[bold yellow]Loading optimization history...")
+
         best_node = self.metric_tree.get_best_node()
 
         def append_rec(node: Node, tree: Tree):
@@ -271,7 +279,7 @@ class MetricTreePanel:
                 text = "bug"
             else:
                 # evaluated non-buggy node
-                if node.id == best_node.id:
+                if best_node and node.id == best_node.id:
                     # best node
                     color = "green"
                     style = "bold"
@@ -296,7 +304,6 @@ class MetricTreePanel:
                 append_rec(child, subtree)
 
         tree = Tree("", hide_root=True)
-        root_node = self.metric_tree.get_root_node()
         append_rec(node=root_node, tree=tree)
 
         return tree

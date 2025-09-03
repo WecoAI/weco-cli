@@ -180,7 +180,65 @@ To save your optimization runs and view them on the Weco dashboard, you can log 
 | `weco` | Launch interactive onboarding | **Recommended for beginners** - Analyzes your codebase and guides you through setup |
 | `weco /path/to/project` | Launch onboarding for specific project | When working with a project in a different directory |
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
+| `weco resume <run-id> [options]` | Resume an interrupted optimization | When a run was interrupted and you want to continue from the last completed step |
+| `weco extend <run-id> <steps>` | Extend a completed optimization | When a run completed but you want to continue optimizing with more steps |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
+
+### Resuming Interrupted Runs
+
+If your optimization run is interrupted (due to network issues, system restart, etc.), you can resume it from the last completed step using the `weco resume` command:
+
+```bash
+# Resume an interrupted run from where it left off
+weco resume 0002e071-1b67-411f-a514-36947f0c4b31
+
+# Skip validation prompts and resume immediately
+weco resume 0002e071-1b67-411f-a514-36947f0c4b31 --skip-validation
+```
+
+**Arguments for `weco resume`:**
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
+| `--skip-validation` | Skip environment validation checks (confirmation that evaluation script, target optimization file, and additional instructions haven't changed) | `--skip-validation` |
+
+**Important notes:**
+- The resume feature only works for interrupted runs (status: error, terminated, etc.)
+- For completed runs, use the `weco extend` command instead
+- You'll be prompted to confirm that your evaluation environment hasn't changed since the original run
+- The source file will be restored to the last completed solution before continuing
+- All progress and metrics from the original run are preserved
+
+### Extending Completed Runs
+
+If your optimization run has completed but you want to continue optimizing with more steps:
+
+```bash
+# Extend a completed run with 20 additional steps
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 20
+
+# Extend with 50 more steps
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 50
+
+# Skip validation prompts and extend immediately
+weco extend 0002e071-1b67-411f-a514-36947f0c4b31 30 --skip-validation
+```
+
+**Arguments for `weco extend`:**
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `run-id` | The UUID of the completed run to extend | `0002e071-1b67-411f-a514-36947f0c4b31` |
+| `steps` | Number of additional steps to add | `20` |
+| `--skip-validation` | Skip environment validation checks and extend immediately | `--skip-validation` |
+
+**Important notes:**
+- The extend feature only works for completed runs
+- For interrupted runs, use the `weco resume` command instead
+- You'll be prompted to confirm that your evaluation environment hasn't changed since the original run
+- The optimization will continue from the last completed step
+- The extended run will have a new total step count (original + additional)
 
 ### Model Selection
 
