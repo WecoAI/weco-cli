@@ -586,20 +586,10 @@ def run_optimization_loop(
             transition_delay=0.1,
         )
 
-    # Handle final evaluation
+    # Handle final status update
     if not user_stop_requested_flag:
-        # Still need to evaluate the final solution as the last call to `evaluate_feedback_then_suggest_next_solution`
-        # evaluated solution for `step=total_steps - 1` and generated the solution for `step=total_steps`.
-        response = evaluate_feedback_then_suggest_next_solution(
-            console=console,
-            run_id=run_id,
-            execution_output=execution_output,
-            additional_instructions=additional_instructions,
-            api_keys=api_keys,
-            timeout=api_timeout,
-            auth_headers=auth_headers,
-        )
-        summary_panel.update_token_counts(usage=response["usage"])
+        # Get final status from the API to ensure panels show the complete state
+        # Note: We don't need another suggest call here - the loop already generated and evaluated all required solutions
         status_response = get_optimization_run_status(
             console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
@@ -737,6 +727,9 @@ def execute_optimization(
             "max_debug_depth": max(1, math.ceil(0.1 * steps)),
         }
         api_timeout = DEFAULT_API_TIMEOUT
+        # Read additional instructions once at the start
+        # NOTE: Instructions are captured at optimization start and remain fixed throughout the run
+        # Any changes to instruction files during the run will not be picked up
         processed_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
         source_fp = pathlib.Path(source)
         source_code = read_from_path(fp=source_fp, is_json=False)
@@ -1142,8 +1135,9 @@ def resume_optimization(
     def signal_handler(signum, frame):
         signal_name = signal.Signals(signum).name
         console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
+        # Stop heartbeat thread
+        stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
-            stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
         report_termination(
             run_id=run_id,
@@ -1566,8 +1560,9 @@ def extend_optimization(
     def signal_handler(signum, frame):
         signal_name = signal.Signals(signum).name
         console.print(f"\n[yellow]Received {signal_name} signal. Cleaning up...[/]")
+        # Stop heartbeat thread
+        stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
-            stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=HEARTBEAT_JOIN_TIMEOUT)
         report_termination(
             run_id=run_id,
