@@ -386,18 +386,20 @@ def run_optimization_loop(
         except Exception as e:
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
-        # Initialize execution output for the optimization loop's first iteration
-        # The loop needs the evaluation result from the previous step to generate the next solution
-        # For execute: this is the evaluation of the initial solution (step 0)
-        # For resume/extend: this is the evaluation of where we left off
+        # Set up execution output for the first iteration of the optimization loop
+        # The API needs evaluation results (test output, metrics, errors) from the previous step
+        # to analyze what went wrong and generate an improved solution for the current step
         if step == start_step:
             if initial_execution_output and initial_execution_output.strip():
-                # Valid execution output is available, use it
+                # Valid execution output provided - use it directly
                 execution_output = initial_execution_output
             else:
-                # No valid output available (None, empty, or whitespace-only)
-                # This can happen if resume/extend has no cached output or if evaluation produced no output
-                # Re-evaluate the previous step's solution to get the needed feedback
+                # Missing or empty execution output - must re-evaluate to proceed
+                # This happens when:
+                # 1. Resume/extend: Previous run was interrupted during evaluation
+                # 2. Resume/extend: API's cached execution_output field is None/empty
+                # 3. Any: Evaluation command produced no output (rare but possible)
+                # Without evaluation results, the API cannot generate improvements
                 eval_output_panel.clear()
                 execution_output = run_and_log_evaluation(
                     eval_command=eval_command,
@@ -838,47 +840,25 @@ def execute_optimization(
                 )
 
                 best_solution_node = get_best_node_from_status(status_response)
-                solution_panels.update(current_node=None, best_node=best_solution_node)
-                _, best_solution_panel = solution_panels.get_display(current_step=steps)
-                # Update the end optimization layout
-                final_message = (
-                    f"{summary_panel.metric_name.capitalize()} {'maximized' if summary_panel.maximize else 'minimized'}! Best solution {summary_panel.metric_name.lower()} = [green]{status_response['best_result']['metric_value']}[/] 🏆"
-                    if best_solution_node is not None and best_solution_node.metric is not None
-                    else "[red] No valid solution found.[/]"
+
+                # Display final results
+                display_final_results(
+                    live=live,
+                    end_optimization_layout=end_optimization_layout,
+                    summary_panel=summary_panel,
+                    tree_panel=tree_panel,
+                    solution_panels=solution_panels,
+                    best_solution_node=best_solution_node,
+                    metric_name=summary_panel.metric_name,
+                    maximize=summary_panel.maximize,
+                    total_steps=steps,
                 )
-                end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
-                end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
-                end_optimization_layout["best_solution"].update(best_solution_panel)
 
                 # Save optimization results
-                # If the best solution does not exist or is has not been measured at the end of the optimization
-                # save the original solution as the best solution
-                if best_solution_node is not None:
-                    best_solution_code = best_solution_node.code
-                    best_solution_score = best_solution_node.metric
-                else:
-                    best_solution_code = None
-                    best_solution_score = None
+                save_best_solution(best_solution_node, source_fp, runs_dir)
 
-                if best_solution_code is None or best_solution_score is None:
-                    best_solution_content = f"# Weco could not find a better solution\n\n{read_from_path(fp=runs_dir / f'step_0{source_fp.suffix}', is_json=False)}"
-                else:
-                    # Format score for the comment
-                    best_score_str = (
-                        format_number(best_solution_score)
-                        if best_solution_score is not None and isinstance(best_solution_score, (int, float))
-                        else "N/A"
-                    )
-                    best_solution_content = (
-                        f"# Best solution from Weco with a score of {best_score_str}\n\n{best_solution_code}"
-                    )
-                # Save best solution to .runs/<run-id>/best.<extension>
-                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
-                # write the best solution to the source file
-                write_to_path(fp=source_fp, content=best_solution_content)
                 # Mark as completed normally for the finally block
                 optimization_completed_normally = True
-                live.update(end_optimization_layout)
 
     except Exception as e:
         # Catch errors during the main optimization loop or setup
@@ -1111,7 +1091,7 @@ def resume_optimization(
             reason=f"user_terminated_{signal_name.lower()}",
             details=f"Process terminated by signal {signal_name} ({signum}).",
             auth_headers=auth_headers,
-            timeout=3,
+            timeout=SIGNAL_HANDLER_TIMEOUT,
         )
         # Show resume message
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
@@ -1535,7 +1515,7 @@ def extend_optimization(
             reason=f"user_terminated_{signal_name.lower()}",
             details=f"Process terminated by signal {signal_name} ({signum}).",
             auth_headers=auth_headers,
-            timeout=3,
+            timeout=SIGNAL_HANDLER_TIMEOUT,
         )
         # Show resume message
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
