@@ -153,19 +153,32 @@ def truncate_output(output: str) -> str:
 
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
+    import time
 
     # Run the eval command as is
     try:
-        result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False, timeout=timeout)
-        # Combine stdout and stderr for complete output
-        output = result.stderr if result.stderr else ""
-        if result.stdout:
+        # Use Popen with polling to ensure heartbeat threads can run
+        process = subprocess.Popen(eval_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        # Poll process completion with short sleeps to allow thread switching
+        start_time = time.time()
+        while process.poll() is None:
+            if timeout and (time.time() - start_time) > timeout:
+                process.kill()
+                process.wait()
+                return f"Evaluation timed out after {timeout} seconds."
+            time.sleep(0.1)  # Short sleep to yield CPU and allow heartbeat thread to run
+
+        # Get output after completion
+        stdout, stderr = process.communicate()
+        output = stderr if stderr else ""
+        if stdout:
             if len(output) > 0:
                 output += "\n"
-            output += result.stdout
-        return output  # Return full output, no truncation
-    except subprocess.TimeoutExpired:
-        return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
+            output += stdout
+        return output
+    except Exception as e:
+        return f"Evaluation failed with error: {e}"
 
 
 # Update Check Function
