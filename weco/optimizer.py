@@ -37,12 +37,7 @@ from .utils import (
     smooth_update,
     format_number,
 )
-from .constants import DEFAULT_API_TIMEOUT
-
-# Common timeout and delay constants
-HEARTBEAT_JOIN_TIMEOUT = 2  # seconds to wait for heartbeat thread to stop
-HEARTBEAT_STARTUP_DELAY = 2  # seconds to wait before starting heartbeat (for DB sync)
-SIGNAL_HANDLER_TIMEOUT = 3  # seconds for report_termination in signal handlers
+from .constants import DEFAULT_API_TIMEOUT, HEARTBEAT_JOIN_TIMEOUT, HEARTBEAT_STARTUP_DELAY, SIGNAL_HANDLER_TIMEOUT
 
 
 def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
