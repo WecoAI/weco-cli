@@ -58,7 +58,7 @@ def start_optimization_run(
                         "eval_timeout": eval_timeout,
                         "save_logs": save_logs,
                         "log_dir": log_dir,
-                        **api_keys,
+                        **(api_keys or {}),
                     },
                 },
                 headers=auth_headers,
@@ -99,7 +99,7 @@ def evaluate_feedback_then_suggest_next_solution(
             json={
                 "execution_output": truncated_output,
                 "additional_instructions": additional_instructions,
-                "metadata": {**api_keys},
+                "metadata": {**(api_keys or {})},
             },
             headers=auth_headers,
             timeout=timeout,
@@ -378,7 +378,7 @@ def resume_optimization_run(
         try:
             response = requests.post(
                 f"{__base_url__}/runs/{run_id}/resume",
-                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys}},
+                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__, **(api_keys or {})}},
                 headers=auth_headers,
                 timeout=timeout,
             )
@@ -408,7 +408,7 @@ def extend_optimization_run(
                 f"{__base_url__}/runs/{run_id}/extend",
                 json={
                     "additional_steps": additional_steps,
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **api_keys},
+                    "metadata": {"client_name": "cli", "client_version": __pkg_version__, **(api_keys or {})},
                 },
                 headers=auth_headers,
                 timeout=timeout,
