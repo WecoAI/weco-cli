@@ -550,12 +550,6 @@ def run_optimization_loop(
             transition_delay=0.08,
         )
 
-        # Check if optimization is done
-        if response.get("is_done"):
-            optimization_completed_normally = True
-            stop_heartbeat_event.set()
-            break
-
         # Handle evaluation after solution
         # Always evaluate after getting solution (this is the pattern for all calls)
         # Clear evaluation output since we are running evaluation on a new solution
@@ -586,10 +580,37 @@ def run_optimization_loop(
             transition_delay=0.1,
         )
 
+        # Check if optimization is done AFTER evaluating the solution
+        # This ensures the final solution is evaluated before we exit
+        if response.get("is_done"):
+            optimization_completed_normally = True
+            stop_heartbeat_event.set()
+            break
+
     # Handle final status update
     if not user_stop_requested_flag:
+        # Submit final evaluation output to backend so it can record metrics for the last solution
+        # This matches the dev branch pattern - we need to report the final step's evaluation
+        if execution_output:
+            try:
+                # Submit the final evaluation output to update backend metrics
+                final_response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=run_id,
+                    execution_output=execution_output,
+                    additional_instructions=additional_instructions,  # Use the same instructions
+                    api_keys=api_keys,
+                    auth_headers=auth_headers,
+                    timeout=api_timeout,
+                )
+                # Update token counts from the final suggest
+                if final_response and final_response.get("usage"):
+                    summary_panel.update_token_counts(usage=final_response["usage"])
+            except Exception:
+                # Non-critical if this fails - the optimization is already complete
+                pass
+
         # Get final status from the API to ensure panels show the complete state
-        # Note: We don't need another suggest call here - the loop already generated and evaluated all required solutions
         status_response = get_optimization_run_status(
             console=console, run_id=run_id, include_history=True, timeout=api_timeout, auth_headers=auth_headers
         )
