@@ -304,7 +304,7 @@ def run_optimization_loop(
     """
     optimization_completed_normally = False
     user_stop_requested_flag = False
-    execution_output = ""  # Initialize for the loop
+    execution_output = initial_execution_output
 
     for step in range(start_step, total_steps + 1):
         # Check for user stop request first (before updating progress)
@@ -319,24 +319,6 @@ def run_optimization_loop(
                 break
         except Exception as e:
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
-
-        # Handle execution output for the first step
-        # For execute_optimization: initial_execution_output contains the evaluation from step 0
-        # For resume/extend: initial_execution_output may contain cached output or need evaluation
-        if step == start_step and initial_execution_output and initial_execution_output.strip():
-            # Use the provided initial execution output
-            execution_output = initial_execution_output
-        elif step == start_step and (not initial_execution_output or not initial_execution_output.strip()):
-            # No valid initial output provided - need to evaluate the previous step's solution
-            eval_output_panel.clear()
-            execution_output = run_and_log_evaluation(
-                eval_command=eval_command,
-                eval_timeout=eval_timeout,
-                save_logs=save_logs,
-                runs_dir=runs_dir,
-                step=step - 1,  # Evaluate the previous step's solution that was just restored
-                eval_output_panel=eval_output_panel,
-            )
 
         # Get next solution
         response = evaluate_feedback_then_suggest_next_solution(
@@ -1035,13 +1017,20 @@ def resume_optimization(
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
-        report_termination(run_id, "terminated", f"user_terminated_{signal_name.lower()}", None, auth_headers)
+        report_termination(
+            run_id=run_id,
+            status_update="terminated",
+            reason=f"user_terminated_{signal_name.lower()}",
+            details=None,
+            auth_headers=auth_headers,
+            timeout=(10, 30),
+        )
         # Show resume message
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
 
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
@@ -1170,7 +1159,7 @@ def resume_optimization(
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
                 initial_execution_output=initial_execution_output,
-                additional_instructions=None,
+                additional_instructions=None, # BUG: we should be reading additional instructions if it is a file else pass None (for every step of the optimization loop)
             )
 
             # Display final results - always try to show best solution if available
@@ -1212,36 +1201,55 @@ def resume_optimization(
                     live.update(end_optimization_layout)
 
     except Exception as e:
-        console.print(f"\n[bold red]Error during optimization: {e}[/]")
-        traceback.print_exc()
-
+        # Catch errors during the main optimization loop or setup
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        # Ensure optimization_completed_normally is False
+        optimization_completed_normally = False
+        # Suggest resume command if we have a run_id
+        if run_id:
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
     finally:
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+
         # Stop heartbeat
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
 
         # Report final status (following execute_optimization pattern)
-        if optimization_completed_normally:
-            status, reason, details = "completed", "completed_successfully", None
-        elif user_stop_requested_flag:
-            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
-        else:
-            status, reason = "error", "error_cli_internal"
-            details = "Resume failed due to an error"
+        if run_id:
+            if optimization_completed_normally:
+                status, reason, details = "completed", "completed_successfully", None
+            elif user_stop_requested_flag:
+                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            else:
+                status, reason = "error", "error_cli_internal"
+                details = locals().get("error_details") or (
+                    traceback.format_exc()
+                    if "e" in locals() and isinstance(locals()["e"], Exception)
+                    else "CLI terminated unexpectedly without a specific exception captured."
+                )
 
-        report_termination(run_id, status, reason, details, auth_headers)
+        report_termination(run_id=run_id, status_update=status, reason=reason, details=details, auth_headers=auth_headers)
 
         # Handle exit messages
         if optimization_completed_normally:
             # Run completed successfully - show extend option
-            console.print(
-                f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
-            )
+            if run_id:
+                console.print(
+                    f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
+                )
         elif user_stop_requested_flag:
             # Run was terminated by user - show resume option
             console.print("[yellow]Run terminated by user request.[/]")
-            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
+            if run_id:
+                console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -1453,8 +1461,8 @@ def extend_optimization(
         console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
         sys.exit(1)
 
-    signal.signal(signal.SIGINT, signal_handler)
-    signal.signal(signal.SIGTERM, signal_handler)
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
 
     # Start heartbeat thread with a small delay to ensure DB status update propagates
     # This prevents the heartbeat from failing immediately after resume/extend
@@ -1610,35 +1618,54 @@ def extend_optimization(
                     live.update(end_optimization_layout)
 
     except Exception as e:
-        console.print(f"\n[bold red]Error during extension: {e}[/]")
-        traceback.print_exc()
-
+        # Catch errors during the main optimization loop or setup
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        # Ensure optimization_completed_normally is False
+        optimization_completed_normally = False
+        # Suggest resume command if we have a run_id
+        if run_id:
+            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
     finally:
+        # Restore original signal handlers
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+
         # Stop heartbeat
         if heartbeat_thread and heartbeat_thread.is_alive():
             stop_heartbeat_event.set()
             heartbeat_thread.join(timeout=2)
 
         # Report final status (following execute_optimization pattern)
-        if optimization_completed_normally:
-            status, reason, details = "completed", "completed_successfully", None
-        elif user_stop_requested_flag:
-            status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
-        else:
-            status, reason = "error", "error_cli_internal"
-            details = "Extension failed due to an error"
+        if run_id:
+            if optimization_completed_normally:
+                status, reason, details = "completed", "completed_successfully", None
+            elif user_stop_requested_flag:
+                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            else:
+                status, reason = "error", "error_cli_internal"
+                details = locals().get("error_details") or (
+                    traceback.format_exc()
+                    if "e" in locals() and isinstance(locals()["e"], Exception)
+                    else "CLI terminated unexpectedly without a specific exception captured."
+                )
 
-        report_termination(run_id, status, reason, details, auth_headers)
+        report_termination(run_id=run_id, status_update=status, reason=reason, details=details, auth_headers=auth_headers)
 
         # Handle exit messages
         if optimization_completed_normally:
             # Run completed successfully - show extend option
-            console.print(
-                f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
-            )
+            if run_id:
+                console.print(
+                    f"\n[bold cyan]To extend this run with more steps, use:[/] [bold green]weco extend {run_id} <additional_steps>[/]"
+                )
         elif user_stop_requested_flag:
             # Run was terminated by user - show resume option
             console.print("[yellow]Run terminated by user request.[/]")
-            console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
+            if run_id:
+                console.print(f"\n[bold cyan]To resume this run, use:[/] [bold green]weco resume {run_id}[/]")
 
     return optimization_completed_normally or user_stop_requested_flag
