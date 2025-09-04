@@ -28,7 +28,7 @@ def start_optimization_run(
     evaluator_config: Dict[str, Any],
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
-    api_keys: Dict[str, Any] = {},
+    api_keys: Optional[Dict[str, Any]] = None,
     source_path: Optional[str] = None,
     eval_timeout: Optional[int] = None,
     save_logs: bool = False,
@@ -85,7 +85,7 @@ def evaluate_feedback_then_suggest_next_solution(
     run_id: str,
     execution_output: str,
     additional_instructions: str = None,
-    api_keys: Dict[str, Any] = {},
+    api_keys: Optional[Dict[str, Any]] = None,
     auth_headers: Optional[dict] = None,
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Dict[str, Any]:
@@ -369,7 +369,7 @@ def analyze_script_execution_requirements(
 def resume_optimization_run(
     console: Console,
     run_id: str,
-    api_keys: Dict[str, Any] = {},
+    api_keys: Optional[Dict[str, Any]] = None,
     auth_headers: Optional[dict] = None,
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -397,7 +397,7 @@ def extend_optimization_run(
     console: Console,
     run_id: str,
     additional_steps: int,
-    api_keys: Dict[str, Any] = {},
+    api_keys: Optional[Dict[str, Any]] = None,
     auth_headers: Optional[dict] = None,
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
