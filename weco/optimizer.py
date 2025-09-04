@@ -386,15 +386,18 @@ def run_optimization_loop(
         except Exception as e:
             console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
-        # Handle execution output for the first step of the loop
-        # - execute: has evaluation from step 0
-        # - resume/extend: may have cached output or empty if interrupted during eval
+        # Initialize execution output for the optimization loop's first iteration
+        # The loop needs the evaluation result from the previous step to generate the next solution
+        # For execute: this is the evaluation of the initial solution (step 0)
+        # For resume/extend: this is the evaluation of where we left off
         if step == start_step:
             if initial_execution_output and initial_execution_output.strip():
-                # Use the provided initial execution output
+                # Valid execution output is available, use it
                 execution_output = initial_execution_output
             else:
-                # Empty/missing output - re-evaluate the previous step's solution
+                # No valid output available (None, empty, or whitespace-only)
+                # This can happen if resume/extend has no cached output or if evaluation produced no output
+                # Re-evaluate the previous step's solution to get the needed feedback
                 eval_output_panel.clear()
                 execution_output = run_and_log_evaluation(
                     eval_command=eval_command,
