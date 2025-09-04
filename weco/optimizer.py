@@ -273,18 +273,80 @@ def write_solution_files(code: str, source_fp: pathlib.Path, runs_dir: pathlib.P
     write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
 
 
+def get_comment_syntax(file_extension: str) -> Tuple[str, Optional[str]]:
+    """Get the appropriate comment syntax for a given file extension.
+
+    Returns:
+        Tuple: (single_line_comment, multi_line_comment_start) or (single_line_comment, None)
+    """
+    # Map of file extensions to comment syntax
+    comment_map = {
+        # Python, Shell, Ruby, Perl, YAML, etc.
+        ".py": ("#", None),
+        ".sh": ("#", None),
+        ".bash": ("#", None),
+        ".rb": ("#", None),
+        ".pl": ("#", None),
+        ".yml": ("#", None),
+        ".yaml": ("#", None),
+        # C, C++, Java, JavaScript, TypeScript, Go, Rust, etc.
+        ".c": ("//", "/*"),
+        ".cpp": ("//", "/*"),
+        ".cc": ("//", "/*"),
+        ".h": ("//", "/*"),
+        ".hpp": ("//", "/*"),
+        ".java": ("//", "/*"),
+        ".js": ("//", "/*"),
+        ".jsx": ("//", "/*"),
+        ".ts": ("//", "/*"),
+        ".tsx": ("//", "/*"),
+        ".go": ("//", "/*"),
+        ".rs": ("//", "/*"),
+        ".cs": ("//", "/*"),
+        ".swift": ("//", "/*"),
+        ".kt": ("//", "/*"),
+        ".scala": ("//", "/*"),
+        ".php": ("//", "/*"),
+        # SQL
+        ".sql": ("--", "/*"),
+        # Lua
+        ".lua": ("--", "--[["),
+        # HTML, XML
+        ".html": ("<!--", None),
+        ".xml": ("<!--", None),
+        # MATLAB, Octave
+        ".m": ("%", None),
+        # R
+        ".r": ("#", None),
+        ".R": ("#", None),
+        # Fortran
+        ".f": ("!", None),
+        ".f90": ("!", None),
+        # Julia
+        ".jl": ("#", None),
+    }
+
+    # Default to # for unknown extensions
+    return comment_map.get(file_extension.lower(), ("#", None))
+
+
 def save_best_solution(best_solution_node: Optional[Node], source_fp: pathlib.Path, runs_dir: pathlib.Path) -> None:
     """Save the best solution to both the source file and runs directory."""
+    # Get appropriate comment syntax for the file type
+    single_comment, _ = get_comment_syntax(source_fp.suffix)
+
     if best_solution_node and best_solution_node.code and best_solution_node.metric is not None:
         # Format score for the comment
         best_score_str = (
             format_number(best_solution_node.metric) if isinstance(best_solution_node.metric, (int, float)) else "N/A"
         )
-        best_solution_content = f"# Best solution from Weco with a score of {best_score_str}\n\n{best_solution_node.code}"
+        comment_line = f"{single_comment} Best solution from Weco with a score of {best_score_str}"
+        best_solution_content = f"{comment_line}\n\n{best_solution_node.code}"
     else:
         # Fallback to original solution if no better solution found
         original_solution = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
-        best_solution_content = f"# Weco could not find a better solution\n\n{original_solution}"
+        comment_line = f"{single_comment} Weco could not find a better solution"
+        best_solution_content = f"{comment_line}\n\n{original_solution}"
 
     # Save best solution to .runs/<run-id>/best.<extension>
     write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
@@ -356,7 +418,7 @@ def run_optimization_loop(
     initial_execution_output: str = "",
     additional_instructions: Optional[str] = None,
     api_timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
-) -> tuple[bool, bool]:
+) -> Tuple[bool, bool]:
     """
     Shared optimization loop logic for execute, resume, and extend operations.
 
@@ -395,6 +457,9 @@ def run_optimization_loop(
                 # 2. Resume/extend: API's cached execution_output field is None/empty
                 # 3. Any: Evaluation command produced no output (rare but possible)
                 # Without evaluation results, the API cannot generate improvements
+                # NOTE: This assumes the eval_command is still valid and the environment hasn't changed
+                # For interactive use, this is validated by user confirmation prompts
+                # For scripted flows, ensure the evaluation environment remains consistent
                 eval_output_panel.clear()
                 execution_output = run_and_log_evaluation(
                     eval_command=eval_command,
