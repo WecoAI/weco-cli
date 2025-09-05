@@ -129,7 +129,7 @@ class SummaryPanel:
             Layout(summary_table, name="main_summary", ratio=1),
             Layout(
                 Panel(
-                    self.thinking_content or "[dim]No thinking content yet...[/]",
+                    self.thinking_content or "[dim]Thinking...[/]",
                     title="[bold]📝 Thinking...",
                     border_style="cyan",
                     expand=True,
