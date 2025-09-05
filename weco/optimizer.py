@@ -37,7 +37,16 @@ from .utils import (
     smooth_update,
     format_number,
 )
-from .constants import DEFAULT_API_TIMEOUT, HEARTBEAT_JOIN_TIMEOUT, HEARTBEAT_STARTUP_DELAY, SIGNAL_HANDLER_TIMEOUT
+from .constants import (
+    DEFAULT_API_TIMEOUT,
+    HEARTBEAT_JOIN_TIMEOUT,
+    HEARTBEAT_STARTUP_DELAY,
+    SIGNAL_HANDLER_TIMEOUT,
+    HEARTBEAT_INTERVAL,
+    HEARTBEAT_REQUEST_TIMEOUT,
+    HEARTBEAT_RETRY_DELAY,
+    HEARTBEAT_RETRY_ATTEMPTS,
+)
 
 
 def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
@@ -121,7 +130,7 @@ def initialize_or_append_logs(
 
 # --- Heartbeat Sender Class ---
 class HeartbeatSender(threading.Thread):
-    def __init__(self, run_id: str, auth_headers: dict, stop_event: threading.Event, interval: int = 30):
+    def __init__(self, run_id: str, auth_headers: dict, stop_event: threading.Event, interval: int = HEARTBEAT_INTERVAL):
         super().__init__(daemon=True)  # Daemon thread exits when main thread exits
         self.run_id = run_id
         self.auth_headers = auth_headers
@@ -131,10 +140,18 @@ class HeartbeatSender(threading.Thread):
     def run(self):
         try:
             while not self.stop_event.is_set():
-                if not send_heartbeat(self.run_id, self.auth_headers):
-                    # send_heartbeat itself prints errors to stderr if it returns False
-                    # No explicit HeartbeatSender log needed here unless more detail is desired for a False return
-                    pass
+                # Use shorter request timeouts to avoid long blocking calls
+                ok = send_heartbeat(self.run_id, self.auth_headers, timeout=HEARTBEAT_REQUEST_TIMEOUT)
+                if not ok:
+                    # Quick retries to smooth over transient issues
+                    attempts = 0
+                    while (
+                        not ok
+                        and attempts < HEARTBEAT_RETRY_ATTEMPTS
+                        and not self.stop_event.wait(HEARTBEAT_RETRY_DELAY)
+                    ):
+                        ok = send_heartbeat(self.run_id, self.auth_headers, timeout=HEARTBEAT_REQUEST_TIMEOUT)
+                        attempts += 1
 
                 if self.stop_event.is_set():  # Check before waiting for responsiveness
                     break
