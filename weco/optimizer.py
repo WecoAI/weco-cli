@@ -920,6 +920,7 @@ def resume_optimization(
     source_path_from_api = resume_info.get("source_path")  # Get source_path from API
     eval_timeout = resume_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs = resume_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
+    additional_instructions = resume_info.get("additional_instructions", None)
     # Use the provided log_dir parameter instead of getting from API
 
     if save_logs:
@@ -928,8 +929,7 @@ def resume_optimization(
     # Show detailed resume information now that we have it
     console.print("\n[bold green]Resume Details:[/]")
     console.print(f"[cyan]Run Name:[/] {run_name}")
-    console.print(f"[cyan]Last completed step:[/] {last_step}/{total_steps}")
-    console.print(f"[cyan]Will resume from step:[/] {last_step + 1}")
+    console.print(f"[cyan]Will resume from step:[/] {last_step}")
     console.print(f"[cyan]Evaluation command:[/] {evaluation_command}")
 
     # Get metric info from run_status
@@ -972,15 +972,8 @@ def resume_optimization(
             console.print(f"[bold red]Source file not found: {source_path}[/]")
             return False
 
-    # Now we have source_path, get the extension
-    source_extension = pathlib.Path(source_path).suffix
-
-    # Write the last solution to the appropriate file in log directory
-    last_solution_path = run_log_dir / f"step_{last_step}{source_extension}"
-    write_to_path(last_solution_path, last_node["code"])
-
-    # Write last solution to source file
-    write_to_path(pathlib.Path(source_path), last_node["code"])
+    # Write the last solution to the appropriate file in log directory and the source file
+    write_solution_files(code=last_node["code"], source_fp=pathlib.Path(source_path), runs_dir=run_log_dir, step=last_step)
     console.print(f"[green]✓[/] Restored last completed solution (step {last_step}) to {source_path}")
 
     # Initialize/append logging structure if save_logs is enabled
@@ -997,10 +990,6 @@ def resume_optimization(
             resumed_from_step=last_step,
         )
         console.print("[dim]Continuing with local execution logging[/]")
-
-    # Display resume information
-    console.print(f"\n[bold green]Resuming optimization from step {last_step + 1}/{total_steps}[/]")
-    console.print(f"[dim]Will run steps {last_step + 1} through {total_steps}[/]")
 
     # Continue optimization from the next step
     console.print("\n" + "=" * 50)
@@ -1057,7 +1046,7 @@ def resume_optimization(
     if run_name:
         summary_panel.set_run_name(run_name)
     # Set the initial progress to the step we're about to work on
-    summary_panel.set_step(last_step + 1)
+    summary_panel.set_step(last_step)
 
     # Load previous history if available
     run_status = get_optimization_run_status(console, run_id, include_history=True, auth_headers=auth_headers)
@@ -1159,7 +1148,7 @@ def resume_optimization(
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
                 initial_execution_output=initial_execution_output,
-                additional_instructions=None, # BUG: we should be reading additional instructions if it is a file else pass None (for every step of the optimization loop)
+                additional_instructions=additional_instructions,
             )
 
             # Display final results - always try to show best solution if available
@@ -1367,6 +1356,7 @@ def extend_optimization(
     source_path_from_api = extend_info.get("source_path")  # Get source_path from API
     eval_timeout = extend_info.get("eval_timeout")  # Get eval_timeout from API
     save_logs = extend_info.get("save_logs", False)  # Get save_logs from API (inherit from original run)
+    additional_instructions = extend_info.get("additional_instructions", None)
     # Use the provided log_dir parameter instead of getting from API
 
     if save_logs:
@@ -1514,9 +1504,9 @@ def extend_optimization(
         # Mark the next step as unevaluated to show "evaluating..." indicator
         tree_panel.set_unevaluated_node(node_id=next_step_id)
 
-    # Initialize with last solution
-    last_node_obj = None
-    if last_node:
+    # Initialize the last and best nodes in the solution panel
+    best_node_obj = tree_panel.metric_tree.get_best_node()
+    if last_node is not None and best_node_obj is not None:
         last_node_obj = Node(
             id=last_node.get("solution_id", ""),
             parent_id=last_node.get("parent_id"),
@@ -1524,7 +1514,7 @@ def extend_optimization(
             metric=last_node.get("metric_value"),
             is_buggy=last_node.get("is_buggy", False),
         )
-        solution_panels.update(current_node=last_node_obj, best_node=last_node_obj)
+        solution_panels.update(current_node=last_node_obj, best_node=best_node_obj)
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
@@ -1585,7 +1575,7 @@ def extend_optimization(
                 auth_headers=auth_headers,
                 stop_heartbeat_event=stop_heartbeat_event,
                 initial_execution_output=execution_output,
-                additional_instructions=None,
+                additional_instructions=additional_instructions,
             )
 
             # Display final results - always try to show best solution if available
