@@ -145,11 +145,7 @@ class HeartbeatSender(threading.Thread):
                 if not ok:
                     # Quick retries to smooth over transient issues
                     attempts = 0
-                    while (
-                        not ok
-                        and attempts < HEARTBEAT_RETRY_ATTEMPTS
-                        and not self.stop_event.wait(HEARTBEAT_RETRY_DELAY)
-                    ):
+                    while not ok and attempts < HEARTBEAT_RETRY_ATTEMPTS and not self.stop_event.wait(HEARTBEAT_RETRY_DELAY):
                         ok = send_heartbeat(self.run_id, self.auth_headers, timeout=HEARTBEAT_REQUEST_TIMEOUT)
                         attempts += 1
 
