@@ -102,8 +102,8 @@ if __name__ == "__main__":
     # benchmark parameters
     n_correctness_trials = 10
     correctness_tolerance = 1e-5
-    n_warmup = 1000
-    n_rep = 5000
+    n_warmup = int(1e2)
+    n_rep = int(2 * 1e5)
 
     # init and input parameters
     batch_size, input_size, hidden_size, scaling_factor = 128, 10, 20, 1.5
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     # measure performance
     inputs = get_inputs(batch_size, input_size, args.device)
     t_avg_baseline = bench(baseline_model, inputs, n_warmup, n_rep)
-    print(f"baseline time: {t_avg_baseline:.2f}ms")
+    print(f"baseline time: {t_avg_baseline:.4f}ms")
     t_avg_optimized = bench(solution_model, inputs, n_warmup, n_rep)
-    print(f"optimized time: {t_avg_optimized:.2f}ms")
-    print(f"speedup: {t_avg_baseline / t_avg_optimized:.2f}x")
+    print(f"optimized time: {t_avg_optimized:.4f}ms")
+    print(f"speedup: {t_avg_baseline / t_avg_optimized:.4f}x")
