@@ -68,6 +68,58 @@ def start_optimization_run(
             return None
 
 
+def resume_optimization_run(
+    console: Console,
+    run_id: str,
+    api_keys: Dict[str, Any] = {},
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """Request the backend to resume an interrupted run."""
+    with console.status("[bold green]Resuming run..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/resume", json={"metadata": {**api_keys}}, headers=auth_headers, timeout=timeout
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error resuming run: {e}[/]")
+            return None
+
+
+def extend_optimization_run(
+    console: Console,
+    run_id: str,
+    additional_steps: int,
+    api_keys: Dict[str, Any] = {},
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+) -> Optional[Dict[str, Any]]:
+    """Request the backend to extend a completed run with more steps."""
+    with console.status("[bold green]Extending run..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/extend",
+                json={"additional_steps": additional_steps, "metadata": {**api_keys}},
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error extending run: {e}[/]")
+            return None
+
+
 def evaluate_feedback_then_suggest_next_solution(
     console: Console,
     run_id: str,
