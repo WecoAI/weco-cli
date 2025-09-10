@@ -11,6 +11,7 @@ from typing import Optional
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
+from rich.prompt import Confirm
 
 from .api import (
     start_optimization_run,
@@ -18,6 +19,8 @@ from .api import (
     get_optimization_run_status,
     send_heartbeat,
     report_termination,
+    resume_optimization_run,
+    extend_optimization_run,
 )
 from .auth import handle_authentication
 from .panels import (
@@ -541,4 +544,728 @@ def execute_optimization(
         if user_stop_requested_flag:
             console.print("[yellow]Run terminated by user request.[/]")
 
+    return optimization_completed_normally or user_stop_requested_flag
+
+
+def get_best_node_from_status(status_response: dict) -> Optional[Node]:
+    """Extract the best node from a status response as a panels.Node instance."""
+    if status_response.get("best_result") is not None:
+        return Node(
+            id=status_response["best_result"]["solution_id"],
+            parent_id=status_response["best_result"]["parent_id"],
+            code=status_response["best_result"]["code"],
+            metric=status_response["best_result"]["metric_value"],
+            is_buggy=status_response["best_result"]["is_buggy"],
+        )
+    return None
+
+
+def get_node_from_status(status_response: dict, solution_id: str) -> Node:
+    """Find the node with the given solution_id from a status response; raise if not found."""
+    nodes = status_response.get("nodes") or []
+    for node_data in nodes:
+        if node_data.get("solution_id") == solution_id:
+            return Node(
+                id=node_data["solution_id"],
+                parent_id=node_data["parent_id"],
+                code=node_data["code"],
+                metric=node_data["metric_value"],
+                is_buggy=node_data["is_buggy"],
+            )
+    raise ValueError(
+        "Current solution node not found in the optimization status response. This may indicate a synchronization issue with the backend."
+    )
+
+
+def resume_optimization(run_id: str, skip_validation: bool = False, console: Optional[Console] = None) -> bool:
+    """Resume an interrupted run from the most recent node and continue optimization."""
+    if console is None:
+        console = Console()
+
+    # Globals for this optimization run
+    heartbeat_thread = None
+    stop_heartbeat_event = threading.Event()
+    current_run_id_for_heartbeat = None
+    current_auth_headers_for_heartbeat = {}
+
+    # Signal handler for this optimization run
+    def signal_handler(signum, frame):
+        signal_name = signal.Signals(signum).name
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+        if current_run_id_for_heartbeat:
+            report_termination(
+                run_id=current_run_id_for_heartbeat,
+                status_update="terminated",
+                reason=f"user_terminated_{signal_name.lower()}",
+                details=f"Process terminated by signal {signal_name} ({signum}).",
+                auth_headers=current_auth_headers_for_heartbeat,
+                timeout=3,
+            )
+        sys.exit(0)
+
+    # Set up signal handlers for this run
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
+
+    optimization_completed_normally = False
+    user_stop_requested_flag = False
+
+    try:
+        llm_api_keys = read_api_keys_from_env()
+
+        # Authentication
+        weco_api_key, auth_headers = handle_authentication(console, llm_api_keys)
+        if weco_api_key is None and not llm_api_keys:
+            return False
+        current_auth_headers_for_heartbeat = auth_headers
+
+        # Confirm environment unless skipped (BEFORE calling /resume)
+        if not skip_validation:
+            console.print("[cyan]Resume Run Confirmation[/]")
+            console.print(f"  Run ID: {run_id}")
+            unchanged = Confirm.ask(
+                "Have you kept the source file and evaluation command unchanged since the original run?", default=True
+            )
+            if not unchanged:
+                console.print("[yellow]Resume cancelled. Please start a new run if the environment changed.[/]")
+                return False
+
+        # Call backend to prepare resume
+        resume_resp = resume_optimization_run(console=console, run_id=run_id, api_keys=llm_api_keys, auth_headers=auth_headers)
+        if resume_resp is None:
+            return False
+
+        eval_command = resume_resp["evaluation_command"]
+        source_path = resume_resp.get("source_path")
+
+        # Use backend-saved values
+        log_dir = resume_resp.get("log_dir", ".runs")
+        save_logs = bool(resume_resp.get("save_logs", False))
+        eval_timeout = resume_resp.get("eval_timeout")
+        total_steps = int(resume_resp["total_steps"])
+        current_step = int(resume_resp["current_step"])  # most recent node
+
+        # Fetch status with history (objective, nodes, best)
+        status_with_history = get_optimization_run_status(
+            console=console,
+            run_id=resume_resp["run_id"],
+            include_history=True,
+            auth_headers=auth_headers,
+            timeout=DEFAULT_API_TIMEOUT,
+        )
+        objective = status_with_history.get("objective", {})
+        optimizer_cfg = status_with_history.get("optimizer", {})
+        metric_name = objective.get("metric_name", "metric")
+        maximize = bool(objective.get("maximize", True))
+        model = (
+            (optimizer_cfg.get("code_generator") or {}).get("model")
+            or (optimizer_cfg.get("evaluator") or {}).get("model")
+            or "unknown"
+        )
+
+        # Write last solution code to source path
+        source_fp = pathlib.Path(source_path or "optimize.py")
+        source_fp.parent.mkdir(parents=True, exist_ok=True)
+        code_to_restore = resume_resp.get("code") or resume_resp.get("source_code") or ""
+        write_to_path(fp=source_fp, content=code_to_restore)
+
+        # Prepare UI panels
+        summary_panel = SummaryPanel(
+            maximize=maximize, metric_name=metric_name, total_steps=total_steps, model=model, runs_dir=log_dir
+        )
+        summary_panel.set_run_id(run_id=resume_resp["run_id"])
+        if resume_resp.get("run_name"):
+            summary_panel.set_run_name(resume_resp.get("run_name"))
+        summary_panel.set_step(step=current_step)
+        # Seed token usage from cumulative usage
+        usage = resume_resp.get("usage", {})
+        summary_panel.update_token_counts(
+            usage={"input_tokens": int(usage.get("input_tokens", 0)), "output_tokens": int(usage.get("output_tokens", 0))}
+        )
+        # On resume, show a clear thinking placeholder instead of empty default
+        summary_panel.update_thinking(thinking="Thinking...")
+
+        solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
+        eval_output_panel = EvaluationOutputPanel()
+        tree_panel = MetricTreePanel(maximize=maximize)
+        layout = create_optimization_layout()
+        end_optimization_layout = create_end_optimization_layout()
+
+        # Build tree from nodes
+        nodes_list_from_status = status_with_history.get("nodes") or []
+        tree_panel.build_metric_tree(nodes=nodes_list_from_status)
+
+        # Compute best and current nodes
+        best_solution_node = get_best_node_from_status(status_with_history)
+        current_solution_node = None
+        for node in nodes_list_from_status:
+            if node.get("solution_id") == resume_resp.get("solution_id"):
+                current_solution_node = Node(
+                    id=node["solution_id"],
+                    parent_id=node["parent_id"],
+                    code=node["code"],
+                    metric=node["metric_value"],
+                    is_buggy=node["is_buggy"],
+                )
+                break
+
+        # Ensure runs dir exists
+        runs_dir = pathlib.Path(log_dir) / resume_resp["run_id"]
+        runs_dir.mkdir(parents=True, exist_ok=True)
+
+        # Start Heartbeat Thread
+        stop_heartbeat_event.clear()
+        heartbeat_thread = HeartbeatSender(resume_resp["run_id"], auth_headers, stop_heartbeat_event)
+        heartbeat_thread.start()
+        current_run_id_for_heartbeat = resume_resp["run_id"]
+
+        # Seed solution panels with current and best nodes
+        solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+
+        # --- Live UI ---
+        refresh_rate = 4
+        with Live(layout, refresh_per_second=refresh_rate) as live:
+            # Initial panels
+            current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
+            # Execution output for current node (from history)
+            last_exec_output = ""
+            for node in nodes_list_from_status:
+                if node.get("solution_id") == resume_resp.get("solution_id"):
+                    last_exec_output = node.get("execution_output") or ""
+                    break
+            eval_output_panel.update(output=last_exec_output)
+
+            smooth_update(
+                live=live,
+                layout=layout,
+                sections_to_update=[
+                    ("summary", summary_panel.get_display()),
+                    ("tree", tree_panel.get_display(is_done=False)),
+                    ("current_solution", current_solution_panel),
+                    ("best_solution", best_solution_panel),
+                    ("eval_output", eval_output_panel.get_display()),
+                ],
+                transition_delay=0.1,
+            )
+
+            # If missing output, evaluate once before first suggest
+            term_out = last_exec_output
+            if term_out is None or len(term_out) == 0:
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                if save_logs:
+                    save_execution_output(runs_dir, step=current_step, output=term_out)
+                eval_output_panel.update(output=term_out)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                    transition_delay=0.1,
+                )
+
+            # Continue optimization: steps current_step+1..total_steps
+            for step in range(current_step + 1, total_steps + 1):
+                # Stop polling
+                try:
+                    current_status_response = get_optimization_run_status(
+                        console=console,
+                        run_id=resume_resp["run_id"],
+                        include_history=False,
+                        timeout=(10, 30),
+                        auth_headers=auth_headers,
+                    )
+                    if current_status_response.get("status") == "stopping":
+                        console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
+                        user_stop_requested_flag = True
+                        break
+                except requests.exceptions.RequestException as e:
+                    console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
+                except Exception as e:
+                    console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
+
+                # Suggest next
+                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=resume_resp["run_id"],
+                    execution_output=term_out,
+                    additional_instructions=None,
+                    api_keys=llm_api_keys,
+                    auth_headers=auth_headers,
+                    timeout=DEFAULT_API_TIMEOUT,
+                )
+
+                # Save next solution file(s)
+                write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
+                write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
+
+                # Refresh status with history and update panels
+                status_response = get_optimization_run_status(
+                    console=console,
+                    run_id=resume_resp["run_id"],
+                    include_history=True,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                summary_panel.set_step(step=step)
+                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
+                summary_panel.update_thinking(thinking=eval_and_next_solution_response.get("plan", ""))
+                nodes_list = status_response.get("nodes") or []
+                tree_panel.build_metric_tree(nodes=nodes_list)
+                tree_panel.set_unevaluated_node(node_id=eval_and_next_solution_response["solution_id"])
+                best_solution_node = get_best_node_from_status(status_response)
+                current_solution_node = get_node_from_status(status_response, eval_and_next_solution_response["solution_id"])
+                solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
+                eval_output_panel.clear()
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[
+                        ("summary", summary_panel.get_display()),
+                        ("tree", tree_panel.get_display(is_done=False)),
+                        ("current_solution", current_solution_panel),
+                        ("best_solution", best_solution_panel),
+                        ("eval_output", eval_output_panel.get_display()),
+                    ],
+                    transition_delay=0.08,
+                )
+
+                # Evaluate this new solution
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                if save_logs:
+                    save_execution_output(runs_dir, step=step, output=term_out)
+                eval_output_panel.update(output=term_out)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                    transition_delay=0.1,
+                )
+
+            # Final flush if not stopped
+            if not user_stop_requested_flag:
+                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=resume_resp["run_id"],
+                    execution_output=term_out,
+                    additional_instructions=None,
+                    api_keys=llm_api_keys,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                summary_panel.set_step(step=total_steps)
+                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
+                status_response = get_optimization_run_status(
+                    console=console,
+                    run_id=resume_resp["run_id"],
+                    include_history=True,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                nodes_final = status_response.get("nodes") or []
+                tree_panel.build_metric_tree(nodes=nodes_final)
+                # Best solution panel and final message
+                best_solution_node = get_best_node_from_status(status_response)
+                solution_panels.update(current_node=None, best_node=best_solution_node)
+                _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
+                final_message = (
+                    f"{summary_panel.metric_name.capitalize()} {'maximized' if summary_panel.maximize else 'minimized'}! Best solution {summary_panel.metric_name.lower()} = [green]{status_response['best_result']['metric_value']}[/] 🏆"
+                    if best_solution_node is not None and best_solution_node.metric is not None
+                    else "[red] No valid solution found.[/]"
+                )
+                end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
+                end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
+                end_optimization_layout["best_solution"].update(best_solution_panel)
+                # Save best
+                if best_solution_node is not None:
+                    best_solution_code = best_solution_node.code
+                    best_solution_score = best_solution_node.metric
+                else:
+                    best_solution_code = None
+                    best_solution_score = None
+                if best_solution_code is None or best_solution_score is None:
+                    best_solution_content = f"# Weco could not find a better solution\n\n{read_from_path(fp=runs_dir / f'step_0{source_fp.suffix}', is_json=False)}"
+                else:
+                    best_score_str = (
+                        format_number(best_solution_score)
+                        if best_solution_score is not None and isinstance(best_solution_score, (int, float))
+                        else "N/A"
+                    )
+                    best_solution_content = (
+                        f"# Best solution from Weco with a score of {best_score_str}\n\n{best_solution_code}"
+                    )
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
+                write_to_path(fp=source_fp, content=best_solution_content)
+                optimization_completed_normally = True
+                live.update(end_optimization_layout)
+
+    except Exception as e:
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        optimization_completed_normally = False
+    finally:
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+        rid = None
+        if "resume_resp" in locals() and isinstance(resume_resp, dict):
+            rid = resume_resp.get("run_id")
+        if rid:
+            if optimization_completed_normally:
+                status, reason, details = "completed", "completed_successfully", None
+            elif user_stop_requested_flag:
+                status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+            else:
+                status, reason = "error", "error_cli_internal"
+                details = locals().get("error_details") or (
+                    traceback.format_exc()
+                    if "e" in locals() and isinstance(locals()["e"], Exception)
+                    else "CLI terminated unexpectedly without a specific exception captured."
+                )
+            report_termination(rid, status, reason, details, current_auth_headers_for_heartbeat)
+        if user_stop_requested_flag:
+            console.print("[yellow]Run terminated by user request.[/]")
+    return optimization_completed_normally or user_stop_requested_flag
+
+
+def extend_optimization(
+    run_id: str, additional_steps: int, skip_validation: bool = False, console: Optional[Console] = None
+) -> bool:
+    """Extend a completed run and continue optimizing for more steps."""
+    if console is None:
+        console = Console()
+
+    # Globals
+    heartbeat_thread = None
+    stop_heartbeat_event = threading.Event()
+    current_run_id_for_heartbeat = None
+    current_auth_headers_for_heartbeat = {}
+
+    def signal_handler(signum, frame):
+        signal_name = signal.Signals(signum).name
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+        if current_run_id_for_heartbeat:
+            report_termination(
+                run_id=current_run_id_for_heartbeat,
+                status_update="terminated",
+                reason=f"user_terminated_{signal_name.lower()}",
+                details=f"Process terminated by signal {signal_name} ({signum}).",
+                auth_headers=current_auth_headers_for_heartbeat,
+                timeout=3,
+            )
+        sys.exit(0)
+
+    original_sigint_handler = signal.signal(signal.SIGINT, signal_handler)
+    original_sigterm_handler = signal.signal(signal.SIGTERM, signal_handler)
+
+    optimization_completed_normally = False
+    user_stop_requested_flag = False
+
+    try:
+        llm_api_keys = read_api_keys_from_env()
+        weco_api_key, auth_headers = handle_authentication(console, llm_api_keys)
+        if weco_api_key is None and not llm_api_keys:
+            return False
+        current_auth_headers_for_heartbeat = auth_headers
+
+        # Confirm environment unless skipped (BEFORE calling /extend)
+        if not skip_validation:
+            console.print("[cyan]Extend Run Confirmation[/]")
+            console.print(f"  Run ID: {run_id}")
+            console.print(f"  Additional Steps: {additional_steps}")
+            unchanged = Confirm.ask(
+                "Have you kept the source file and evaluation command unchanged since the original run?", default=True
+            )
+            if not unchanged:
+                console.print("[yellow]Extend cancelled. Please start a new run if the environment changed.[/]")
+                return False
+
+        extend_resp = extend_optimization_run(
+            console=console, run_id=run_id, additional_steps=additional_steps, api_keys=llm_api_keys, auth_headers=auth_headers
+        )
+        if extend_resp is None:
+            return False
+
+        eval_command = extend_resp["evaluation_command"]
+        source_path = extend_resp.get("source_path")
+
+        log_dir = extend_resp.get("log_dir", ".runs")
+        save_logs = bool(extend_resp.get("save_logs", False))
+        eval_timeout = extend_resp.get("eval_timeout")
+
+        previous_steps = int(extend_resp["previous_steps"])  # original target
+        new_total_steps = previous_steps + int(additional_steps)
+
+        # Status with history for tree and objective
+        status_response = get_optimization_run_status(
+            console=console,
+            run_id=extend_resp["run_id"],
+            include_history=True,
+            timeout=DEFAULT_API_TIMEOUT,
+            auth_headers=auth_headers,
+        )
+        objective = status_response.get("objective", {})
+        optimizer_cfg = status_response.get("optimizer", {})
+        metric_name = objective.get("metric_name", "metric")
+        maximize = bool(objective.get("maximize", True))
+        model = (
+            (optimizer_cfg.get("code_generator") or {}).get("model")
+            or (optimizer_cfg.get("evaluator") or {}).get("model")
+            or "unknown"
+        )
+
+        source_fp = pathlib.Path(source_path or "optimize.py")
+        source_fp.parent.mkdir(parents=True, exist_ok=True)
+        code_to_restore = extend_resp.get("code") or extend_resp.get("source_code") or ""
+        write_to_path(fp=source_fp, content=code_to_restore)
+
+        summary_panel = SummaryPanel(
+            maximize=maximize, metric_name=metric_name, total_steps=new_total_steps, model=model, runs_dir=log_dir
+        )
+        summary_panel.set_run_id(run_id=extend_resp["run_id"])
+        if extend_resp.get("run_name"):
+            summary_panel.set_run_name(extend_resp.get("run_name"))
+        # Start at current_step; next loop begins at start_step
+        current_step = int(extend_resp.get("current_step") or previous_steps)
+        summary_panel.set_step(step=current_step)
+        usage = extend_resp.get("usage", {})
+        summary_panel.update_token_counts(
+            usage={"input_tokens": int(usage.get("input_tokens", 0)), "output_tokens": int(usage.get("output_tokens", 0))}
+        )
+        # On extend, show a clear thinking placeholder until next suggestion arrives
+        summary_panel.update_thinking(thinking="Thinking...")
+
+        solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
+        eval_output_panel = EvaluationOutputPanel()
+        tree_panel = MetricTreePanel(maximize=maximize)
+        layout = create_optimization_layout()
+        end_optimization_layout = create_end_optimization_layout()
+
+        nodes_list_from_status = status_response.get("nodes") or []
+        tree_panel.build_metric_tree(nodes=nodes_list_from_status)
+
+        best_solution_node = get_best_node_from_status(status_response)
+        current_solution_node = None
+        for node in nodes_list_from_status:
+            if node.get("solution_id") == (extend_resp.get("solution_id") or None):
+                current_solution_node = Node(
+                    id=node["solution_id"],
+                    parent_id=node["parent_id"],
+                    code=node["code"],
+                    metric=node["metric_value"],
+                    is_buggy=node["is_buggy"],
+                )
+                break
+
+        runs_dir = pathlib.Path(log_dir) / extend_resp["run_id"]
+        runs_dir.mkdir(parents=True, exist_ok=True)
+
+        stop_heartbeat_event.clear()
+        heartbeat_thread = HeartbeatSender(extend_resp["run_id"], auth_headers, stop_heartbeat_event)
+        heartbeat_thread.start()
+        current_run_id_for_heartbeat = extend_resp["run_id"]
+
+        # Seed solution panels with current and best nodes
+        solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+
+        refresh_rate = 4
+        with Live(layout, refresh_per_second=refresh_rate) as live:
+            current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
+            # derive last execution output for current node if available
+            last_exec_output = ""
+            for node in nodes_list_from_status:
+                if node.get("solution_id") == (extend_resp.get("solution_id") or None):
+                    last_exec_output = node.get("execution_output") or ""
+                    break
+            eval_output_panel.update(output=last_exec_output)
+            smooth_update(
+                live=live,
+                layout=layout,
+                sections_to_update=[
+                    ("summary", summary_panel.get_display()),
+                    ("tree", tree_panel.get_display(is_done=False)),
+                    ("current_solution", current_solution_panel),
+                    ("best_solution", best_solution_panel),
+                    ("eval_output", eval_output_panel.get_display()),
+                ],
+                transition_delay=0.1,
+            )
+
+            term_out = last_exec_output
+            if term_out is None or len(term_out) == 0:
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                if save_logs:
+                    save_execution_output(runs_dir, step=current_step, output=term_out)
+                eval_output_panel.update(output=term_out)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                    transition_delay=0.1,
+                )
+
+            for step in range(current_step + 1, new_total_steps + 1):
+                try:
+                    current_status_response = get_optimization_run_status(
+                        console=console,
+                        run_id=extend_resp["run_id"],
+                        include_history=False,
+                        timeout=(10, 30),
+                        auth_headers=auth_headers,
+                    )
+                    if current_status_response.get("status") == "stopping":
+                        console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
+                        user_stop_requested_flag = True
+                        break
+                except requests.exceptions.RequestException as e:
+                    console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
+                except Exception as e:
+                    console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
+
+                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=extend_resp["run_id"],
+                    execution_output=term_out,
+                    additional_instructions=None,
+                    api_keys=llm_api_keys,
+                    auth_headers=auth_headers,
+                    timeout=DEFAULT_API_TIMEOUT,
+                )
+                write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
+                write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
+                status_resp = get_optimization_run_status(
+                    console=console,
+                    run_id=extend_resp["run_id"],
+                    include_history=True,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                summary_panel.set_step(step=step)
+                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
+                summary_panel.update_thinking(thinking=eval_and_next_solution_response.get("plan", ""))
+                nodes_list = status_resp.get("nodes") or []
+                tree_panel.build_metric_tree(nodes=nodes_list)
+                tree_panel.set_unevaluated_node(node_id=eval_and_next_solution_response["solution_id"])
+                best_solution_node = get_best_node_from_status(status_resp)
+                current_solution_node = get_node_from_status(status_resp, eval_and_next_solution_response["solution_id"])
+                solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
+                current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
+                eval_output_panel.clear()
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[
+                        ("summary", summary_panel.get_display()),
+                        ("tree", tree_panel.get_display(is_done=False)),
+                        ("current_solution", current_solution_panel),
+                        ("best_solution", best_solution_panel),
+                        ("eval_output", eval_output_panel.get_display()),
+                    ],
+                    transition_delay=0.08,
+                )
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                if save_logs:
+                    save_execution_output(runs_dir, step=step, output=term_out)
+                eval_output_panel.update(output=term_out)
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                    transition_delay=0.1,
+                )
+
+            if not user_stop_requested_flag:
+                eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
+                    console=console,
+                    run_id=extend_resp["run_id"],
+                    execution_output=term_out,
+                    additional_instructions=None,
+                    api_keys=llm_api_keys,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                summary_panel.set_step(step=new_total_steps)
+                summary_panel.update_token_counts(usage=eval_and_next_solution_response["usage"])
+                status_final = get_optimization_run_status(
+                    console=console,
+                    run_id=extend_resp["run_id"],
+                    include_history=True,
+                    timeout=DEFAULT_API_TIMEOUT,
+                    auth_headers=auth_headers,
+                )
+                nodes_final = status_final.get("nodes") or []
+                tree_panel.build_metric_tree(nodes=nodes_final)
+                best_solution_node = get_best_node_from_status(status_final)
+                solution_panels.update(current_node=None, best_node=best_solution_node)
+                _, best_solution_panel = solution_panels.get_display(current_step=new_total_steps)
+                final_message = (
+                    f"{summary_panel.metric_name.capitalize()} {'maximized' if summary_panel.maximize else 'minimized'}! Best solution {summary_panel.metric_name.lower()} = [green]{status_final['best_result']['metric_value']}[/] 🏆"
+                    if best_solution_node is not None and best_solution_node.metric is not None
+                    else "[red] No valid solution found.[/]"
+                )
+                end_optimization_layout["summary"].update(summary_panel.get_display(final_message=final_message))
+                end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
+                end_optimization_layout["best_solution"].update(best_solution_panel)
+                if best_solution_node is not None:
+                    best_solution_code = best_solution_node.code
+                    best_solution_score = best_solution_node.metric
+                else:
+                    best_solution_code = None
+                    best_solution_score = None
+                if best_solution_code is None or best_solution_score is None:
+                    best_solution_content = f"# Weco could not find a better solution\n\n{read_from_path(fp=runs_dir / f'step_0{source_fp.suffix}', is_json=False)}"
+                else:
+                    best_score_str = (
+                        format_number(best_solution_score)
+                        if best_solution_score is not None and isinstance(best_solution_score, (int, float))
+                        else "N/A"
+                    )
+                    best_solution_content = (
+                        f"# Best solution from Weco with a score of {best_score_str}\n\n{best_solution_code}"
+                    )
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
+                write_to_path(fp=source_fp, content=best_solution_content)
+                optimization_completed_normally = True
+                live.update(end_optimization_layout)
+
+    except Exception as e:
+        try:
+            error_message = e.response.json()["detail"]
+        except Exception:
+            error_message = str(e)
+        console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
+        optimization_completed_normally = False
+    finally:
+        signal.signal(signal.SIGINT, original_sigint_handler)
+        signal.signal(signal.SIGTERM, original_sigterm_handler)
+        stop_heartbeat_event.set()
+        if heartbeat_thread and heartbeat_thread.is_alive():
+            heartbeat_thread.join(timeout=2)
+        if "extend_resp" in locals() and isinstance(extend_resp, dict):
+            rid = extend_resp.get("run_id")
+            if rid:
+                if optimization_completed_normally:
+                    status, reason, details = "completed", "completed_successfully", None
+                elif user_stop_requested_flag:
+                    status, reason, details = "terminated", "user_requested_stop", "Run stopped by user request via dashboard."
+                else:
+                    status, reason = "error", "error_cli_internal"
+                    details = locals().get("error_details") or (
+                        traceback.format_exc()
+                        if "e" in locals() and isinstance(locals()["e"], Exception)
+                        else "CLI terminated unexpectedly without a specific exception captured."
+                    )
+                report_termination(rid, status, reason, details, current_auth_headers_for_heartbeat)
+        if user_stop_requested_flag:
+            console.print("[yellow]Run terminated by user request.[/]")
     return optimization_completed_normally or user_stop_requested_flag
