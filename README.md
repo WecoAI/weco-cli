@@ -112,6 +112,8 @@ weco run --source optimize.py \
 
 For more advanced examples, including [Triton](/examples/triton/README.md), [CUDA kernel optimization](/examples/cuda/README.md), [ML model optimization](/examples/spaceship-titanic/README.md), and [prompt engineering for math problems](examples/prompt/README.md), please see the `README.md` files within the corresponding subdirectories under the [`examples/`](examples/) folder.
 
+> Note: When recommend removing any backticks from your code if any are present. We currently don't support backticks but will support this in the future.
+
 ---
 
 ### Arguments for `weco run`
@@ -136,6 +138,7 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | `-i, --additional-instructions`| Natural language description of specific instructions **or** path to a file containing detailed instructions to guide the LLM.                                                                                             | `None`                                                                                                                                                  | `-i instructions.md` or `-i "Optimize the model for faster inference"`|
 | `-l, --log-dir`                | Path to the directory to log intermediate steps and final optimization result.                                                                                                                                             | `.runs/`                                                                                                                                               | `-l ./logs/`        |
 | `--eval-timeout`       | Timeout in seconds for each step in evaluation.                                                                                                                                                                             | No timeout (unlimited)                                                                                                                                                  | `--eval-timeout 3600`             |
+| `--save-logs`          | Save execution output from each optimization step to disk. Creates timestamped directories with raw output files and a JSONL index for tracking execution history.                                                        | `False`                                                                                                                                                 | `--save-logs`       |
 
 ---
 
@@ -208,6 +211,42 @@ As shown, AIDE demonstrates strong performance gains over time, surpassing lower
 
 ---
 
+### Saving Execution Logs
+
+When using the `--save-logs` flag, Weco saves the execution output from each optimization step to help with debugging and analysis. The logs are organized as follows:
+
+```
+.runs/
+└── <source-file-name>/
+    └── <run-uuid>/
+        ├── exec_output.jsonl      # Index file with metadata for each step
+        ├── outputs/
+        │   ├── step_0.out.txt      # Raw output from initial evaluation
+        │   ├── step_1.out.txt      # Raw output from step 1
+        │   ├── step_2.out.txt      # Raw output from step 2
+        │   └── ...
+        ├── step_0.py               # Code snapshot from initial evaluation
+        ├── step_1.py               # Code snapshot from step 1
+        ├── step_2.py               # Code snapshot from step 2
+        └── ...
+```
+
+Each run is organized under the source file name (e.g., `spaceship-titanic` for `spaceship-titanic.py`) and a unique UUID. The `outputs/` directory and `exec_output.jsonl` file are only created when the `--save-logs` flag is used.
+
+The `exec_output.jsonl` file contains one JSON object per line with:
+- `step`: The optimization step number
+- `timestamp`: When the execution occurred
+- `output_file`: Relative path to the full output file
+- `output_length`: Total length of the output
+
+This is particularly useful for:
+- Debugging why certain optimizations fail
+- Analyzing patterns in evaluation results
+- Keeping records of long-running optimization sessions
+- Troubleshooting evaluation script issues
+
+---
+
 ### Important Note on Evaluation
 
 The command specified by `--eval-command` is crucial. It's responsible for executing the potentially modified code from `--source` and assessing its performance. **This command MUST print the metric you specified with `--metric` along with its numerical value to the terminal (standard output or standard error).** Weco reads this output to understand how well each code version performs and guide the optimization process.
@@ -225,6 +264,8 @@ Final speedup value = 1.5
 ```
 
 Weco will parse this output to extract the numerical value (1.5 in this case) associated with the metric name ('speedup').
+
+**Note on Output Truncation:** When evaluation output exceeds 51,000 characters, Weco truncates it to show the first 25,000 and last 25,000 characters. For best results, ensure your evaluation script prints the metric value near the end of its output.
 
 ## Supported Models
 
