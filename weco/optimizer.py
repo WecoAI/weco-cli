@@ -984,7 +984,7 @@ def extend_optimization(
             console.print(f"  Run ID: {run_id}")
             console.print(f"  Additional Steps: {additional_steps}")
             unchanged = Confirm.ask(
-                "Have you kept the source file and evaluation command unchanged since the original run?", default=False
+                "Have you kept the source file and evaluation command unchanged since the original run?", default=True
             )
             if not unchanged:
                 console.print("[yellow]Extend cancelled. Please start a new run if the environment changed.[/]")
@@ -1251,7 +1251,7 @@ def extend_optimization(
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.join(timeout=2)
-        if extend_resp := locals().get("extend_resp"):
+        if "extend_resp" in locals() and isinstance(extend_resp, dict):
             rid = extend_resp.get("run_id")
             if rid:
                 if optimization_completed_normally:
