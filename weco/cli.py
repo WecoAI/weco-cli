@@ -125,47 +125,29 @@ def main() -> None:
 
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
-    
+
     # --- Credits Command Parser Setup ---
     credits_parser = subparsers.add_parser("credits", help="Manage your Weco credits")
     credits_subparsers = credits_parser.add_subparsers(dest="credits_command", help="Credit management commands")
-    
+
     # Credits balance command
     _ = credits_subparsers.add_parser("balance", help="Check your current credit balance")
-    
+
     # Credits topup command
     topup_parser = credits_subparsers.add_parser("topup", help="Purchase additional credits")
     topup_parser.add_argument(
-        "--amount",
-        type=int,
-        choices=[10, 25, 50, 100, 200, 500],
-        default=50,
-        help="Amount of credits to purchase (in USD)"
+        "--amount", type=int, choices=[10, 25, 50, 100, 200, 500], default=50, help="Amount of credits to purchase (in USD)"
     )
-    
+
     # Credits autotopup command
     autotopup_parser = credits_subparsers.add_parser("autotopup", help="Configure automatic top-up")
+    autotopup_parser.add_argument("--enable", action="store_true", help="Enable automatic top-up")
+    autotopup_parser.add_argument("--disable", action="store_true", help="Disable automatic top-up")
     autotopup_parser.add_argument(
-        "--enable",
-        action="store_true",
-        help="Enable automatic top-up"
+        "--threshold", type=float, default=4.0, help="Balance threshold to trigger auto top-up (default: 4.0 credits)"
     )
     autotopup_parser.add_argument(
-        "--disable",
-        action="store_true", 
-        help="Disable automatic top-up"
-    )
-    autotopup_parser.add_argument(
-        "--threshold",
-        type=float,
-        default=4.0,
-        help="Balance threshold to trigger auto top-up (default: 4.0 credits)"
-    )
-    autotopup_parser.add_argument(
-        "--amount",
-        type=float,
-        default=50.0,
-        help="Amount to top up when threshold is reached (default: 50.0 credits)"
+        "--amount", type=float, default=50.0, help="Amount to top up when threshold is reached (default: 50.0 credits)"
     )
 
     # Check if we should run the chatbot
@@ -252,6 +234,7 @@ def main() -> None:
         execute_run_command(args)
     elif args.command == "credits":
         from .credits import handle_credits_command
+
         handle_credits_command(args, console)
         sys.exit(0)
     else:

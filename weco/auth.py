@@ -198,11 +198,9 @@ def handle_authentication(console: Console) -> tuple[str | None, dict]:
         console.print("With our new credit-based billing system, authentication is required to use Weco.")
         console.print("You'll receive free credits to get started!")
         console.print("")
-        
+
         login_choice = Prompt.ask(
-            "Would you like to log in now? ([bold]Y[/]es / [bold]N[/]o)",
-            choices=["y", "n"],
-            default="y",
+            "Would you like to log in now? ([bold]Y[/]es / [bold]N[/]o)", choices=["y", "n"], default="y"
         ).lower()
 
         if login_choice == "y":

@@ -29,14 +29,7 @@ from .panels import (
     create_optimization_layout,
     create_end_optimization_layout,
 )
-from .utils import (
-    read_additional_instructions,
-    read_from_path,
-    write_to_path,
-    run_evaluation,
-    smooth_update,
-    format_number,
-)
+from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation, smooth_update, format_number
 from .constants import DEFAULT_API_TIMEOUT
 
 
@@ -337,7 +330,7 @@ def execute_optimization(
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
-                            auth_headers=auth_headers,
+                    auth_headers=auth_headers,
                     timeout=api_timeout,
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
@@ -423,7 +416,7 @@ def execute_optimization(
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
-                            timeout=api_timeout,
+                    timeout=api_timeout,
                     auth_headers=auth_headers,
                 )
                 summary_panel.set_step(step=steps)

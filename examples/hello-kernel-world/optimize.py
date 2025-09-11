@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 
+
 class Model(nn.Module):
     """
     Model that performs a fused matrix multiply, division, summation, and scaling.
@@ -14,7 +15,7 @@ class Model(nn.Module):
         self.scaling_factor = scaling_factor
         # Precompute fused weight column: sum over hidden dim, divide by 2, then scale.
         w_col = self.weight.sum(dim=0).mul(self.scaling_factor / 2).unsqueeze(1)
-        self.register_buffer('w_col', w_col)
+        self.register_buffer("w_col", w_col)
 
     def forward(self, x):
         """
