@@ -32,16 +32,7 @@ def image_to_data_uri(image_path: Path) -> str:
 
 
 def clean_to_csv(text: str) -> str:
-    stripped = text.strip()
-    if stripped.startswith("```"):
-        parts = stripped.split("```")
-        if len(parts) >= 3:
-            core = parts[1]
-            lines = core.splitlines()
-            if lines and lines[0].strip().lower().startswith(("csv", "text", "plaintext")):
-                lines = lines[1:]
-            return "\n".join(lines).strip()
-    return stripped
+    return text.strip()
 
 
 class VLMExtractor:
