@@ -1,0 +1,9 @@
+[setup] loading 30 problems from AIME 2024 …
+Generating train split: 0 examples [00:00, ? examples/s]Generating train split: 30 examples [00:00, 2244.34 examples/s]
+[progress] 5/30 completed, accuracy: 1.0000, elapsed 18.4 s
+[progress] 10/30 completed, accuracy: 0.9000, elapsed 33.4 s
+[progress] 15/30 completed, accuracy: 0.7333, elapsed 43.8 s
+[progress] 20/30 completed, accuracy: 0.6500, elapsed 54.4 s
+[progress] 25/30 completed, accuracy: 0.5600, elapsed 81.0 s
+[progress] 30/30 completed, accuracy: 0.5000, elapsed 185.9 s
+accuracy: 0.5000

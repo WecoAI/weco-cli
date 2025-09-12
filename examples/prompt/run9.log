@@ -1,0 +1,8 @@
+[setup] loading 30 problems from AIME 2024 …
+[progress] 5/30 completed, accuracy: 0.6000, elapsed 16.6 s
+[progress] 10/30 completed, accuracy: 0.8000, elapsed 25.4 s
+[progress] 15/30 completed, accuracy: 0.7333, elapsed 40.5 s
+[progress] 20/30 completed, accuracy: 0.7000, elapsed 67.9 s
+[progress] 25/30 completed, accuracy: 0.6000, elapsed 95.6 s
+[progress] 30/30 completed, accuracy: 0.5333, elapsed 240.9 s
+accuracy: 0.5333
