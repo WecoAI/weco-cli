@@ -79,8 +79,6 @@ def main() -> None:
     parser.add_argument("--data-dir", type=str, default="subset_line_100")
     parser.add_argument("--index", type=str, default="index.csv")
     parser.add_argument("--out-dir", type=str, default="predictions")
-    parser.add_argument("--model", type=str, default="gpt-4o-mini")
-    parser.add_argument("--temperature", type=float, default=0.0)
     parser.add_argument("--max-samples", type=int, default=100)
     parser.add_argument("--num-workers", type=int, default=4)
     args = parser.parse_args()
@@ -96,9 +94,9 @@ def main() -> None:
         sys.exit(1)
 
     rows = read_index(index_path)[: args.max_samples]
-    extractor = VLMExtractor(model=args.model, temperature=args.temperature)
+    extractor = VLMExtractor()
 
-    print(f"[setup] evaluating {len(rows)} samples using {args.model} …", flush=True)
+    print(f"[setup] evaluating {len(rows)} samples using {extractor.model} …", flush=True)
     start = time.time()
     scores: List[float] = []
 
@@ -135,6 +133,20 @@ def main() -> None:
             sys.exit(1)
 
     final_score = sum(scores) / len(scores) if scores else 0.0
+
+    # Apply cost cap: accuracy is zeroed if average cost/query exceeds $0.01
+    avg_cost_per_query = (
+        (extractor.total_cost_usd / extractor.num_queries) if getattr(extractor, "num_queries", 0) else 0.0
+    )
+    if avg_cost_per_query > 0.01:
+        print(
+            f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.01 cap; accuracy set to 0.0",
+            flush=True,
+        )
+        final_score = 0.0
+    else:
+        print(f"[cost] avg ${avg_cost_per_query:.4f}/query within cap", flush=True)
+
     print(f"accuracy: {final_score:.4f}")
 
 
