@@ -46,13 +46,14 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
     pip install weco>=0.2.18
     ```
 
-2.  **Set Up LLM API Keys (Required):**
+2.  **Authenticate (Required):**
 
-    `weco` requires API keys for the LLMs it uses internally. You **must** provide these keys via environment variables:
+    `weco` now uses a **credit-based billing system** with centralized LLM access. You need to authenticate to use the service:
 
-    - **OpenAI:** `export OPENAI_API_KEY="your_key_here"` (Create your OpenAI API key [here](https://platform.openai.com/api-keys))
-    - **Anthropic:** `export ANTHROPIC_API_KEY="your_key_here"` (Create your Anthropic API key [here](https://console.anthropic.com/settings/keys))
-    - **Google:** `export GEMINI_API_KEY="your_key_here"` (Google AI Studio has a free API usage quota. Create your Gemini API key [here](https://aistudio.google.com/apikey) to use `weco` for free.)
+    - **Run the CLI**: `weco` will prompt you to authenticate via your web browser
+    - **Free Credits**: New users receive **free credits** upon signup
+    - **Centralized Keys**: All LLM provider API keys are managed by Weco (no BYOK required)
+    - **Credit Top-ups**: Purchase additional credits through the dashboard at [app.weco.ai](https://app.weco.ai)
 
 ---
 
@@ -143,24 +144,24 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 
 ### Authentication & Dashboard
 
-Weco offers both **anonymous** and **authenticated** usage:
+The CLI requires a Weco account for authentication and billing.
 
-#### Anonymous Usage
-You can use Weco without creating an account by providing LLM API keys via environment variables. This is perfect for trying out Weco or for users who prefer not to create accounts.
+#### Credit-Based Authentication (Required)
+Weco now requires authentication for all operations. This enables our credit-based billing system and provides access to powerful optimizations:
 
-#### Authenticated Usage (Recommended)
-To save your optimization runs and view them on the Weco dashboard, you can log in using Weco's secure device authentication flow:
-
-1. **During onboarding**: When you run `weco` for the first time, you'll be prompted to log in or skip
+1. **During onboarding**: When you run `weco` for the first time, you'll be prompted to log in
 2. **Manual login**: Use `weco logout` to clear credentials, then run `weco` again to re-authenticate
 3. **Device flow**: Weco will open your browser automatically and guide you through a secure OAuth-style authentication
 
 ![image (16)](https://github.com/user-attachments/assets/8a0a285b-4894-46fa-b6a2-4990017ca0c6)
 
-**Benefits of authenticated usage:**
-- **Run history**: View all your optimization runs on the Weco dashboard
-- **Progress tracking**: Monitor long-running optimizations remotely
-- **Enhanced support**: Get better assistance with your optimization challenges
+**Benefits:**
+- **No API Key Management**: All LLM provider keys are managed centrally
+- **Cost Transparency**: See exactly how many credits each optimization consumes
+- **Free Trial**: Free credits to get started with optimization projects
+- **Run History**: View all your optimization runs on the Weco dashboard
+- **Progress Tracking**: Monitor long-running optimizations remotely
+- **Budget Control**: Set spending limits and auto top-up preferences
 
 ---
 
@@ -188,11 +189,11 @@ weco run --model claude-3.5-sonnet --source optimize.py [other options...]
 ```
 
 **Available models:**
-- `gpt-4o`, `o4-mini` (requires `OPENAI_API_KEY`)
-- `claude-3.5-sonnet`, `claude-sonnet-4-20250514` (requires `ANTHROPIC_API_KEY`)
-- `gemini-2.5-pro` (requires `GEMINI_API_KEY`)
+- `o4-mini`, `o3-mini`, `gpt-4o` (OpenAI models)
+- `claude-sonnet-4-0`, `claude-opus-4-0` (Anthropic models)  
+- `gemini-2.5-pro`, `gemini-2.5-flash` (Google models)
 
-If no model is specified, Weco automatically selects the best available model based on your API keys.
+All models are available through Weco's centralized system. If no model is specified, Weco automatically selects the best model for your optimization task.
 
 ---
 
@@ -298,7 +299,7 @@ Weco supports the following LLM models:
 - `gemini-2.5-flash`
 - `gemini-2.5-flash-lite`
 
-You can specify any of these models using the `-M` or `--model` flag. Ensure you have the corresponding API key set as an environment variable for the model provider you wish to use.
+You can specify any of these models using the `-M` or `--model` flag. All models are accessible through Weco's centralized system after authentication - no individual API keys required.
 
 ---
 

@@ -9,3 +9,6 @@ DEFAULT_API_TIMEOUT = (10, 3650)
 # Output truncation configuration
 TRUNCATION_THRESHOLD = 51000  # Maximum length before truncation
 TRUNCATION_KEEP_LENGTH = 25000  # Characters to keep from beginning and end
+
+# Default model configuration
+DEFAULT_MODEL = "o4-mini"
