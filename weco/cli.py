@@ -74,6 +74,31 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
+    """Configure the credits command parser and all its subcommands."""
+    credits_subparsers = credits_parser.add_subparsers(dest="credits_command", help="Credit management commands")
+
+    # Credits balance command
+    _ = credits_subparsers.add_parser("balance", help="Check your current credit balance")
+
+    # Credits topup command
+    topup_parser = credits_subparsers.add_parser("topup", help="Purchase additional credits")
+    topup_parser.add_argument(
+        "--amount", type=int, choices=[10, 25, 50, 100, 200, 500], default=50, help="Amount of credits to purchase (in USD)"
+    )
+
+    # Credits autotopup command
+    autotopup_parser = credits_subparsers.add_parser("autotopup", help="Configure automatic top-up")
+    autotopup_parser.add_argument("--enable", action="store_true", help="Enable automatic top-up")
+    autotopup_parser.add_argument("--disable", action="store_true", help="Disable automatic top-up")
+    autotopup_parser.add_argument(
+        "--threshold", type=float, default=4.0, help="Balance threshold to trigger auto top-up (default: 4.0 credits)"
+    )
+    autotopup_parser.add_argument(
+        "--amount", type=float, default=50.0, help="Amount to top up when threshold is reached (default: 50.0 credits)"
+    )
+
+
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import execute_optimization
@@ -128,27 +153,7 @@ def main() -> None:
 
     # --- Credits Command Parser Setup ---
     credits_parser = subparsers.add_parser("credits", help="Manage your Weco credits")
-    credits_subparsers = credits_parser.add_subparsers(dest="credits_command", help="Credit management commands")
-
-    # Credits balance command
-    _ = credits_subparsers.add_parser("balance", help="Check your current credit balance")
-
-    # Credits topup command
-    topup_parser = credits_subparsers.add_parser("topup", help="Purchase additional credits")
-    topup_parser.add_argument(
-        "--amount", type=int, choices=[10, 25, 50, 100, 200, 500], default=50, help="Amount of credits to purchase (in USD)"
-    )
-
-    # Credits autotopup command
-    autotopup_parser = credits_subparsers.add_parser("autotopup", help="Configure automatic top-up")
-    autotopup_parser.add_argument("--enable", action="store_true", help="Enable automatic top-up")
-    autotopup_parser.add_argument("--disable", action="store_true", help="Disable automatic top-up")
-    autotopup_parser.add_argument(
-        "--threshold", type=float, default=4.0, help="Balance threshold to trigger auto top-up (default: 4.0 credits)"
-    )
-    autotopup_parser.add_argument(
-        "--amount", type=float, default=50.0, help="Amount to top up when threshold is reached (default: 50.0 credits)"
-    )
+    configure_credits_parser(credits_parser)  # Use the helper to add subcommands and arguments
 
     # Check if we should run the chatbot
     # This logic needs to be robust. If 'run' or 'logout' is present, or -h/--help, don't run chatbot.

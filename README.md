@@ -144,18 +144,18 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 
 ### Authentication & Dashboard
 
-Weco offers both **anonymous** and **authenticated** usage:
+The CLI requires a Weco account for authentication and billing.
 
 #### Credit-Based Authentication (Required)
 Weco now requires authentication for all operations. This enables our credit-based billing system and provides access to powerful optimizations:
 
-1. **During onboarding**: When you run `weco` for the first time, you'll be prompted to log in or skip
+1. **During onboarding**: When you run `weco` for the first time, you'll be prompted to log in
 2. **Manual login**: Use `weco logout` to clear credentials, then run `weco` again to re-authenticate
 3. **Device flow**: Weco will open your browser automatically and guide you through a secure OAuth-style authentication
 
 ![image (16)](https://github.com/user-attachments/assets/8a0a285b-4894-46fa-b6a2-4990017ca0c6)
 
-**Benefits of the credit system:**
+**Benefits:**
 - **No API Key Management**: All LLM provider keys are managed centrally
 - **Cost Transparency**: See exactly how many credits each optimization consumes
 - **Free Trial**: Free credits to get started with optimization projects

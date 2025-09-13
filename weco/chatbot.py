@@ -754,10 +754,9 @@ class Chatbot:
             self.resolved_model = self.user_specified_model
         else:
             # Use same default model selection as weco run
-            from .utils import determine_default_model, read_api_keys_from_env
+            from .utils import determine_model_for_onboarding
 
-            llm_api_keys = read_api_keys_from_env()
-            self.resolved_model = determine_default_model(llm_api_keys)
+            self.resolved_model = determine_model_for_onboarding()
 
         target_file = selected_option["target_file"]
         additional_instructions = selected_option["description"]

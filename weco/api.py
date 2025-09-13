@@ -5,7 +5,7 @@ from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
 from .constants import DEFAULT_API_TIMEOUT
-from .utils import truncate_output
+from .utils import truncate_output, determine_model_for_onboarding
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
@@ -180,13 +180,6 @@ def report_termination(
         return False
 
 
-# --- Chatbot API Functions ---
-def _determine_model() -> str:
-    """Determine which model to use. Defaults to o4-mini with credit-based billing."""
-    # With credit-based billing, we can default to o4-mini
-    return "o4-mini"
-
-
 def get_optimization_suggestions_from_codebase(
     console: Console,
     gitingest_summary: str,
@@ -197,7 +190,7 @@ def get_optimization_suggestions_from_codebase(
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
-        model = _determine_model()
+        model = determine_model_for_onboarding()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-codebase",
             json={
@@ -232,7 +225,7 @@ def generate_evaluation_script_and_metrics(
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
-        model = _determine_model()
+        model = determine_model_for_onboarding()
         response = requests.post(
             f"{__base_url__}/onboard/generate-script",
             json={
@@ -268,7 +261,7 @@ def analyze_evaluation_environment(
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
-        model = _determine_model()
+        model = determine_model_for_onboarding()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-environment",
             json={
@@ -304,7 +297,7 @@ def analyze_script_execution_requirements(
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:
-        model = _determine_model()
+        model = determine_model_for_onboarding()
         response = requests.post(
             f"{__base_url__}/onboard/analyze-script",
             json={
