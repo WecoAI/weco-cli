@@ -174,6 +174,7 @@ Weco now requires authentication for all operations. This enables our credit-bas
 | `weco` | Launch interactive onboarding | **Recommended for beginners** - Analyzes your codebase and guides you through setup |
 | `weco /path/to/project` | Launch onboarding for specific project | When working with a project in a different directory |
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
+| `weco resume <run-id>` | Resume an interrupted run | Continue from the last completed step |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
 
 ### Model Selection
@@ -196,6 +197,29 @@ weco run --model claude-3.5-sonnet --source optimize.py [other options...]
 All models are available through Weco's centralized system. If no model is specified, Weco automatically selects the best model for your optimization task.
 
 ---
+
+### Resuming Interrupted Runs
+
+If your optimization run is interrupted (network issues, restart, etc.), resume from the most recent node:
+
+```bash
+# Resume an interrupted run
+weco resume 0002e071-1b67-411f-a514-36947f0c4b31
+
+```
+
+Arguments for `weco resume`:
+
+| Argument | Description | Example |
+|----------|-------------|---------|
+| `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
+
+Notes:
+- Works only for interrupted runs (status: `error`, `terminated`, etc.).
+- You’ll be prompted to confirm that your evaluation environment (source file + evaluation command) hasn’t changed.
+- The source file is restored to the most recent solution before continuing.
+- All progress and metrics from the original run are preserved.
+- Log directory, save-logs behavior, and evaluation timeout are reused from the original run.
 
 ### Performance & Expectations
 

@@ -20,6 +20,7 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
 def start_optimization_run(
     console: Console,
     source_code: str,
+    source_path: str,
     evaluation_command: str,
     metric_name: str,
     maximize: bool,
@@ -28,6 +29,9 @@ def start_optimization_run(
     evaluator_config: Dict[str, Any],
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
+    eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
+    log_dir: str = ".runs",
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
@@ -38,6 +42,7 @@ def start_optimization_run(
                 f"{__base_url__}/runs/",
                 json={
                     "source_code": source_code,
+                    "source_path": source_path,
                     "additional_instructions": additional_instructions,
                     "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
                     "optimizer": {
@@ -46,6 +51,9 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
+                    "eval_timeout": eval_timeout,
+                    "save_logs": save_logs,
+                    "log_dir": log_dir,
                     "metadata": {"client_name": "cli", "client_version": __pkg_version__},
                 },
                 headers=auth_headers,
@@ -64,6 +72,29 @@ def start_optimization_run(
             return None
         except Exception as e:
             console.print(f"[bold red]Error starting run: {e}[/]")
+            return None
+
+
+def resume_optimization_run(
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT
+) -> Optional[Dict[str, Any]]:
+    """Request the backend to resume an interrupted run."""
+    with console.status("[bold green]Resuming run..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/resume",
+                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__}},
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error resuming run: {e}[/]")
             return None
 
 
