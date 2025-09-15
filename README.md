@@ -53,7 +53,7 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
     - **Run the CLI**: `weco` will prompt you to authenticate via your web browser
     - **Free Credits**: New users receive **free credits** upon signup
     - **Centralized Keys**: All LLM provider API keys are managed by Weco (no BYOK required)
-    - **Credit Top-ups**: Purchase additional credits through the dashboard at [app.weco.ai](https://app.weco.ai)
+    - **Credit Top-ups**: Purchase additional credits through the dashboard at [dashboard.weco.ai](https://dashboard.weco.ai)
 
 ---
 
