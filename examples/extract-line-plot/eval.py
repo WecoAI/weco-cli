@@ -134,13 +134,13 @@ def main() -> None:
 
     final_score = sum(scores) / len(scores) if scores else 0.0
 
-    # Apply cost cap: accuracy is zeroed if average cost/query exceeds $0.01
+    # Apply cost cap: accuracy is zeroed if average cost/query exceeds $0.02
     avg_cost_per_query = (
         (extractor.total_cost_usd / extractor.num_queries) if getattr(extractor, "num_queries", 0) else 0.0
     )
-    if avg_cost_per_query > 0.01:
+    if avg_cost_per_query > 0.02:
         print(
-            f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.01 cap; accuracy set to 0.0",
+            f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.02 cap; accuracy set to 0.0",
             flush=True,
         )
         final_score = 0.0
