@@ -637,30 +637,30 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             )
             return False
 
-        objective_info = status.get("objective", {})
-        optimizer_info = status.get("optimizer", {})
+        objective = status.get("objective", {})
+        metric_name = objective.get("metric_name", "metric")
+        maximize = bool(objective.get("maximize", True))
+
+        optimizer = status.get("optimizer", {})
+
         console.print("[cyan]Resume Run Confirmation[/]")
         console.print(f"  Run ID: {run_id}")
         console.print(f"  Run Name: {status.get('run_name', 'N/A')}")
         console.print(f"  Status: {run_status_val}")
         # Objective and model
-        console.print(
-            f"  Objective: {objective_info.get('metric_name', 'metric')} ({'maximize' if objective_info.get('maximize', True) else 'minimize'})"
-        )
+        console.print(f"  Objective: {metric_name} ({'maximize' if maximize else 'minimize'})")
         model_name = (
-            (optimizer_info.get("code_generator") or {}).get("model")
-            or (optimizer_info.get("evaluator") or {}).get("model")
+            (optimizer.get("code_generator") or {}).get("model")
+            or (optimizer.get("evaluator") or {}).get("model")
             or "unknown"
         )
         console.print(f"  Model: {model_name}")
-        console.print(f"  Eval Command: {objective_info.get('evaluation_command', 'N/A')}")
+        console.print(f"  Eval Command: {objective.get('evaluation_command', 'N/A')}")
         # Steps summary
-        total_steps_val = optimizer_info.get("steps")
-        current_step_val = status.get("current_step")
-        steps_remaining_val = int(total_steps_val) - int(current_step_val)
-        console.print(
-            f"  Total Steps: {total_steps_val} | Resume Step: {current_step_val} | Steps Remaining: {steps_remaining_val}"
-        )
+        total_steps = optimizer.get("steps")
+        current_step = int(status["current_step"])
+        steps_remaining = int(total_steps) - int(current_step)
+        console.print(f"  Total Steps: {total_steps} | Resume Step: {current_step} | Steps Remaining: {steps_remaining}")
         console.print(f"  Last Updated: {status.get('updated_at', 'N/A')}")
         unchanged = Confirm.ask(
             "Have you kept the source file and evaluation command unchanged since the original run?", default=True
@@ -681,20 +681,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
         log_dir = resume_resp.get("log_dir", ".runs")
         save_logs = bool(resume_resp.get("save_logs", False))
         eval_timeout = resume_resp.get("eval_timeout")
-        total_steps = int(resume_resp["steps"])
-        # Derive current step from status to avoid drift
-        current_step = int(status["current_step"])  # most recent node
-
-        # Use previously fetched status (objective, nodes, best)
-        objective = status.get("objective", {})
-        optimizer_cfg = status.get("optimizer", {})
-        metric_name = objective.get("metric_name", "metric")
-        maximize = bool(objective.get("maximize", True))
-        model = (
-            (optimizer_cfg.get("code_generator") or {}).get("model")
-            or (optimizer_cfg.get("evaluator") or {}).get("model")
-            or "unknown"
-        )
         additional_instructions = resume_resp.get("additional_instructions")
 
         # Write last solution code to source path
@@ -705,7 +691,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
 
         # Prepare UI panels
         summary_panel = SummaryPanel(
-            maximize=maximize, metric_name=metric_name, total_steps=total_steps, model=model, runs_dir=log_dir
+            maximize=maximize, metric_name=metric_name, total_steps=total_steps, model=model_name, runs_dir=log_dir
         )
         summary_panel.set_run_id(run_id=resume_resp["run_id"])
         if resume_resp.get("run_name"):
