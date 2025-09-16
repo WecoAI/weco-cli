@@ -697,8 +697,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
         if resume_resp.get("run_name"):
             summary_panel.set_run_name(resume_resp.get("run_name"))
         summary_panel.set_step(step=current_step)
-        # Token usage placeholder (do not update counts); show a clear thinking placeholder
-        summary_panel.update_thinking(thinking="Thinking")
+        summary_panel.update_thinking(resume_resp.get("plan"))
 
         solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
         eval_output_panel = EvaluationOutputPanel()
@@ -751,11 +750,8 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             # If missing output, evaluate once before first suggest
             term_out = last_exec_output
             if term_out is None or len(term_out.strip()) == 0:
-                summary_panel.update_thinking("")
                 term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
                 eval_output_panel.update(output=term_out)
-            else:
-                summary_panel.update_thinking("")
 
             if save_logs:
                 save_execution_output(runs_dir, step=current_step, output=term_out)
