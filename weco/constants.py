@@ -4,7 +4,8 @@ Constants for the Weco CLI package.
 """
 
 # API timeout configuration (connect_timeout, read_timeout) in seconds
-DEFAULT_API_TIMEOUT = (10, 3650)
+CODEGEN_API_TIMEOUT = (30, 3650)
+STATUS_API_TIMEOUT = (10, 180)
 
 # Output truncation configuration
 TRUNCATION_THRESHOLD = 51000  # Maximum length before truncation

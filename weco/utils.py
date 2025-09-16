@@ -69,23 +69,6 @@ def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json
 
 
 # Visualization helper functions
-def format_number(n: Union[int, float]) -> str:
-    """Format large numbers with K, M, B, T suffixes for better readability."""
-    if n >= 1e12:
-        return f"{n / 1e12:.1f}T"
-    elif n >= 1e9:
-        return f"{n / 1e9:.1f}B"
-    elif n >= 1e6:
-        return f"{n / 1e6:.1f}M"
-    elif n >= 1e3:
-        return f"{n / 1e3:.1f}K"
-    # Handle potential floats that don't need suffix but might need formatting
-    if isinstance(n, float):
-        # Format floats nicely, avoid excessive precision unless needed
-        return f"{n:.4g}"  # Use general format, up to 4 significant digits
-    return str(n)
-
-
 def smooth_update(
     live: Live, layout: Layout, sections_to_update: List[Tuple[str, Panel]], transition_delay: float = 0.05
 ) -> None:
