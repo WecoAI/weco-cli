@@ -10,11 +10,40 @@ from .utils import truncate_output, determine_model_for_onboarding
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
     """Extract and display error messages from API responses in a structured format."""
+    status = getattr(e.response, "status_code", None)
     try:
-        detail = e.response.json()["detail"]
-    except (ValueError, KeyError):  # Handle cases where response is not JSON or detail key is missing
-        detail = f"HTTP {e.response.status_code} Error: {e.response.text}"
-    console.print(f"[bold red]{detail}[/]")
+        payload = e.response.json()
+        detail = payload.get("detail", payload)
+    except (ValueError, AttributeError):
+        detail = getattr(e.response, "text", "") or f"HTTP {status} Error"
+
+    def _render(detail_obj: Any) -> None:
+        if isinstance(detail_obj, str):
+            console.print(f"[bold red]{detail_obj}[/]")
+        elif isinstance(detail_obj, dict):
+            message = detail_obj.get("message") or detail_obj.get("error")
+            suggestion = detail_obj.get("suggestion")
+            if message:
+                console.print(f"[bold red]{message}[/]")
+            else:
+                console.print(f"[bold red]HTTP {status} Error[/]")
+            if suggestion:
+                console.print(f"[yellow]{suggestion}[/]")
+            extras = {
+                k: v
+                for k, v in detail_obj.items()
+                if k not in {"message", "error", "suggestion"} and v not in (None, "")
+            }
+            for key, value in extras.items():
+                console.print(f"[dim]{key}: {value}[/]")
+        elif isinstance(detail_obj, list) and detail_obj:
+            _render(detail_obj[0])
+            for extra in detail_obj[1:]:
+                console.print(f"[yellow]{extra}[/]")
+        else:
+            console.print(f"[bold red]{detail_obj or f'HTTP {status} Error'}[/]")
+
+    _render(detail)
 
 
 def start_optimization_run(
