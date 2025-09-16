@@ -695,6 +695,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             or (optimizer_cfg.get("evaluator") or {}).get("model")
             or "unknown"
         )
+        additional_instructions = resume_resp.get("additional_instructions")
 
         # Write last solution code to source path
         source_fp = pathlib.Path(source_path)
@@ -764,17 +765,14 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             # If missing output, evaluate once before first suggest
             term_out = last_exec_output
             if term_out is None or len(term_out.strip()) == 0:
-                summary_panel.update_thinking("Re-evaluating current step (no stored output)…")
+                summary_panel.update_thinking("")
                 term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
-                # Save newly generated evaluation output if requested
-                if save_logs:
-                    save_execution_output(runs_dir, step=current_step, output=term_out)
                 eval_output_panel.update(output=term_out)
             else:
-                summary_panel.update_thinking("Using stored evaluation output from DB")
+                summary_panel.update_thinking("")
 
-            if save_logs and last_exec_output:
-                save_execution_output(runs_dir, step=current_step, output=last_exec_output)
+            if save_logs:
+                save_execution_output(runs_dir, step=current_step, output=term_out)
 
             smooth_update(
                 live=live,
@@ -814,7 +812,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     console=console,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
-                    additional_instructions=None,
+                    additional_instructions=additional_instructions,
                     auth_headers=auth_headers,
                     timeout=DEFAULT_API_TIMEOUT,
                 )
@@ -873,7 +871,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     console=console,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
-                    additional_instructions=None,
+                    additional_instructions=additional_instructions,
                     timeout=DEFAULT_API_TIMEOUT,
                     auth_headers=auth_headers,
                 )
