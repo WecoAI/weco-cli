@@ -41,7 +41,7 @@ def read_additional_instructions(additional_instructions: str | None) -> str | N
         if potential_path.exists() and potential_path.is_file():
             # If it's a valid file path, check if we support the file extension
             if potential_path.suffix.lower() not in SUPPORTED_FILE_EXTENSIONS:
-                raise ValueError(f"Unsupported file extension: {potential_path.suffix}. Supported extensions are: {', '.join(SUPPORTED_FILE_EXTENSIONS)}")
+                raise ValueError(f"Unsupported file extension: {potential_path.suffix.lower()}. Supported extensions are: {', '.join(SUPPORTED_FILE_EXTENSIONS)}")
             return read_from_path(potential_path, is_json=False)  # type: ignore # read_from_path returns str when is_json=False
         else:
             # If it's not a valid file path, return the string itself
