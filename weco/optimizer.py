@@ -690,14 +690,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             term_out = resume_resp.get("execution_output") or ""
             eval_output_panel.update(output=term_out)
 
-            # If missing output, evaluate once before first suggest
-            if term_out is None or len(term_out.strip()) == 0:
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
-                eval_output_panel.update(output=term_out)
-
-            if save_logs:
-                save_execution_output(runs_dir, step=current_step, output=term_out)
-
+            # Update the initial panels
             smooth_update(
                 live=live,
                 layout=layout,
@@ -710,6 +703,21 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                 ],
                 transition_delay=0.1,
             )
+
+            # If missing output, evaluate once before first suggest
+            if term_out is None or len(term_out.strip()) == 0:
+                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                eval_output_panel.update(output=term_out)
+                # Update the evaluation output panel
+                smooth_update(
+                    live=live,
+                    layout=layout,
+                    sections_to_update=[("eval_output", eval_output_panel.get_display())],
+                    transition_delay=0.1,
+                )
+
+            if save_logs:
+                save_execution_output(runs_dir, step=current_step, output=term_out)
 
             # Continue optimization: steps current_step+1..total_steps
             for step in range(current_step + 1, total_steps + 1):
