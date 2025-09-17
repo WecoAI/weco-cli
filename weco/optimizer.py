@@ -358,6 +358,7 @@ def execute_optimization(
                 # Send feedback and get next suggestion
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
                     console=console,
+                    step=step,
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
@@ -420,6 +421,7 @@ def execute_optimization(
                 # Evaluate the final solution thats been generated
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
                     console=console,
+                    step=steps,
                     run_id=run_id,
                     execution_output=term_out,
                     additional_instructions=current_additional_instructions,
@@ -728,6 +730,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                 # Suggest next
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
                     console=console,
+                    step=step,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
                     additional_instructions=additional_instructions,
@@ -783,6 +786,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
             if not user_stop_requested_flag:
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
                     console=console,
+                    step=total_steps,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
                     additional_instructions=additional_instructions,
