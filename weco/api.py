@@ -132,6 +132,7 @@ def resume_optimization_run(
 def evaluate_feedback_then_suggest_next_solution(
     console: Console,
     run_id: str,
+    step: int,
     execution_output: str,
     additional_instructions: str = None,
     auth_headers: dict = {},
@@ -155,8 +156,44 @@ def evaluate_feedback_then_suggest_next_solution(
             result["plan"] = ""
         if result.get("code") is None:
             result["code"] = ""
-
         return result
+    except requests.exceptions.ReadTimeout as e:
+        # NOTE: This can occur when:
+        # 1. The server is busy and the request times out
+        # 2. When intermediaries drop the connection so even after the server responds,
+        # the client doesn't receive the response and times out
+
+        # Here we ONLY try to recover in the latter case i.e., server completed request but
+        # client didn't receive the response and timed out
+        run_status_recovery_response = get_optimization_run_status(
+            console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+        )
+        current_step = run_status_recovery_response.get("current_step")
+        current_status = run_status_recovery_response.get("status")
+        # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
+        is_valid_run_state = current_status is not None and current_status == "running"
+        is_valid_step = current_step is not None and current_step == step
+        if is_valid_run_state and is_valid_step:
+            nodes = run_status_recovery_response.get("nodes") or []
+            # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
+            if len(nodes) >= 2:
+                nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
+                latest_node = nodes_sorted_ascending[-1]
+                penultimate_node = nodes_sorted_ascending[-2]
+                # If the server finished generating the next candidate, it should be exactly this step
+                if latest_node and latest_node["step"] == step:
+                    # Try to reconstruct the expected response from the /suggest endpoint using the run status info
+                    reconstructed_expected_response = {
+                        "run_id": run_id,
+                        "previous_solution_metric_value": penultimate_node.get("metric_value"),
+                        "solution_id": latest_node.get("solution_id"),
+                        "code": latest_node.get("code"),
+                        "plan": latest_node.get("plan"),
+                        "is_done": False,
+                    }
+                    return reconstructed_expected_response
+        # If we couldn't recover, raise the timeout error so the run can be resumed by the user
+        raise requests.exceptions.ReadTimeout(e)
     except requests.exceptions.HTTPError as e:
         # Allow caller to handle suggest errors, maybe retry or terminate
         handle_api_error(e, console)
