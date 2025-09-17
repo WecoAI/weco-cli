@@ -4,7 +4,7 @@ import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
-from .constants import DEFAULT_API_TIMEOUT
+from .constants import CODEGEN_API_TIMEOUT, STATUS_API_TIMEOUT
 from .utils import truncate_output, determine_model_for_onboarding
 
 
@@ -51,6 +51,7 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
 def start_optimization_run(
     console: Console,
     source_code: str,
+    source_path: str,
     evaluation_command: str,
     metric_name: str,
     maximize: bool,
@@ -59,8 +60,11 @@ def start_optimization_run(
     evaluator_config: Dict[str, Any],
     search_policy_config: Dict[str, Any],
     additional_instructions: str = None,
+    eval_timeout: Optional[int] = None,
+    save_logs: bool = False,
+    log_dir: str = ".runs",
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -69,6 +73,7 @@ def start_optimization_run(
                 f"{__base_url__}/runs/",
                 json={
                     "source_code": source_code,
+                    "source_path": source_path,
                     "additional_instructions": additional_instructions,
                     "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
                     "optimizer": {
@@ -77,6 +82,9 @@ def start_optimization_run(
                         "evaluator": evaluator_config,
                         "search_policy": search_policy_config,
                     },
+                    "eval_timeout": eval_timeout,
+                    "save_logs": save_logs,
+                    "log_dir": log_dir,
                     "metadata": {"client_name": "cli", "client_version": __pkg_version__},
                 },
                 headers=auth_headers,
@@ -98,13 +106,36 @@ def start_optimization_run(
             return None
 
 
+def resume_optimization_run(
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT
+) -> Optional[Dict[str, Any]]:
+    """Request the backend to resume an interrupted run."""
+    with console.status("[bold green]Resuming run..."):
+        try:
+            response = requests.post(
+                f"{__base_url__}/runs/{run_id}/resume",
+                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__}},
+                headers=auth_headers,
+                timeout=timeout,
+            )
+            response.raise_for_status()
+            result = response.json()
+            return result
+        except requests.exceptions.HTTPError as e:
+            handle_api_error(e, console)
+            return None
+        except Exception as e:
+            console.print(f"[bold red]Error resuming run: {e}[/]")
+            return None
+
+
 def evaluate_feedback_then_suggest_next_solution(
     console: Console,
     run_id: str,
     execution_output: str,
     additional_instructions: str = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
@@ -140,7 +171,7 @@ def get_optimization_run_status(
     run_id: str,
     include_history: bool = False,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT,
 ) -> Dict[str, Any]:
     """Get the current status of the optimization run."""
     try:
@@ -217,7 +248,7 @@ def get_optimization_suggestions_from_codebase(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
@@ -252,7 +283,7 @@ def generate_evaluation_script_and_metrics(
     description: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
@@ -288,7 +319,7 @@ def analyze_evaluation_environment(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
@@ -324,7 +355,7 @@ def analyze_script_execution_requirements(
     script_path: str,
     target_file: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = DEFAULT_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:
