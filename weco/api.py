@@ -21,7 +21,9 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
         if isinstance(detail_obj, str):
             console.print(f"[bold red]{detail_obj}[/]")
         elif isinstance(detail_obj, dict):
-            message = detail_obj.get("message") or detail_obj.get("error")
+            # Try common message keys in order of preference
+            message_keys = ("message", "error", "msg", "detail")
+            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
             suggestion = detail_obj.get("suggestion")
             if message:
                 console.print(f"[bold red]{message}[/]")
@@ -32,7 +34,7 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
             extras = {
                 k: v
                 for k, v in detail_obj.items()
-                if k not in {"message", "error", "suggestion"} and v not in (None, "")
+                if k not in {"message", "error", "msg", "detail", "suggestion"} and v not in (None, "")
             }
             for key, value in extras.items():
                 console.print(f"[dim]{key}: {value}[/]")
