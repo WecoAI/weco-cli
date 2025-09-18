@@ -1,27 +1,14 @@
 # Triton Optimization
 
-This example demonstrates using Weco to optimize a causal multi-head self-attention mechanism, 
-a core component of Transformer models, implemented in PyTorch. 
-The optimization target is to leverage [Triton](https://github.com/triton-lang/triton) 
-for writing highly efficient GPU code, to accelerate the operation.
+This example demonstrates using Weco to optimize a causal multi-head self-attention mechanism, a core component of Transformer models, implemented in PyTorch. 
+The optimization target is to leverage [Triton](https://github.com/triton-lang/triton) for writing highly efficient GPU code, to accelerate the operation.
 
 ## Setup
 
-Install the CLI using `pip`:
+Install the CLI and dependencies for the example:
 ```bash
-pip install weco>=0.2.18
+pip install weco torch triton
 ```
-
-Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
-```bash
-export OPENAI_API_KEY="your_key_here"
-```
-
-Install the dependencies of the scripts shown in subsequent sections:
-```bash
-pip install torch triton
-```
-*(Note: Triton installation might require specific CUDA versions. Refer to the official Triton documentation if you encounter issues.)*
 
 ## Run Weco
 

@@ -19,12 +19,8 @@ Explore runnable examples that show how to use Weco to optimize kernels, prompts
 
 - **Install the CLI**
 ```bash
-pip install weco>=0.2.18
+pip install weco
 ```
-- **Set an API key** for at least one provider:
-  - OpenAI: `export OPENAI_API_KEY="your_key_here"`
-  - Anthropic: `export ANTHROPIC_API_KEY="your_key_here"`
-  - Google: `export GEMINI_API_KEY="your_key_here"`
 
 ### Examples at a glance
 

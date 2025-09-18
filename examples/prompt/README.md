@@ -13,10 +13,10 @@ The experiment runs locally, requires only two short Python files and a prompt g
 
 2. Install the CLI and dependencies for the example:
    ```bash
-   pip install weco>=0.2.18 openai datasets
+   pip install weco openai datasets
    ```
 
-3. This example uses `o4-mini` via the OpenAI API by default. Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
+3. Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
    ```bash
    export OPENAI_API_KEY="your_key_here"
    ```
@@ -40,8 +40,6 @@ weco run --source optimize.py \
      --model o4-mini \
      --additional-instructions "Improve the prompt to get better scores. Focus on clarity, specificity, and effective prompt engineering techniques."
 ```
-
-*Note: You can replace `--model o4-mini` with another powerful model like `o3` or others, provided you have the respective API keys set.*
 
 During each evaluation round, you will see log lines similar to the following:
 

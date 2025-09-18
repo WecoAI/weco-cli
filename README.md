@@ -43,7 +43,7 @@ The `weco` CLI leverages a tree search approach guided by LLMs to iteratively ex
 1.  **Install the Package:**
 
     ```bash
-    pip install weco>=0.2.18
+    pip install weco
     ```
 
 2.  **Authenticate (Required):**
@@ -293,37 +293,7 @@ Weco will parse this output to extract the numerical value (1.5 in this case) as
 
 ## Supported Models
 
-Weco supports the following LLM models:
-
-### OpenAI Models
-- `gpt-5` (recommended)
-- `gpt-5-mini`
-- `gpt-5-nano`
-- `o3-pro` (recommended)
-- `o3` (recommended)
-- `o4-mini` (recommended)
-- `o3-mini`
-- `o1-pro`
-- `o1`
-- `gpt-4.1`
-- `gpt-4.1-mini`
-- `gpt-4.1-nano`
-- `gpt-4o`
-- `gpt-4o-mini`
-- `codex-mini-latest`
-
-### Anthropic Models
-- `claude-opus-4-1`
-- `claude-opus-4-0`
-- `claude-sonnet-4-0`
-- `claude-3-7-sonnet-latest`
-
-### Gemini Models
-- `gemini-2.5-pro`
-- `gemini-2.5-flash`
-- `gemini-2.5-flash-lite`
-
-You can specify any of these models using the `-M` or `--model` flag. All models are accessible through Weco's centralized system after authentication - no individual API keys required.
+A list of models we support can be found in our documentation [here](https://docs.weco.ai/cli/supported-models).
 
 ---
 

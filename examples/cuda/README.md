@@ -6,19 +6,9 @@ This example uses a separate Markdown file (`guide.md`) to provide detailed inst
 
 ## Setup
 
-Install the CLI using `pip`:
+Install the CLI and dependencies for the example:
 ```bash
-pip install weco>=0.2.18
-```
-
-Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
-```bash
-export OPENAI_API_KEY="your_key_here"
-```
-
-Install the required dependencies:
-```bash
-pip install torch ninja triton
+pip install weco torch ninja triton
 ```
 > **Note:** This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
 
