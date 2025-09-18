@@ -1,6 +1,5 @@
 from typing import Any, Dict, List, Tuple, Union
 import json
-import os
 import time
 import subprocess
 from rich.layout import Layout
@@ -14,17 +13,6 @@ from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, DEFAULT_MOD
 
 
 # Env/arg helper functions
-def read_api_keys_from_env() -> Dict[str, Any]:
-    """Read API keys from environment variables."""
-    keys = {}
-    keys_to_check = ["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GEMINI_API_KEY"]
-    for key in keys_to_check:
-        value = os.getenv(key)
-        if value is not None and len(value) > 0:
-            keys[key] = value
-    return keys
-
-
 def determine_model_for_onboarding() -> str:
     """Determine which model to use for onboarding chatbot. Defaults to o4-mini."""
     return DEFAULT_MODEL
