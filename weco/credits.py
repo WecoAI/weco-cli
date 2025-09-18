@@ -5,6 +5,7 @@ import requests
 from rich.console import Console
 from rich.table import Table
 from . import __base_url__
+from .api import handle_api_error
 from .auth import load_weco_api_key, handle_authentication
 
 
@@ -63,10 +64,10 @@ def check_balance(console: Console, auth_headers: dict) -> None:
         console.print(f"[bold red]Unexpected error: {e}[/]")
 
 
-def topup_credits(console: Console, auth_headers: dict, amount: int) -> None:
+def topup_credits(console: Console, auth_headers: dict, amount: float) -> None:
     """Initiate a credit top-up via Stripe."""
     try:
-        console.print(f"[cyan]Preparing to purchase {amount} credits...[/]")
+        console.print(f"[cyan]Preparing to purchase {amount:.2f} credits...[/]")
 
         response = requests.post(
             f"{__base_url__}/billing/topup/checkout", headers=auth_headers, json={"amount": amount}, timeout=10
@@ -77,8 +78,7 @@ def topup_credits(console: Console, auth_headers: dict, amount: int) -> None:
         checkout_url = data.get("checkout_url")
         if checkout_url:
             console.print("\n[bold green]✅ Checkout session created![/]")
-            console.print(f"Amount: ${amount} USD")
-            console.print(f"Credits: {amount} credits (1:1 with USD)")
+            console.print(f"Total: {amount:.2f} credits")
             console.print("\n[yellow]Opening checkout page in your browser...[/]")
 
             # Try to open the browser
@@ -95,10 +95,13 @@ def topup_credits(console: Console, auth_headers: dict, amount: int) -> None:
             console.print("[bold red]Error: No checkout URL received.[/]")
 
     except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 401:
+        response = getattr(e, "response", None)
+
+        if response is not None and response.status_code == 401:
             console.print("[bold red]Authentication failed. Please log in again with 'weco'.[/]")
         else:
-            console.print(f"[bold red]Error creating checkout session: {e}[/]")
+            console.print("[bold red]Error creating checkout session[/]")
+            handle_api_error(e, console)
     except Exception as e:
         console.print(f"[bold red]Unexpected error: {e}[/]")
 

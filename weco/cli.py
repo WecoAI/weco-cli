@@ -81,10 +81,24 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
     # Credits balance command
     _ = credits_subparsers.add_parser("balance", help="Check your current credit balance")
 
+    # Coerce CLI input into a float with two decimal precision for the API payload.
+    def _parse_credit_amount(value: str) -> float:
+        try:
+            amount = float(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("Amount must be a number.") from exc
+
+        return round(amount, 2)
+
     # Credits topup command
     topup_parser = credits_subparsers.add_parser("topup", help="Purchase additional credits")
     topup_parser.add_argument(
-        "--amount", type=int, choices=[10, 25, 50, 100, 200, 500], default=50, help="Amount of credits to purchase (in USD)"
+        "amount",
+        nargs="?",
+        type=_parse_credit_amount,
+        default=_parse_credit_amount("10"),
+        metavar="CREDITS",
+        help="Amount of credits to purchase (minimum 2, defaults to 10)",
     )
 
     # Credits autotopup command
