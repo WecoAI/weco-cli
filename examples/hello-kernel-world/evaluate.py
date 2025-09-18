@@ -61,6 +61,11 @@ def get_inputs(B, N, device):
     return torch.randn(B, N, device=device, dtype=torch.float32)
 
 
+# NOTE: We included this custom benchmark function to avoid adding the triton dependency
+# and allow users to run the example on CPUs. However, if you have an NVIDIA GPU,
+# you can use the triton.testing.do_bench function instead.
+# Refer to examples/triton/evaluate.py for an example.
+# triton.testing.do_bench documentation: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
 @torch.no_grad()
 def bench(f, inputs, n_warmup, n_rep):
     device_type = inputs.device.type

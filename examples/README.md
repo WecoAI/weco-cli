@@ -32,7 +32,7 @@ pip install weco>=0.2.18
 | :-- | :-- | :-- | :-- |
 | 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-kernel-world/README.md) • [Colab](hello-kernel-world/colab_notebook_walkthrough.ipynb) |
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `torch`, `triton` | [README](triton/README.md) |
-| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `torch`, `ninja`, NVIDIA GPU + CUDA Toolkit | [README](cuda/README.md) |
+| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `torch`, `ninja`, `triton`, NVIDIA GPU + CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets` | [README](prompt/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
 
@@ -70,7 +70,7 @@ weco run --source optimize.py \
 
 ### 🚀 CUDA Optimization
 
-- **Install extra deps**: `pip install torch ninja`
+- **Install extra deps**: `pip install torch ninja triton`
 - **Requires**: NVIDIA GPU and CUDA Toolkit
 - **Run**:
 ```bash

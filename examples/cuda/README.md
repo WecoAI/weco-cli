@@ -18,7 +18,7 @@ export OPENAI_API_KEY="your_key_here"
 
 Install the required dependencies:
 ```bash
-pip install torch ninja
+pip install torch ninja triton
 ```
 > **Note:** This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
 
