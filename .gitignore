@@ -24,6 +24,7 @@ wheels/
 .coverage
 htmlcov/
 .env
+.env.*
 .venv
 venv/
 ENV/

@@ -75,6 +75,10 @@ class SummaryPanel:
         summary_table.add_column(justify="right")
         summary_table.add_row("")
 
+        # Run id
+        summary_table.add_row(f" Run ID: [bold cyan]{self.run_id}[/]")
+        summary_table.add_row("")
+
         # Dashboard url
         summary_table.add_row(f" Dashboard: [underline blue]{self.dashboard_url}[/]")
         summary_table.add_row("")
