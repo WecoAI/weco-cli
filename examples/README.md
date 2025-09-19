@@ -98,7 +98,7 @@ weco run --source optimize.py \
 cd examples/spaceship-titanic
 weco run --source train.py \
   --eval-command "python evaluate.py --data-dir ./data --seed 0" \
-  --metric accuracy --goal maximize --steps 20 \
+  --metric accuracy --goal maximize --steps 10 \
   --model o4-mini \
   --additional-instructions "Improve feature engineering, model choice and hyper-parameters." \
   --log-dir .runs/spaceship-titanic

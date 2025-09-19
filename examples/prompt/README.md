@@ -36,7 +36,7 @@ weco run --source optimize.py \
      --eval-command "python eval.py" \
      --metric score \
      --goal maximize \
-     --steps 15 \
+     --steps 20 \
      --model o4-mini \
      --additional-instructions "Improve the prompt to get better scores. Focus on clarity, specificity, and effective prompt engineering techniques."
 ```

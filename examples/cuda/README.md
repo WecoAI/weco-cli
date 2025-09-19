@@ -19,7 +19,7 @@ weco run --source optimize.py \
      --eval-command "python evaluate.py --solution-path optimize.py" \
      --metric speedup \
      --goal maximize \
-     --steps 15 \
+     --steps 50 \
      --model o4-mini \
      --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
@@ -30,7 +30,7 @@ weco run --source optimize.py \
 *   `--eval-command "python evaluate.py --solution-path optimize.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `optimize.py` against a baseline, printing the `speedup`.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
-*   `--steps 15`: The number of optimization iterations.
+*   `--steps 50`: The number of optimization iterations.
 *   `--model o4-mini`: The LLM used for code generation.
 *   `--additional-instructions "..."`: Provides guidance to the LLM on the optimization approach.
 
