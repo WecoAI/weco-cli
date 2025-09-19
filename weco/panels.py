@@ -6,7 +6,6 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich import box
 from typing import Dict, List, Optional, Union, Tuple
-from .utils import format_number
 from pathlib import Path
 from .__init__ import __dashboard_url__
 
@@ -26,8 +25,6 @@ class SummaryPanel:
     ):
         self.maximize = maximize
         self.metric_name = metric_name
-        self.total_input_tokens = 0
-        self.total_output_tokens = 0
         self.total_steps = total_steps
         self.model = model
         self.runs_dir = runs_dir
@@ -62,13 +59,6 @@ class SummaryPanel:
         """Set the current step."""
         self.progress.update(self.task_id, completed=step)
 
-    def update_token_counts(self, usage: Dict[str, int]):
-        """Update token counts from usage data."""
-        if not isinstance(usage, dict) or "input_tokens" not in usage or "output_tokens" not in usage:
-            raise ValueError("Invalid token usage data received.")
-        self.total_input_tokens += usage["input_tokens"]
-        self.total_output_tokens += usage["output_tokens"]
-
     def update_thinking(self, thinking: str):
         """Update the thinking content."""
         self.thinking_content = thinking
@@ -85,6 +75,10 @@ class SummaryPanel:
         summary_table.add_column(justify="right")
         summary_table.add_row("")
 
+        # Run id
+        summary_table.add_row(f" Run ID: [bold cyan]{self.run_id}[/]")
+        summary_table.add_row("")
+
         # Dashboard url
         summary_table.add_row(f" Dashboard: [underline blue]{self.dashboard_url}[/]")
         summary_table.add_row("")
@@ -94,14 +88,8 @@ class SummaryPanel:
             summary_table.add_row(f"[bold cyan] Result:[/] {final_message}", "")
             summary_table.add_row("")
 
-        # Token info
-        token_info = (
-            f"[bold cyan] {self.model}:[/] "
-            f"↑[yellow]{format_number(self.total_input_tokens)}[/] "
-            f"↓[yellow]{format_number(self.total_output_tokens)}[/] = "
-            f"[green]{format_number(self.total_input_tokens + self.total_output_tokens)} Tokens[/]"
-        )
-        summary_table.add_row(token_info)
+        # Model info
+        summary_table.add_row(f" Model: [bold cyan]{self.model}[/]")
         summary_table.add_row("")
 
         # Progress bar

@@ -19,12 +19,8 @@ Explore runnable examples that show how to use Weco to optimize kernels, prompts
 
 - **Install the CLI**
 ```bash
-pip install weco>=0.2.18
+pip install weco
 ```
-- **Set an API key** for at least one provider:
-  - OpenAI: `export OPENAI_API_KEY="your_key_here"`
-  - Anthropic: `export ANTHROPIC_API_KEY="your_key_here"`
-  - Google: `export GEMINI_API_KEY="your_key_here"`
 
 ### Examples at a glance
 
@@ -32,7 +28,7 @@ pip install weco>=0.2.18
 | :-- | :-- | :-- | :-- |
 | 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-kernel-world/README.md) • [Colab](hello-kernel-world/colab_notebook_walkthrough.ipynb) |
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `torch`, `triton` | [README](triton/README.md) |
-| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `torch`, `ninja`, NVIDIA GPU + CUDA Toolkit | [README](cuda/README.md) |
+| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `torch`, `ninja`, `triton`, NVIDIA GPU + CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets` | [README](prompt/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
 
@@ -63,23 +59,23 @@ weco run --source optimize.py \
 cd examples/triton
 weco run --source optimize.py \
   --eval-command "python evaluate.py --solution-path optimize.py" \
-  --metric speedup --goal maximize --steps 30 \
+  --metric speedup --goal maximize --steps 50 \
   --model o4-mini \
-  --additional-instructions "Use triton to optimize while keeping numerical diff small."
+  --additional-instructions "Use triton to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### 🚀 CUDA Optimization
 
-- **Install extra deps**: `pip install torch ninja`
+- **Install extra deps**: `pip install torch ninja triton`
 - **Requires**: NVIDIA GPU and CUDA Toolkit
 - **Run**:
 ```bash
 cd examples/cuda
 weco run --source optimize.py \
   --eval-command "python evaluate.py --solution-path optimize.py" \
-  --metric speedup --goal maximize --steps 15 \
+  --metric speedup --goal maximize --steps 50 \
   --model o4-mini \
-  --additional-instructions guide.md
+  --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### 🧠 Prompt Engineering
@@ -90,7 +86,7 @@ weco run --source optimize.py \
 cd examples/prompt
 weco run --source optimize.py \
   --eval-command "python eval.py" \
-  --metric score --goal maximize --steps 15 \
+  --metric score --goal maximize --steps 20 \
   --model o4-mini
 ```
 

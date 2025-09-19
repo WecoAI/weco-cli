@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import math
+from triton.testing import do_bench
 
 
 ########################################################
@@ -78,29 +79,6 @@ def get_inputs(batch_size, seq_len, n_embd, device):
     return torch.randn(batch_size, seq_len, n_embd, device=device, dtype=torch.float32)
 
 
-@torch.no_grad()
-def bench(f, inputs, n_warmup, n_rep):
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    # warmup
-    for _ in range(n_warmup):
-        f(inputs)  # noqa
-    torch.cuda.synchronize()
-
-    # benchmark
-    t_avg_ms = 0.0
-    for _ in range(n_rep):
-        # time the forward pass
-        start_event.record()
-        f(inputs)
-        end_event.record()
-        # wait for all computations to complete
-        torch.cuda.synchronize()
-        t_avg_ms += start_event.elapsed_time(end_event)
-    return t_avg_ms / n_rep
-
-
 if __name__ == "__main__":
     import argparse
 
@@ -111,8 +89,8 @@ if __name__ == "__main__":
     # benchmarking parameters
     n_correctness_trials = 10
     correctness_tolerance = 1e-5
-    n_warmup = 1000
-    n_rep = 5000
+    warmup_ms = 1e3
+    rep_ms = 5 * 1e3
 
     # init parameters
     max_seqlen = 512
@@ -148,8 +126,12 @@ if __name__ == "__main__":
     for _ in range(n_correctness_trials):
         inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")
         with torch.no_grad():
-            baseline_output = baseline_model(inputs)
             optimized_output = solution_model(inputs)
+            if torch.isnan(optimized_output).any():
+                print("Incorrect solution: NaN detected in optimized model output")
+            if torch.isinf(optimized_output).any():
+                print("Incorrect solution: Inf detected in optimized model output")
+            baseline_output = baseline_model(inputs)
             max_diff_avg += torch.max(torch.abs(optimized_output - baseline_output))
     max_diff_avg /= n_correctness_trials
     print(f"max float diff between values of baseline and optimized model: {max_diff_avg}")
@@ -158,8 +140,8 @@ if __name__ == "__main__":
 
     # measure performance
     inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")
-    t_avg_baseline = bench(baseline_model, inputs, n_warmup, n_rep)
+    t_avg_baseline = do_bench(lambda: baseline_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"baseline time: {t_avg_baseline:.2f}ms")
-    t_avg_optimized = bench(solution_model, inputs, n_warmup, n_rep)
+    t_avg_optimized = do_bench(lambda: solution_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"optimized time: {t_avg_optimized:.2f}ms")
     print(f"speedup: {t_avg_baseline / t_avg_optimized:.2f}x")
