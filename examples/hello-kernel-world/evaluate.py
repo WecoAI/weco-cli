@@ -131,8 +131,12 @@ if __name__ == "__main__":
     max_diff_avg = 0
     for _ in range(n_correctness_trials):
         inputs = get_inputs(batch_size, input_size, args.device)
-        baseline_output = baseline_model(inputs)
         optimized_output = solution_model(inputs)
+        if torch.isnan(optimized_output).any():
+            print("Incorrect solution: NaN detected in optimized model output")
+        if torch.isinf(optimized_output).any():
+            print("Incorrect solution: Inf detected in optimized model output")
+        baseline_output = baseline_model(inputs)
         max_diff_avg += torch.max(torch.abs(optimized_output - baseline_output))
     max_diff_avg /= n_correctness_trials
     print(f"max float diff between values of baseline and optimized model: {max_diff_avg}")
