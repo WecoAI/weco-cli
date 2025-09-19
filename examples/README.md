@@ -59,9 +59,9 @@ weco run --source optimize.py \
 cd examples/triton
 weco run --source optimize.py \
   --eval-command "python evaluate.py --solution-path optimize.py" \
-  --metric speedup --goal maximize --steps 30 \
+  --metric speedup --goal maximize --steps 50 \
   --model o4-mini \
-  --additional-instructions "Use triton to optimize while keeping numerical diff small."
+  --additional-instructions "Use triton to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### 🚀 CUDA Optimization
@@ -73,9 +73,9 @@ weco run --source optimize.py \
 cd examples/cuda
 weco run --source optimize.py \
   --eval-command "python evaluate.py --solution-path optimize.py" \
-  --metric speedup --goal maximize --steps 15 \
+  --metric speedup --goal maximize --steps 50 \
   --model o4-mini \
-  --additional-instructions guide.md
+  --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### 🧠 Prompt Engineering
@@ -86,7 +86,7 @@ weco run --source optimize.py \
 cd examples/prompt
 weco run --source optimize.py \
   --eval-command "python eval.py" \
-  --metric score --goal maximize --steps 15 \
+  --metric score --goal maximize --steps 20 \
   --model o4-mini
 ```
 

@@ -18,9 +18,9 @@ weco run --source optimize.py \
      --eval-command "python evaluate.py --solution-path optimize.py" \
      --metric speedup \
      --goal maximize \
-     --steps 30 \
+     --steps 50 \
      --model o4-mini \
-     --additional-instructions "Use triton to optimize the code while ensuring a small max float diff. Maintain the same code format."
+     --additional-instructions "Use triton to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### Explanation
@@ -29,9 +29,9 @@ weco run --source optimize.py \
 *   `--eval-command "python evaluate.py --solution-path optimize.py"`: Defines the command to execute the evaluation script. This script benchmarks the generated solution in `optimize.py` against a baseline and outputs the `speedup`.
 *   `--metric speedup`: Sets the metric Weco should focus on improving during optimization.
 *   `--goal maximize`: Instructs Weco to aim for the highest possible speedup value.
-*   `--steps 30`: Determines the number of optimization iterations Weco will perform.
+*   `--steps 50`: Determines the number of optimization iterations Weco will perform.
 *   `--model o4-mini`: Specifies the large language model to drive the optimization process.
-*   `--additional-instructions "..."`: Provides specific guidance to the LLM. In this case, it directs the model to use Triton for optimization, ensure the numerical difference ("max float diff") between the original and optimized code remains small, and keep the overall code structure consistent.
+*   `--additional-instructions "..."`: Provides specific guidance to the LLM.
 
 Weco will iteratively modify `optimize.py`, incorporating Triton kernels, guided by the performance feedback (`speedup`) from the evaluation script and the instructions provided.
 
