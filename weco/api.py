@@ -4,7 +4,6 @@ import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
-from .constants import CODEGEN_API_TIMEOUT, STATUS_API_TIMEOUT
 from .utils import truncate_output, determine_model_for_onboarding
 
 
@@ -64,7 +63,7 @@ def start_optimization_run(
     save_logs: bool = False,
     log_dir: str = ".runs",
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -107,7 +106,7 @@ def start_optimization_run(
 
 
 def resume_optimization_run(
-    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)
 ) -> Optional[Dict[str, Any]]:
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
@@ -136,7 +135,7 @@ def evaluate_feedback_then_suggest_next_solution(
     execution_output: str,
     additional_instructions: str = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
@@ -208,7 +207,7 @@ def get_optimization_run_status(
     run_id: str,
     include_history: bool = False,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> Dict[str, Any]:
     """Get the current status of the optimization run."""
     try:
@@ -239,7 +238,7 @@ def get_optimization_run_status(
         raise
 
 
-def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
+def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)) -> bool:
     """Send a heartbeat signal to the backend."""
     try:
         response = requests.put(f"{__base_url__}/runs/{run_id}/heartbeat", headers=auth_headers, timeout=timeout)
@@ -262,7 +261,7 @@ def report_termination(
     reason: str,
     details: Optional[str] = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 30),
+    timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> bool:
     """Report the termination reason to the backend."""
     try:
@@ -285,7 +284,7 @@ def get_optimization_suggestions_from_codebase(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
@@ -320,7 +319,7 @@ def generate_evaluation_script_and_metrics(
     description: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
@@ -356,7 +355,7 @@ def analyze_evaluation_environment(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
@@ -392,7 +391,7 @@ def analyze_script_execution_requirements(
     script_path: str,
     target_file: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:
