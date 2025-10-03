@@ -202,45 +202,38 @@ def evaluate_feedback_then_suggest_next_solution(
             result["code"] = ""
         return result
     except requests.exceptions.ReadTimeout as e:
-        # This can occur when:
-        # 1. The server is busy and the request times out
-        # 2. When intermediaries drop the connection so even after the server responds,
-        # the client doesn't receive the response and times out
-        # Here we ONLY try to recover in the latter case i.e., server completed request but
-        # client didn't receive the response and timed out
+        # ReadTimeout can mean either:
+        # 1) the server truly didn't finish before the client's read timeout, or
+        # 2) the server finished but an intermediary (proxy/LB) dropped the response.
+        # We only try to recover case (2): fetch run status to confirm the step completed and reconstruct the response.
         recovered = _recover_suggest_after_transport_error(
             console=console, run_id=run_id, step=step, auth_headers=auth_headers
         )
         if recovered is not None:
             return recovered
-        # If we couldn't recover, raise the timeout error so the run can be resumed by the user
+        # If we cannot confirm completion, bubble up the timeout so the caller can resume later.
         raise requests.exceptions.ReadTimeout(e)
     except requests.exceptions.HTTPError as e:
-        # Only handle 502 Bad Gateway; all other HTTP errors fall through to normal handling
-        # This can occur when the server is overloaded or experiencing temporary issues
-        # In this case, we try to recover by checking if the server completed the request
-        # and if so, we reconstruct the expected response
-        if getattr(e, "response", None) is not None and e.response is not None and e.response.status_code == 502:
+        # Treat only 502 Bad Gateway as a transient transport/gateway issue (akin to a dropped response).
+        # For 502, attempt the status-based recovery method used for ReadTimeout errors; otherwise render the HTTP error normally.
+        if (resp := getattr(e, "response", None)) is not None and resp.status_code == 502:
             recovered = _recover_suggest_after_transport_error(
                 console=console, run_id=run_id, step=step, auth_headers=auth_headers
             )
             if recovered is not None:
                 return recovered
-        # Allow caller to handle suggest errors, maybe retry or terminate
+        # Surface non-502 HTTP errors to the user.
         handle_api_error(e, console)
         raise
     except requests.exceptions.ConnectionError as e:
-        # Specifically covers RemoteDisconnected('Remote end closed connection without response')
-        # We only cover the case where the server completed the request but the client didn't receive the response
-        # and timed out
-        # In this case, we try to recover by checking if the server completed the request
-        # and if so, we reconstruct the expected response
+        # Covers connection resets with no HTTP response (e.g., RemoteDisconnected).
+        # Treat as a potential "response lost after completion": try status-based recovery first similar to how ReadTimeout errors are handled.
         recovered = _recover_suggest_after_transport_error(
             console=console, run_id=run_id, step=step, auth_headers=auth_headers
         )
         if recovered is not None:
             return recovered
-        # If we couldn't recover, raise the connection error so the run can be resumed by the user
+        # Surface the connection error to the user.
         handle_api_error(e, console)
         raise
     except Exception as e:
