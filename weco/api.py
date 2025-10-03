@@ -47,6 +47,51 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
     _render(detail)
 
 
+def _recover_suggest_after_transport_error(
+    console: Console, run_id: str, step: int, auth_headers: dict
+) -> Optional[Dict[str, Any]]:
+    """
+    Try to reconstruct the /suggest response after a transport error (ReadTimeout/502/RemoteDisconnected)
+    by fetching run status and using the latest nodes.
+
+    Args:
+        console: The console object to use for logging.
+        run_id: The ID of the run to recover.
+        step: The step of the solution to recover.
+        auth_headers: The authentication headers to use for the request.
+
+    Returns:
+        The recovered response if the run is in a valid state, otherwise None.
+    """
+    run_status_recovery_response = get_optimization_run_status(
+        console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+    )
+    current_step = run_status_recovery_response.get("current_step")
+    current_status = run_status_recovery_response.get("status")
+    # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
+    is_valid_run_state = current_status is not None and current_status == "running"
+    is_valid_step = current_step is not None and current_step == step
+    if is_valid_run_state and is_valid_step:
+        nodes = run_status_recovery_response.get("nodes") or []
+        # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
+        if len(nodes) >= 2:
+            nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
+            latest_node = nodes_sorted_ascending[-1]
+            penultimate_node = nodes_sorted_ascending[-2]
+            # If the server finished generating the next candidate, it should be exactly this step
+            if latest_node and latest_node["step"] == step:
+                # Try to reconstruct the expected response from the /suggest endpoint using the run status info
+                return {
+                    "run_id": run_id,
+                    "previous_solution_metric_value": penultimate_node.get("metric_value"),
+                    "solution_id": latest_node.get("solution_id"),
+                    "code": latest_node.get("code"),
+                    "plan": latest_node.get("plan"),
+                    "is_done": False,
+                }
+    return None
+
+
 def start_optimization_run(
     console: Console,
     source_code: str,
@@ -157,44 +202,45 @@ def evaluate_feedback_then_suggest_next_solution(
             result["code"] = ""
         return result
     except requests.exceptions.ReadTimeout as e:
-        # NOTE: This can occur when:
+        # This can occur when:
         # 1. The server is busy and the request times out
         # 2. When intermediaries drop the connection so even after the server responds,
         # the client doesn't receive the response and times out
-
         # Here we ONLY try to recover in the latter case i.e., server completed request but
         # client didn't receive the response and timed out
-        run_status_recovery_response = get_optimization_run_status(
-            console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+        recovered = _recover_suggest_after_transport_error(
+            console=console, run_id=run_id, step=step, auth_headers=auth_headers
         )
-        current_step = run_status_recovery_response.get("current_step")
-        current_status = run_status_recovery_response.get("status")
-        # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
-        is_valid_run_state = current_status is not None and current_status == "running"
-        is_valid_step = current_step is not None and current_step == step
-        if is_valid_run_state and is_valid_step:
-            nodes = run_status_recovery_response.get("nodes") or []
-            # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
-            if len(nodes) >= 2:
-                nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
-                latest_node = nodes_sorted_ascending[-1]
-                penultimate_node = nodes_sorted_ascending[-2]
-                # If the server finished generating the next candidate, it should be exactly this step
-                if latest_node and latest_node["step"] == step:
-                    # Try to reconstruct the expected response from the /suggest endpoint using the run status info
-                    reconstructed_expected_response = {
-                        "run_id": run_id,
-                        "previous_solution_metric_value": penultimate_node.get("metric_value"),
-                        "solution_id": latest_node.get("solution_id"),
-                        "code": latest_node.get("code"),
-                        "plan": latest_node.get("plan"),
-                        "is_done": False,
-                    }
-                    return reconstructed_expected_response
+        if recovered is not None:
+            return recovered
         # If we couldn't recover, raise the timeout error so the run can be resumed by the user
         raise requests.exceptions.ReadTimeout(e)
     except requests.exceptions.HTTPError as e:
+        # Only handle 502 Bad Gateway; all other HTTP errors fall through to normal handling
+        # This can occur when the server is overloaded or experiencing temporary issues
+        # In this case, we try to recover by checking if the server completed the request
+        # and if so, we reconstruct the expected response
+        if getattr(e, "response", None) is not None and e.response is not None and e.response.status_code == 502:
+            recovered = _recover_suggest_after_transport_error(
+                console=console, run_id=run_id, step=step, auth_headers=auth_headers
+            )
+            if recovered is not None:
+                return recovered
         # Allow caller to handle suggest errors, maybe retry or terminate
+        handle_api_error(e, console)
+        raise
+    except requests.exceptions.ConnectionError as e:
+        # Specifically covers RemoteDisconnected('Remote end closed connection without response')
+        # We only cover the case where the server completed the request but the client didn't receive the response
+        # and timed out
+        # In this case, we try to recover by checking if the server completed the request
+        # and if so, we reconstruct the expected response
+        recovered = _recover_suggest_after_transport_error(
+            console=console, run_id=run_id, step=step, auth_headers=auth_headers
+        )
+        if recovered is not None:
+            return recovered
+        # If we couldn't recover, raise the connection error so the run can be resumed by the user
         handle_api_error(e, console)
         raise
     except Exception as e:
