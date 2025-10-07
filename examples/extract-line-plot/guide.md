@@ -1,5 +1,4 @@
 # Constraints
-- Avoid using backticks \` either in the plan or in the generated code, as it will break weco parsing. Use "\x60" instead, for example for regax you can do `re.sub(r"(?m)^\s*[\x60~]{3,}[^\n]*\n?", "", text)`
 - Make sure the cost tracking is correct
 - The average cost per query should be lower than $0.02 per query, the baseline has around $0.007 per query
 
