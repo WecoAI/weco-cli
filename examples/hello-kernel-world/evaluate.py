@@ -61,6 +61,11 @@ def get_inputs(B, N, device):
     return torch.randn(B, N, device=device, dtype=torch.float32)
 
 
+# NOTE: We included this custom benchmark function to avoid adding the triton dependency
+# and allow users to run the example on CPUs. However, if you have an NVIDIA GPU,
+# you can use the triton.testing.do_bench function instead.
+# Refer to examples/triton/evaluate.py for an example.
+# triton.testing.do_bench documentation: https://triton-lang.org/main/python-api/generated/triton.testing.do_bench.html
 @torch.no_grad()
 def bench(f, inputs, n_warmup, n_rep):
     device_type = inputs.device.type
@@ -126,8 +131,12 @@ if __name__ == "__main__":
     max_diff_avg = 0
     for _ in range(n_correctness_trials):
         inputs = get_inputs(batch_size, input_size, args.device)
-        baseline_output = baseline_model(inputs)
         optimized_output = solution_model(inputs)
+        if torch.isnan(optimized_output).any():
+            print("Incorrect solution: NaN detected in optimized model output")
+        if torch.isinf(optimized_output).any():
+            print("Incorrect solution: Inf detected in optimized model output")
+        baseline_output = baseline_model(inputs)
         max_diff_avg += torch.max(torch.abs(optimized_output - baseline_output))
     max_diff_avg /= n_correctness_trials
     print(f"max float diff between values of baseline and optimized model: {max_diff_avg}")

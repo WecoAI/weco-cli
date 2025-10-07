@@ -2,23 +2,12 @@
 
 This example showcases using Weco to optimize a PyTorch causal multi-head self-attention implementation by generating custom [CUDA](https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html) kernels. 
 This approach aims for low-level optimization beyond standard PyTorch or even Triton for potentially higher performance on NVIDIA GPUs.
-This example uses a separate Markdown file (`guide.md`) to provide detailed instructions and context to the LLM.
 
 ## Setup
 
-Install the CLI using `pip`:
+Install the CLI and dependencies for the example:
 ```bash
-pip install weco>=0.2.18
-```
-
-Create your OpenAI API key [here](https://platform.openai.com/api-keys), then run:
-```bash
-export OPENAI_API_KEY="your_key_here"
-```
-
-Install the required dependencies:
-```bash
-pip install torch ninja
+pip install weco torch ninja triton
 ```
 > **Note:** This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
 
@@ -30,9 +19,9 @@ weco run --source optimize.py \
      --eval-command "python evaluate.py --solution-path optimize.py" \
      --metric speedup \
      --goal maximize \
-     --steps 15 \
+     --steps 50 \
      --model o4-mini \
-     --additional-instructions guide.md
+     --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
 ```
 
 ### Explanation
@@ -41,11 +30,11 @@ weco run --source optimize.py \
 *   `--eval-command "python evaluate.py --solution-path optimize.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `optimize.py` against a baseline, printing the `speedup`.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
-*   `--steps 15`: The number of optimization iterations.
+*   `--steps 50`: The number of optimization iterations.
 *   `--model o4-mini`: The LLM used for code generation.
-*   `--additional-instructions guide.md`: Provides guidance to the LLM on the optimization approach.
+*   `--additional-instructions "..."`: Provides guidance to the LLM on the optimization approach.
 
-Weco will iteratively modify `optimize.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the instructions in `guide.md`.
+Weco will iteratively modify `optimize.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
 
 ## Next Steps
 

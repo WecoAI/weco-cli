@@ -74,6 +74,52 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
+    """Configure the credits command parser and all its subcommands."""
+    credits_subparsers = credits_parser.add_subparsers(dest="credits_command", help="Credit management commands")
+
+    # Credits balance command
+    _ = credits_subparsers.add_parser("balance", help="Check your current credit balance")
+
+    # Coerce CLI input into a float with two decimal precision for the API payload.
+    def _parse_credit_amount(value: str) -> float:
+        try:
+            amount = float(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("Amount must be a number.") from exc
+
+        return round(amount, 2)
+
+    # Credits topup command
+    topup_parser = credits_subparsers.add_parser("topup", help="Purchase additional credits")
+    topup_parser.add_argument(
+        "amount",
+        nargs="?",
+        type=_parse_credit_amount,
+        default=_parse_credit_amount("10"),
+        metavar="CREDITS",
+        help="Amount of credits to purchase (minimum 2, defaults to 10)",
+    )
+
+    # Credits autotopup command
+    autotopup_parser = credits_subparsers.add_parser("autotopup", help="Configure automatic top-up")
+    autotopup_parser.add_argument("--enable", action="store_true", help="Enable automatic top-up")
+    autotopup_parser.add_argument("--disable", action="store_true", help="Disable automatic top-up")
+    autotopup_parser.add_argument(
+        "--threshold", type=float, default=4.0, help="Balance threshold to trigger auto top-up (default: 4.0 credits)"
+    )
+    autotopup_parser.add_argument(
+        "--amount", type=float, default=50.0, help="Amount to top up when threshold is reached (default: 50.0 credits)"
+    )
+
+
+def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
+    """Configure arguments for the resume command."""
+    resume_parser.add_argument(
+        "run_id", type=str, help="The UUID of the run to resume (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
+    )
+
+
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import execute_optimization
@@ -93,6 +139,14 @@ def execute_run_command(args: argparse.Namespace) -> None:
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
+
+
+def execute_resume_command(args: argparse.Namespace) -> None:
+    """Execute the 'weco resume' command with all its logic."""
+    from .optimizer import resume_optimization
+
+    success = resume_optimization(run_id=args.run_id, console=console)
+    sys.exit(0 if success else 1)
 
 
 def main() -> None:
@@ -126,6 +180,19 @@ def main() -> None:
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
 
+    # --- Credits Command Parser Setup ---
+    credits_parser = subparsers.add_parser("credits", help="Manage your Weco credits")
+    configure_credits_parser(credits_parser)  # Use the helper to add subcommands and arguments
+
+    # --- Resume Command Parser Setup ---
+    resume_parser = subparsers.add_parser(
+        "resume",
+        help="Resume an interrupted optimization run",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        allow_abbrev=False,
+    )
+    configure_resume_parser(resume_parser)
+
     # Check if we should run the chatbot
     # This logic needs to be robust. If 'run' or 'logout' is present, or -h/--help, don't run chatbot.
     # Otherwise, if it's just 'weco' or 'weco <path>' (with optional --model), run chatbot.
@@ -157,7 +224,7 @@ def main() -> None:
         return None
 
     first_non_option = get_first_non_option_arg()
-    is_known_command = first_non_option in ["run", "logout"]
+    is_known_command = first_non_option in ["run", "logout", "credits"]
     is_help_command = len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help"]  # Check for global help
 
     should_run_chatbot_result = should_run_chatbot(sys.argv[1:])
@@ -208,6 +275,13 @@ def main() -> None:
         sys.exit(0)
     elif args.command == "run":
         execute_run_command(args)
+    elif args.command == "credits":
+        from .credits import handle_credits_command
+
+        handle_credits_command(args, console)
+        sys.exit(0)
+    elif args.command == "resume":
+        execute_resume_command(args)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,
         # or if an invalid command is provided.

@@ -24,9 +24,11 @@ wheels/
 .coverage
 htmlcov/
 .env
+.env.*
 .venv
 venv/
 ENV/
+.envrc
 
 # VSCode Extension
 node_modules/
@@ -62,6 +64,9 @@ Thumbs.db
 
 # Linting
 .ruff_cache/
+
+# UV
+uv.lock
 
 # Miscellaneous
 etc/

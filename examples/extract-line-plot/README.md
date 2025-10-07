@@ -1,6 +1,6 @@
 ## Extract Line Plot (Chart → CSV) with a VLM
 
-This example evaluates and optimizes a vision-language baseline that converts line-chart images into CSV.
+This example is about optimizing an AI feature that turns image of chart into a table in csv format.
 
 ### Prerequisites
 

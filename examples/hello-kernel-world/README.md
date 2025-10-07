@@ -4,19 +4,9 @@ This example demonstrates the basics of using Weco to optimize a simple PyTorch 
 
 ## Setup
 
-Install the CLI using `pip`:
+Install the CLI and dependencies for the example:
 ```bash
-pip install weco>=0.2.18
-```
-
-Create your API key from one of the supported providers:
-- **OpenAI:** Create your API key [here](https://platform.openai.com/api-keys), then run: `export OPENAI_API_KEY="your_key_here"`
-- **Anthropic:** Create your API key [here](https://console.anthropic.com/settings/keys), then run: `export ANTHROPIC_API_KEY="your_key_here"`  
-- **Google:** Create your API key [here](https://aistudio.google.com/apikey), then run: `export GEMINI_API_KEY="your_key_here"`
-
-Install the required dependencies:
-```bash
-pip install torch
+pip install weco torch
 ```
 
 ## Run Weco
