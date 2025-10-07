@@ -39,7 +39,7 @@ def clean_to_csv(text: str) -> str:
 class VLMExtractor:
     """Baseline VLM wrapper for chart-to-CSV extraction."""
 
-    def __init__(self, model: str = "gpt-5-mini", client: Optional[OpenAI] = None) -> None:
+    def __init__(self, model: str = "gpt-4o-mini", client: Optional[OpenAI] = None) -> None:
         self.model = model
         self.client = client or OpenAI()
         # Aggregates
