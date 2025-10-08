@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from optimize import VLMExtractor
+from optimize import extract_csv
 
 try:
     import matplotlib
@@ -16,6 +16,9 @@ try:
     import matplotlib.pyplot as plt
 except Exception:  # pragma: no cover - optional dependency
     plt = None
+
+COST_ACCURACY_THRESHOLD_DEFAULT = 0.45
+COST_CONSTRAINT_PENALTY = 1_000_000.0
 
 
 def read_index(index_csv_path: Path) -> List[Tuple[str, Path, Path]]:
@@ -278,19 +281,18 @@ def evaluate_predictions(gt_csv_path: Path, pred_csv_path: Path) -> float:
 
 
 def process_one(
-    extractor: VLMExtractor,
     base_dir: Path,
     example_id: str,
     image_rel: Path,
     gt_table_rel: Path,
     output_dir: Path,
-) -> Tuple[str, float, Path, Path]:
+) -> Tuple[str, float, Path, Path, float]:
     image_path = base_dir / image_rel
     gt_csv_path = base_dir / gt_table_rel
-    pred_csv_text = extractor.image_to_csv(image_path)
+    pred_csv_text, cost_usd = extract_csv(image_path)
     pred_path = write_csv(output_dir, example_id, pred_csv_text)
     score = evaluate_predictions(gt_csv_path, pred_path)
-    return example_id, score, pred_path, gt_csv_path
+    return example_id, score, pred_path, gt_csv_path, cost_usd
 
 
 def main() -> None:
@@ -300,6 +302,20 @@ def main() -> None:
     parser.add_argument("--out-dir", type=str, default="predictions")
     parser.add_argument("--max-samples", type=int, default=100)
     parser.add_argument("--num-workers", type=int, default=4)
+    parser.add_argument(
+        "--cost-metric",
+        action="store_true",
+        help=(
+            "When set, also report a `cost:` metric suitable for Weco minimization. "
+            "Requires final accuracy to exceed --cost-accuracy-threshold; otherwise a large penalty is reported."
+        ),
+    )
+    parser.add_argument(
+        "--cost-accuracy-threshold",
+        type=float,
+        default=COST_ACCURACY_THRESHOLD_DEFAULT,
+        help="Minimum accuracy required when --cost-metric is set (default: 0.45).",
+    )
     parser.add_argument(
         "--visualize-dir",
         type=str,
@@ -335,7 +351,6 @@ def main() -> None:
         sys.exit(1)
 
     rows = read_index(index_path)[: args.max_samples]
-    extractor = VLMExtractor()
 
     visualize_dir: Optional[Path] = Path(args.visualize_dir) if args.visualize_dir else None
     visualize_max = max(0, args.visualize_max)
@@ -343,16 +358,16 @@ def main() -> None:
         print("[warn] matplotlib not available; skipping visualization.", file=sys.stderr)
         visualize_dir = None
 
-    print(f"[setup] evaluating {len(rows)} samples using {extractor.model} …", flush=True)
+    print(f"[setup] evaluating {len(rows)} samples …", flush=True)
     start = time.time()
     scores: List[float] = []
+    costs: List[float] = []
     saved_visualizations = 0
 
     with ThreadPoolExecutor(max_workers=max(1, args.num_workers)) as pool:
         futures = [
             pool.submit(
                 process_one,
-                extractor,
                 base_dir,
                 example_id,
                 image_rel,
@@ -365,8 +380,9 @@ def main() -> None:
         try:
             for idx, fut in enumerate(as_completed(futures), 1):
                 try:
-                    example_id, score, pred_path, gt_csv_path = fut.result()
+                    example_id, score, pred_path, gt_csv_path, cost_usd = fut.result()
                     scores.append(score)
+                    costs.append(cost_usd)
                     if visualize_dir and (visualize_max == 0 or saved_visualizations < visualize_max):
                         out_path = visualize_difference(
                             gt_csv_path,
@@ -382,8 +398,9 @@ def main() -> None:
                     if idx % 5 == 0 or idx == len(rows):
                         elapsed = time.time() - start
                         avg = sum(scores) / len(scores) if scores else 0.0
+                        avg_cost = sum(costs) / len(costs) if costs else 0.0
                         print(
-                            f"[progress] {idx}/{len(rows)} done, avg score: {avg:.4f}, elapsed {elapsed:.1f}s",
+                            f"[progress] {idx}/{len(rows)} done, avg score: {avg:.4f}, avg cost: ${avg_cost:.4f}, elapsed {elapsed:.1f}s",
                             flush=True,
                         )
                 except Exception as e:
@@ -395,9 +412,7 @@ def main() -> None:
     final_score = sum(scores) / len(scores) if scores else 0.0
 
     # Apply cost cap: accuracy is zeroed if average cost/query exceeds $0.02
-    avg_cost_per_query = (
-        (extractor.total_cost_usd / extractor.num_queries) if getattr(extractor, "num_queries", 0) else 0.0
-    )
+    avg_cost_per_query = (sum(costs) / len(costs)) if costs else 0.0
     if avg_cost_per_query > 0.02:
         print(
             f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.02 cap; accuracy set to 0.0",
@@ -408,6 +423,20 @@ def main() -> None:
         print(f"[cost] avg ${avg_cost_per_query:.4f}/query within cap", flush=True)
 
     print(f"accuracy: {final_score:.4f}")
+
+    if args.cost_metric:
+        if final_score > args.cost_accuracy_threshold:
+            reported_cost = avg_cost_per_query
+        else:
+            print(
+                (
+                    f"[constraint] accuracy {final_score:.4f} <= "
+                    f"threshold {args.cost_accuracy_threshold:.2f}; reporting penalty ${COST_CONSTRAINT_PENALTY:.1f}"
+                ),
+                flush=True,
+            )
+            reported_cost = COST_CONSTRAINT_PENALTY
+        print(f"cost: {reported_cost:.6f}")
 
 
 if __name__ == "__main__":
