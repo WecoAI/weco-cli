@@ -168,7 +168,6 @@ def execute_optimization(
                 reason=f"user_terminated_{signal_name.lower()}",
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
-                timeout=3,
             )
             console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]")
 
@@ -547,7 +546,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                 reason=f"user_terminated_{signal_name.lower()}",
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
-                timeout=3,
             )
             console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]")
         sys.exit(0)
