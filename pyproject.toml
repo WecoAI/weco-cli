@@ -8,7 +8,7 @@ name = "weco"
 authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
 description = "Documentation for `weco`, a CLI for using Weco AI's code optimizer."
 readme = "README.md"
-version = "0.3.0"
+version = "0.3.1"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
 dependencies = [
