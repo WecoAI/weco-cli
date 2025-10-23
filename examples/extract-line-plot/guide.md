@@ -3,7 +3,7 @@
 - The average cost per query should be lower than $0.02 per query, the baseline has around $0.007 per query
 
 # Here's a list of ideas to be tried:
-1. Try more recent models like gpt-5
+1. Try more recent models like gpt-5, note gpt-5 don't have temperature argument
 2. Try response API as below:
 
 <api>
