@@ -7,9 +7,11 @@ This approach aims for low-level optimization beyond standard PyTorch or even Tr
 
 Install the CLI and dependencies for the example:
 ```bash
-pip install weco torch ninja triton
+pip install weco ninja numpy torch triton
 ```
-> **Note:** This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
+> **Note:**
+> 1. This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
+> 2. If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`).
 
 ## Run Weco
 
@@ -20,8 +22,9 @@ weco run --source optimize.py \
      --metric speedup \
      --goal maximize \
      --steps 50 \
-     --model o4-mini \
-     --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code format. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu."
+     --model gpt-5 \
+     --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code interface. Do not use any fallbacks and never use the build_directory arg for load_inline(). Assume any required dependencies are installed and data is already on the gpu." \
+     --eval-timeout 600
 ```
 
 ### Explanation
@@ -31,8 +34,9 @@ weco run --source optimize.py \
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
 *   `--steps 50`: The number of optimization iterations.
-*   `--model o4-mini`: The LLM used for code generation.
+*   `--model gpt-5`: The LLM used for code generation.
 *   `--additional-instructions "..."`: Provides guidance to the LLM on the optimization approach.
+*   `--eval-timeout 600`: Stop runnning the evaluation script if it does not complete in 600 seconds.
 
 Weco will iteratively modify `optimize.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
 

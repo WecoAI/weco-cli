@@ -5,8 +5,6 @@ import importlib.util
 import traceback
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-import math
 from triton.testing import do_bench
 
 
@@ -15,46 +13,27 @@ from triton.testing import do_bench
 ########################################################
 class Model(nn.Module):
     """
-    A vanilla multi-head masked self-attention layer with a projection at the end.
+    Simple model that performs a Swish activation.
     """
 
-    def __init__(self, n_embd, n_head, attn_pdrop, resid_pdrop, max_seqlen):
-        super().__init__()
-        assert n_embd % n_head == 0
-        # key, query, value projections for all heads, but in a batch
-        self.c_attn = nn.Linear(n_embd, 3 * n_embd)
-        # output projection
-        self.c_proj = nn.Linear(n_embd, n_embd)
-        # regularization
-        self.attn_dropout = nn.Dropout(attn_pdrop)
-        self.resid_dropout = nn.Dropout(resid_pdrop)
-        # causal mask to ensure that attention is only applied to the left in the input sequence
-        self.register_buffer("bias", torch.tril(torch.ones(max_seqlen, max_seqlen)).view(1, 1, max_seqlen, max_seqlen))
-        self.n_head = n_head
-        self.n_embd = n_embd
+    def __init__(self):
+        super(Model, self).__init__()
 
-    def forward(self, x):
-        B, T, C = x.size()  # batch size, sequence length, embedding dimensionality (n_embd)
-        # calculate query, key, values for all heads in batch and move head forward to be the batch dim
-        q, k, v = self.c_attn(x).split(self.n_embd, dim=2)
-        k = k.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
-        v = v.view(B, T, self.n_head, C // self.n_head).transpose(1, 2)  # (B, nh, T, hs)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Applies Swish activation to the input tensor.
 
-        # causal self-attention; Self-attend: (B, nh, T, hs) x (B, nh, hs, T) -> (B, nh, T, T)
-        att = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.size(-1)))
-        att = att.masked_fill(self.bias[:, :, :T, :T] == 0, float("-inf"))
-        att = F.softmax(att, dim=-1)
-        att = self.attn_dropout(att)
-        y = att @ v  # (B, nh, T, T) x (B, nh, T, hs) -> (B, nh, T, hs)
-        y = y.transpose(1, 2).contiguous().view(B, T, C)  # re-assemble all head outputs side by side
-        # output projection
-        y = self.resid_dropout(self.c_proj(y))
-        return y
+        Args:
+            x (torch.Tensor): Input tensor of any shape.
+
+        Returns:
+            torch.Tensor: Output tensor with Swish applied, same shape as input.
+        """
+        return x * torch.sigmoid(x)
 
 
 ########################################################
-# Weco Solution
+# Benchmark
 ########################################################
 def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     # Clean out all old compiled extensions to prevent namespace collisions during build
@@ -68,11 +47,8 @@ def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     return mod
 
 
-########################################################
-# Benchmark
-########################################################
-def get_inputs(batch_size, seq_len, n_embd, device):
-    return torch.randn(batch_size, seq_len, n_embd, device=device, dtype=torch.float32)
+def get_inputs(batch_size, dim, device):
+    return torch.randn(batch_size, dim, device=device, dtype=torch.float32)
 
 
 if __name__ == "__main__":
@@ -85,42 +61,30 @@ if __name__ == "__main__":
     # benchmarking parameters
     n_correctness_trials = 10
     correctness_tolerance = 1e-5
-    warmup_ms = 1e3
-    rep_ms = 5 * 1e3
-
-    # init parameters
-    max_seqlen = 512
-    seq_len = 256
-    n_embd = 768
-    n_head = 8
-    # turn off dropout to measure correctness well
-    attn_pdrop = 0.0
-    resid_pdrop = 0.0
+    warmup_ms = 100
+    rep_ms = 500
 
     # input parameters
-    batch_size = 32
+    batch_size = 2000
+    dim = 16384
 
     # load solution module
     try:
         torch.manual_seed(0)
         solution_module = load_module_from_path(args.solution_path, add_to_sys_modules=False)
-        solution_model = solution_module.Model(
-            n_embd=n_embd, n_head=n_head, attn_pdrop=attn_pdrop, resid_pdrop=resid_pdrop, max_seqlen=max_seqlen
-        ).to("cuda")
+        solution_model = solution_module.Model().to("cuda")
         assert isinstance(solution_model, nn.Module)
     except Exception:
         print(f"Candidate module initialization failed: {traceback.format_exc()}")
         exit(1)
 
     torch.manual_seed(0)
-    baseline_model = Model(
-        n_embd=n_embd, n_head=n_head, attn_pdrop=attn_pdrop, resid_pdrop=resid_pdrop, max_seqlen=max_seqlen
-    ).to("cuda")
+    baseline_model = Model().to("cuda")
 
     # measure correctness
     max_diff_avg = 0
     for _ in range(n_correctness_trials):
-        inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")
+        inputs = get_inputs(batch_size=batch_size, dim=dim, device="cuda")
         with torch.no_grad():
             optimized_output = solution_model(inputs)
             if torch.isnan(optimized_output).any():
@@ -135,7 +99,7 @@ if __name__ == "__main__":
         print("Incorrect solution: max float diff is too high")
 
     # measure performance
-    inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")
+    inputs = get_inputs(batch_size=batch_size, dim=dim, device="cuda")
     t_avg_baseline = do_bench(lambda: baseline_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"baseline time: {t_avg_baseline:.2f}ms")
     t_avg_optimized = do_bench(lambda: solution_model(inputs), warmup=warmup_ms, rep=rep_ms)
