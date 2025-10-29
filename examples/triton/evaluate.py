@@ -33,7 +33,7 @@ class Model(nn.Module):
 
 
 ########################################################
-# Weco Solution
+# Benchmark
 ########################################################
 def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     # Clean out all old compiled extensions to prevent namespace collisions during build
@@ -47,9 +47,6 @@ def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     return mod
 
 
-########################################################
-# Benchmark
-########################################################
 def get_inputs(batch_size, dim, device):
     return torch.randn(batch_size, dim, device=device, dtype=torch.float32)
 
