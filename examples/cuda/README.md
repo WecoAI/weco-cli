@@ -9,7 +9,9 @@ Install the CLI and dependencies for the example:
 ```bash
 pip install weco ninja numpy torch triton
 ```
-> Note: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`).
+> **Note:**
+> 1. This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
+> 2. If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`).
 
 ## Run Weco
 

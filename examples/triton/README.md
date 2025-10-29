@@ -8,6 +8,7 @@ Install the CLI and dependencies for the example:
 ```bash
 pip install weco numpy torch triton
 ```
+> **Note:** This example requires an NVIDIA GPU.
 
 ## Run Weco
 
