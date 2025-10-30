@@ -2,13 +2,13 @@ from typing import Any, Dict, List, Tuple, Union
 import json
 import time
 import subprocess
+import psutil
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
-
 from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, DEFAULT_MODEL, SUPPORTED_FILE_EXTENSIONS
 
 
@@ -108,22 +108,52 @@ def truncate_output(output: str) -> str:
 
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
+    process = subprocess.Popen(
+        eval_command, shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
 
-    # Run the eval command as is
     try:
-        result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False, timeout=timeout)
-        # Combine stdout and stderr for complete output
-        output = result.stderr if result.stderr else ""
-        if result.stdout:
-            if len(output) > 0:
-                output += "\n"
-            output += result.stdout
-        return output  # Return full output, no truncation
+        # NOTE: Process tree cleanup only happens on timeout. Normal completion relies on the OS/shell to clean up child processes, which works for typical evaluation scripts.
+        output, _ = process.communicate(timeout=timeout)
+        return output
+
     except subprocess.TimeoutExpired:
+        # Kill process tree
+        try:
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+
+            # Terminate gracefully
+            for child in children:
+                try:
+                    child.terminate()
+                except psutil.NoSuchProcess:
+                    pass
+            try:
+                parent.terminate()
+            except psutil.NoSuchProcess:
+                pass
+
+            # Wait, then force kill survivors
+            _, alive = psutil.wait_procs(children + [parent], timeout=1)
+            for proc in alive:
+                try:
+                    proc.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+        except psutil.NoSuchProcess:
+            pass
+
+        # Drain pipes
+        try:
+            process.communicate(timeout=1)
+        except Exception:
+            pass
+
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
 
-# Update Check Function
 def check_for_cli_updates():
     """Checks PyPI for a newer version of the weco package and notifies the user."""
     try:
