@@ -148,7 +148,7 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
         # Drain pipes
         try:
             process.communicate(timeout=1)
-        except Exception:
+        except (subprocess.TimeoutExpired, ValueError, OSError):
             pass
 
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
