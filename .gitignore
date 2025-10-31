@@ -84,3 +84,8 @@ repomix-output.*
 
 # Claude config
 .claude/
+
+# Example: extract-line-plot generated artifacts
+examples/extract-line-plot/predictions/
+examples/extract-line-plot/subset_line_*/
+examples/extract-line-plot/subset_line_*.zip
