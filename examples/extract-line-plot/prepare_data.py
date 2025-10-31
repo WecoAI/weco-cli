@@ -1,7 +1,12 @@
-import argparse, json, os, random, shutil, zipfile
+import argparse
+import json
+import random
+import shutil
+import zipfile
 from pathlib import Path
 
 from huggingface_hub import snapshot_download
+
 
 def collect_line_charts(root: Path, split: str):
     ann_dir = root / "ChartQA Dataset" / split / "annotations"
@@ -23,11 +28,12 @@ def collect_line_charts(root: Path, split: str):
             continue
     return items
 
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="subset_line_100.zip")
     ap.add_argument("--n", type=int, default=100)
-    ap.add_argument("--split", default="train", choices=["train","val","test"])
+    ap.add_argument("--split", default="train", choices=["train", "val", "test"])
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
@@ -48,8 +54,7 @@ def main():
                 zf.extractall(root)
         else:
             raise SystemExit(
-                "Could not find 'ChartQA Dataset.zip' in the downloaded snapshot; "
-                "dataset layout may have changed."
+                "Could not find 'ChartQA Dataset.zip' in the downloaded snapshot; dataset layout may have changed."
             )
 
     print(f"Scanning {args.split} annotations for line charts…")
@@ -58,7 +63,7 @@ def main():
         raise SystemExit(f"Only found {len(pool)} line charts in {args.split}, less than requested {args.n}")
 
     random.Random(args.seed).shuffle(pool)
-    chosen = pool[:args.n]
+    chosen = pool[: args.n]
 
     work = Path("subset_line_100")
     if work.exists():
@@ -83,6 +88,7 @@ def main():
     print(f"Done: wrote {args.out}")
     print("Preview first 5 rows of index.csv:")
     print(*(open(work / "index.csv", "r", encoding="utf-8").read().splitlines()[:6]), sep="\n")
+
 
 if __name__ == "__main__":
     main()

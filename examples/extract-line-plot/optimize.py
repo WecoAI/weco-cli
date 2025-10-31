@@ -82,10 +82,7 @@ class VLMExtractor:
             messages=[
                 {
                     "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": image_uri}},
-                    ],
+                    "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_uri}}],
                 }
             ],
         )
