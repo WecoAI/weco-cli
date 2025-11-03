@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src="assets/weco.svg" alt="Weco Logo" width="120" height="120" style="margin-bottom: 20px;">
-  <h1>Weco: The Evaluation-Driven Code Optimization Agent</h1>
+  <h1>Weco: The Code Optimization Agent</h1>
 </div>
 
 [![Python](https://img.shields.io/badge/Python-3.8.0+-blue)](https://www.python.org)
