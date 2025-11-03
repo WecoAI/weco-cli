@@ -25,13 +25,13 @@ pip install weco
 
 ### Examples at a glance
 
-| Example | Focus | Extras | Docs |
+| Example | Focus | Dependencies | Docs |
 | :-- | :-- | :-- | :-- |
 | 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-kernel-world/README.md) • [Colab](hello-kernel-world/colab_notebook_walkthrough.ipynb) |
-| ⚡ Triton Optimization | Speed up attention with Triton kernels | `torch`, `triton` | [README](triton/README.md) |
-| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `torch`, `ninja`, `triton`, NVIDIA GPU + CUDA Toolkit | [README](cuda/README.md) |
-| 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets` | [README](prompt/README.md) |
-| 📊 Agentic Scaffolding | Optimize agentic scaffolding for chart-to-CSV extraction | `openai`, `huggingface_hub`, `uv` | [README](extract-line-plot/README.md) |
+| ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
+| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
+| 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
+| 📊 Agentic Scaffolding | Optimize agentic scaffolding for chart-to-CSV extraction | `openai`, `huggingface_hub`, `uv`, OpenAI API key | [README](extract-line-plot/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
 
 ---
@@ -42,7 +42,7 @@ Minimal commands to run each example. For full context and explanations, see the
 
 ### 🧭 Hello Kernel World
 
-- **Install extra deps**: `pip install torch`
+- **Install Dependencies**: `pip install torch`
 - **Run**:
 ```bash
 cd examples/hello-kernel-world
@@ -57,8 +57,8 @@ weco run --source optimize.py \
 
 ### ⚡ Triton Optimization
 
-- **Install extra deps**: `pip install numpy torch triton`
-- **Requires**: NVIDIA GPU
+- **Requirements**: NVIDIA GPU
+- **Install Dependencies**: `pip install numpy torch triton`
 - **Run**:
 ```bash
 cd examples/triton
@@ -74,9 +74,10 @@ weco run --source optimize.py \
 
 ### 🚀 CUDA Optimization
 
-- **Install extra deps**: `pip install ninja numpy torch triton`
-- **Requires**: NVIDIA GPU and CUDA Toolkit
-- **Optional**: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`).
+- **Requirements**: NVIDIA GPU and CUDA Toolkit
+- **Install Dependencies**:
+  - `pip install ninja numpy torch triton`
+  - If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
 - **Run**:
 ```bash
 cd examples/cuda
@@ -92,11 +93,12 @@ weco run --source optimize.py \
 
 ### 🧠 Prompt Engineering
 
-- **Install extra deps**: `pip install openai datasets`
-- **Configure environment**: Create your OpenAI API key [here](https://platform.openai.com/api-keys) and run `export OPENAI_API_KEY="your_key_here"`.
+- **Requirements**: OpenAI API key (create [here](https://platform.openai.com/api-keys))
+- **Install Dependencies**: `pip install openai datasets`
 - **Run**:
 ```bash
 cd examples/prompt
+export OPENAI_API_KEY="your_key_here"
 weco run --source optimize.py \
      --eval-command "python eval.py" \
      --metric score \
@@ -108,23 +110,27 @@ weco run --source optimize.py \
 
 ### 📊 Extract Line Plot — Chart to CSV
 
-- **Install extra deps**:
-  - Install `uv` (see `https://docs.astral.sh/uv/`)
-  - `pip install openai huggingface_hub`
-- **Configure environment**: Create your OpenAI API key [here](https://platform.openai.com/api-keys) and run `export OPENAI_API_KEY="your_key_here"`.
-- **Setup**: Prepare the dataset first:
+- **Requirements**: OpenAI API key (create [here](https://platform.openai.com/api-keys))
+- **Install Dependencies**: `pip install uv openai huggingface_hub`
 ```bash
-cd examples/extract-line-plot
-uv run --with huggingface_hub python prepare_data.py
+
 ```
 - **Run**:
 ```bash
-weco run --source optimize.py --eval-command 'uv run --with openai python eval.py --max-samples 100 --num-workers 50' --metric accuracy --goal maximize --steps 20 --model gpt-5
+cd examples/extract-line-plot
+export OPENAI_API_KEY="your_key_here"
+uv run --with huggingface_hub python prepare_data.py  # prepare dataset
+weco run --source optimize.py \
+         --eval-command 'uv run --with openai python eval.py --max-samples 100 --num-workers 50' \
+         --metric accuracy \
+         --goal maximize \
+         --steps 20 \
+         --model gpt-5
 ```
 
 ### 🛰️ Model Development — Spaceship Titanic
 
-- **Install extra deps**: `pip install pandas numpy scikit-learn torch xgboost lightgbm catboost`
+- **Install Dependencies**: `pip install pandas numpy scikit-learn torch xgboost lightgbm catboost`
 - **Run**:
 ```bash
 cd examples/spaceship-titanic
