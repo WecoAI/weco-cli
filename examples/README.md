@@ -112,9 +112,6 @@ weco run --source optimize.py \
 
 - **Requirements**: OpenAI API key (create [here](https://platform.openai.com/api-keys))
 - **Install Dependencies**: `pip install uv openai huggingface_hub`
-```bash
-
-```
 - **Run**:
 ```bash
 cd examples/extract-line-plot
@@ -142,6 +139,7 @@ weco run --source train.py \
      --model o4-mini \
      --additional-instructions "Improve feature engineering, model choice and hyper-parameters." \
      --log-dir .runs/spaceship-titanic
+```
 
 ---
 
