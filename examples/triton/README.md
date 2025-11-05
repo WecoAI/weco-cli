@@ -14,8 +14,8 @@ pip install weco numpy torch triton
 
 Now run Weco to optimize your code using Triton:
 ```bash
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py" \
+weco run --source kernel.py \
+     --eval-command "python evaluate.py --path kernel.py" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -26,15 +26,15 @@ weco run --source optimize.py \
 
 ### Explanation
 
-*   `--source optimize.py`: Specifies the PyTorch Swish activation implementation (`optimize.py`) that Weco will optimize.
-*   `--eval-command "python evaluate.py --solution-path optimize.py"`: Defines the command to execute the evaluation script. This script benchmarks the generated solution in `optimize.py` against a baseline and outputs the `speedup`.
+*   `--source kernel.py`: Specifies the PyTorch Swish activation implementation (`kernel.py`) that Weco will optimize.
+*   `--eval-command "python evaluate.py --path kernel.py"`: Defines the command to execute the evaluation script. This script benchmarks the generated solution in `kernel.py` against a baseline and outputs the `speedup`.
 *   `--metric speedup`: Sets the metric Weco should focus on improving during optimization.
 *   `--goal maximize`: Instructs Weco to aim for the highest possible speedup value.
 *   `--steps 15`: Determines the number of optimization iterations Weco will perform.
 *   `--model o4-mini`: Specifies the large language model to drive the optimization process.
 *   `--additional-instructions "..."`: Provides specific guidance to the LLM.
 
-Weco will iteratively modify `optimize.py`, incorporating Triton kernels, guided by the performance feedback (`speedup`) from the evaluation script and the instructions provided.
+Weco will iteratively modify `kernel.py`, incorporating Triton kernels, guided by the performance feedback (`speedup`) from the evaluation script and the instructions provided.
 
 ## Next Steps
 

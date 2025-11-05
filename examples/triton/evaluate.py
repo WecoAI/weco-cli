@@ -55,7 +55,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--solution-path", type=str, required=True)
+    parser.add_argument("--path", type=str, required=True)
     args = parser.parse_args()
 
     # benchmarking parameters
@@ -71,7 +71,7 @@ if __name__ == "__main__":
     # load solution module
     try:
         torch.manual_seed(0)
-        solution_module = load_module_from_path(args.solution_path, add_to_sys_modules=False)
+        solution_module = load_module_from_path(args.path, add_to_sys_modules=False)
         solution_model = solution_module.Model().to("cuda")
         assert isinstance(solution_model, nn.Module)
     except Exception:
