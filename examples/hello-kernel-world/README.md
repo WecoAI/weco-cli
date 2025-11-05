@@ -6,7 +6,8 @@ This example demonstrates the basics of using Weco to optimize a simple PyTorch 
 
 Install the CLI and dependencies for the example:
 ```bash
-pip install weco torch
+pip install weco
+pip install -r requirements.txt
 ```
 
 ## Run Weco

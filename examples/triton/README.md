@@ -6,7 +6,8 @@ This example demonstrates using Weco to optimize a simple activation function im
 
 Install the CLI and dependencies for the example:
 ```bash
-pip install weco numpy torch triton
+pip install weco
+pip install -r requirements.txt
 ```
 > **Note:** This example requires an NVIDIA GPU.
 

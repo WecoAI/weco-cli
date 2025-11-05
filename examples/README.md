@@ -46,7 +46,7 @@ Minimal commands to run each example. For full context and explanations, see the
 cd examples/hello-kernel-world
 pip install -r requirements.txt
 weco run --source module.py \
-     --eval-command "python evaluate.py --path module.py --device cpu" \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 15 \

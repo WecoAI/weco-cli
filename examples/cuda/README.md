@@ -7,7 +7,8 @@ This approach aims for low-level optimization beyond standard PyTorch or even Tr
 
 Install the CLI and dependencies for the example:
 ```bash
-pip install weco ninja numpy torch triton
+pip install weco
+pip install -r requirements.txt
 ```
 > **Note:**
 > 1. This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
