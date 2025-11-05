@@ -17,8 +17,8 @@ pip install weco ninja numpy torch triton
 
 Now run Weco to optimize your code:
 ```bash
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 50 \
@@ -29,8 +29,8 @@ weco run --source kernel.py \
 
 ### Explanation
 
-*   `--source kernel.py`: The initial PyTorch self-attention code to be optimized with CUDA.
-*   `--eval-command "python evaluate.py --path kernel.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `kernel.py` against a baseline, printing the `speedup`.
+*   `--source module.py`: The initial PyTorch self-attention code to be optimized with CUDA.
+*   `--eval-command "python evaluate.py --path module.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `module.py` against a baseline, printing the `speedup`.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
 *   `--steps 50`: The number of optimization iterations.
@@ -38,7 +38,7 @@ weco run --source kernel.py \
 *   `--additional-instructions "..."`: Provides guidance to the LLM on the optimization approach.
 *   `--eval-timeout 600`: Stop runnning the evaluation script if it does not complete in 600 seconds.
 
-Weco will iteratively modify `kernel.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
+Weco will iteratively modify `module.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
 
 ## Next Steps
 

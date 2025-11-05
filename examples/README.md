@@ -46,8 +46,8 @@ Minimal commands to run each example. For full context and explanations, see the
 - **Run**:
 ```bash
 cd examples/hello-kernel-world
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py --device cpu" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py --device cpu" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -62,8 +62,8 @@ weco run --source kernel.py \
 - **Run**:
 ```bash
 cd examples/triton
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -81,8 +81,8 @@ weco run --source kernel.py \
 - **Run**:
 ```bash
 cd examples/cuda
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 50 \

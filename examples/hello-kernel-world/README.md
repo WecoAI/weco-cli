@@ -13,8 +13,8 @@ pip install weco torch
 
 Now run Weco to optimize your code:
 ```bash
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py --device cpu" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py --device cpu" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -25,14 +25,14 @@ weco run --source kernel.py \
 
 ### Explanation
 
-*   `--source kernel.py`: The simple PyTorch model to be optimized.
-*   `--eval-command "python evaluate.py --path kernel.py --device cpu"`: Runs the evaluation script, which benchmarks the optimized code against a baseline and prints the `speedup`.
+*   `--source module.py`: The simple PyTorch model to be optimized.
+*   `--eval-command "python evaluate.py --path module.py --device cpu"`: Runs the evaluation script, which benchmarks the optimized code against a baseline and prints the `speedup`.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: To increase the speedup.
 *   `--steps 15`: The number of optimization iterations.
 *   `--additional-instructions "..."`: Provides specific guidance to focus on operation fusion while maintaining correctness.
 
-Weco will iteratively modify `kernel.py`, attempting to fuse and optimize the operations in the forward method, guided by the performance feedback from the evaluation script.
+Weco will iteratively modify `module.py`, attempting to fuse and optimize the operations in the forward method, guided by the performance feedback from the evaluation script.
 
 ## Interactive Tutorial
 ****
