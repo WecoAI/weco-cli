@@ -27,7 +27,7 @@ pip install weco
 
 | Example | Focus | Dependencies | Docs |
 | :-- | :-- | :-- | :-- |
-| 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-kernel-world/README.md) • [Colab](hello-kernel-world/colab_notebook_walkthrough.ipynb) |
+| 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-world/README.md) • [Colab](hello-world/colab_notebook_walkthrough.ipynb) |
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
 | 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
@@ -43,7 +43,7 @@ Minimal commands to run each example. For full context and explanations, see the
 ### 🧭 Hello Kernel World
 
 ```bash
-cd examples/hello-kernel-world
+cd examples/hello-world
 pip install -r requirements.txt
 weco run --source module.py \
      --eval-command "python evaluate.py --path module.py" \

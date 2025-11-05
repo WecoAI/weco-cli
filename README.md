@@ -10,7 +10,7 @@
 [![docs](https://img.shields.io/website?url=https://docs.weco.ai/&label=docs)](https://docs.weco.ai/)
 [![PyPI Downloads](https://static.pepy.tech/badge/weco?color=4c1)](https://pepy.tech/projects/weco)
 [![arXiv on AIDE](https://img.shields.io/badge/arXiv-AIDE-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2502.13138)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg?labelColor=ffffff&color=F17E01)](https://colab.research.google.com/github/WecoAI/weco-cli/blob/main/examples/hello-kernel-world/colab_notebook_walkthrough.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg?labelColor=ffffff&color=F17E01)](https://colab.research.google.com/github/WecoAI/weco-cli/blob/main/examples/hello-world/colab_notebook_walkthrough.ipynb)
 
 `pip install weco`
 
@@ -51,7 +51,7 @@ pip install weco
 
 ```bash
 git clone https://github.com/WecoAI/weco-cli.git
-cd weco-cli/examples/hello-kernel-world/
+cd weco-cli/examples/hello-world/
 pip install -r requirements.txt
 
 # Run Weco with configuration
