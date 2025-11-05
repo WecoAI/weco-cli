@@ -55,8 +55,8 @@ cd weco-cli/examples/hello-world/
 pip install -r requirements.txt
 
 # Run Weco with configuration
-weco run --source kernel.py \
-     --eval-command "python evaluate.py --path kernel.py" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 10 \

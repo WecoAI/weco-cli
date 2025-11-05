@@ -1,4 +1,4 @@
-# Hello Kernel World
+# Hello World
 
 This example demonstrates the basics of using Weco to optimize a simple PyTorch model. The model performs a series of basic operations: matrix multiplication, division, summation, and scaling. It's designed as an introductory tutorial to help you understand how Weco works before moving on to more advanced optimization tasks.
 
