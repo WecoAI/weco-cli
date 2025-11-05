@@ -42,10 +42,9 @@ Minimal commands to run each example. For full context and explanations, see the
 
 ### 🧭 Hello Kernel World
 
-- **Install Dependencies**: `pip install torch`
-- **Run**:
 ```bash
 cd examples/hello-kernel-world
+pip install -r requirements.txt
 weco run --source module.py \
      --eval-command "python evaluate.py --path module.py --device cpu" \
      --metric speedup \
@@ -58,10 +57,10 @@ weco run --source module.py \
 ### ⚡ Triton Optimization
 
 - **Requirements**: NVIDIA GPU
-- **Install Dependencies**: `pip install numpy torch triton`
-- **Run**:
+
 ```bash
 cd examples/triton
+pip install -r requirements.txt
 weco run --source module.py \
      --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
@@ -75,12 +74,11 @@ weco run --source module.py \
 ### 🚀 CUDA Optimization
 
 - **Requirements**: NVIDIA GPU and CUDA Toolkit
-- **Install Dependencies**:
-  - `pip install ninja numpy torch triton`
-  - If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
-- **Run**:
+- **Optional**: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
+
 ```bash
 cd examples/cuda
+pip install -r requirements.txt
 weco run --source module.py \
      --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
