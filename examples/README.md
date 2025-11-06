@@ -1,6 +1,6 @@
 ## Weco Examples
 
-Explore runnable examples that show how to use Weco to optimize kernels, prompts, and ML pipelines. Pick an example and get going in minutes.
+Explore runnable examples that show how to use Weco to optimize ML models, prompts, and GPU kernels. Pick an example and get going in minutes.
 
 ### Table of Contents
 
@@ -9,7 +9,7 @@ Explore runnable examples that show how to use Weco to optimize kernels, prompts
   - [Prerequisites](#prerequisites)
   - [Examples at a glance](#examples-at-a-glance)
 - [Quick starts](#quick-starts)
-  - [🧭 Hello Kernel World](#-hello-kernel-world)
+  - [🧭 Hello World](#-hello-world)
   - [⚡ Triton Optimization](#-triton-optimization)
   - [🚀 CUDA Optimization](#-cuda-optimization)
   - [🧠 Prompt Engineering](#-prompt-engineering)
@@ -27,7 +27,7 @@ pip install weco
 
 | Example | Focus | Dependencies | Docs |
 | :-- | :-- | :-- | :-- |
-| 🧭 Hello Kernel World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-kernel-world/README.md) • [Colab](hello-kernel-world/colab_notebook_walkthrough.ipynb) |
+| 🧭 Hello World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-world/README.md) • [Colab](hello-world/colab_notebook_walkthrough.ipynb) |
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
 | 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
@@ -40,14 +40,13 @@ pip install weco
 
 Minimal commands to run each example. For full context and explanations, see the linked READMEs.
 
-### 🧭 Hello Kernel World
+### 🧭 Hello World
 
-- **Install Dependencies**: `pip install torch`
-- **Run**:
 ```bash
-cd examples/hello-kernel-world
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py --device cpu" \
+cd examples/hello-world
+pip install -r requirements.txt
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -58,12 +57,12 @@ weco run --source optimize.py \
 ### ⚡ Triton Optimization
 
 - **Requirements**: NVIDIA GPU
-- **Install Dependencies**: `pip install numpy torch triton`
-- **Run**:
+
 ```bash
 cd examples/triton
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py" \
+pip install -r requirements.txt
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 15 \
@@ -75,14 +74,13 @@ weco run --source optimize.py \
 ### 🚀 CUDA Optimization
 
 - **Requirements**: NVIDIA GPU and CUDA Toolkit
-- **Install Dependencies**:
-  - `pip install ninja numpy torch triton`
-  - If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
-- **Run**:
+- **Optional**: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
+
 ```bash
 cd examples/cuda
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py" \
+pip install -r requirements.txt
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 50 \
@@ -143,6 +141,6 @@ weco run --source train.py \
 
 ---
 
-If you're new to Weco, start with **Hello Kernel World**, then explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, or try **Spaceship Titanic** for model development.
+If you're new to Weco, start with **Hello World**, then explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, or try **Spaceship Titanic** for model development.
 
 

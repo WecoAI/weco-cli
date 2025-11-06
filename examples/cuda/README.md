@@ -7,7 +7,8 @@ This approach aims for low-level optimization beyond standard PyTorch or even Tr
 
 Install the CLI and dependencies for the example:
 ```bash
-pip install weco ninja numpy torch triton
+pip install weco
+pip install -r requirements.txt
 ```
 > **Note:**
 > 1. This example requires a compatible NVIDIA GPU and the CUDA Toolkit installed on your system for compiling and running the generated CUDA code.
@@ -17,8 +18,8 @@ pip install weco ninja numpy torch triton
 
 Now run Weco to optimize your code:
 ```bash
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py" \
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
      --steps 50 \
@@ -29,8 +30,8 @@ weco run --source optimize.py \
 
 ### Explanation
 
-*   `--source optimize.py`: The initial PyTorch self-attention code to be optimized with CUDA.
-*   `--eval-command "python evaluate.py --solution-path optimize.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `optimize.py` against a baseline, printing the `speedup`.
+*   `--source module.py`: The initial PyTorch self-attention code to be optimized with CUDA.
+*   `--eval-command "python evaluate.py --path module.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `module.py` against a baseline, printing the `speedup`.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
 *   `--steps 50`: The number of optimization iterations.
@@ -38,7 +39,7 @@ weco run --source optimize.py \
 *   `--additional-instructions "..."`: Provides guidance to the LLM on the optimization approach.
 *   `--eval-timeout 600`: Stop runnning the evaluation script if it does not complete in 600 seconds.
 
-Weco will iteratively modify `optimize.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
+Weco will iteratively modify `module.py`, generating and integrating CUDA C++ code, guided by the evaluation results and the additional instructions provided.
 
 ## Next Steps
 

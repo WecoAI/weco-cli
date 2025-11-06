@@ -77,7 +77,7 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--solution-path", type=str, required=True)
+    parser.add_argument("--path", type=str, required=True)
     args = parser.parse_args()
 
     # setup local cache for PyTorch extensions
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # load solution module
     try:
         torch.manual_seed(0)
-        solution_module = load_module_from_path(args.solution_path, add_to_sys_modules=False)
+        solution_module = load_module_from_path(args.path, add_to_sys_modules=False)
         solution_model = solution_module.Model(
             n_embd=n_embd, n_head=n_head, attn_pdrop=attn_pdrop, resid_pdrop=resid_pdrop, max_seqlen=max_seqlen
         ).to("cuda")

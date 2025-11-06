@@ -10,7 +10,7 @@
 [![docs](https://img.shields.io/website?url=https://docs.weco.ai/&label=docs)](https://docs.weco.ai/)
 [![PyPI Downloads](https://static.pepy.tech/badge/weco?color=4c1)](https://pepy.tech/projects/weco)
 [![arXiv on AIDE](https://img.shields.io/badge/arXiv-AIDE-b31b1b?logo=arxiv&logoColor=white)](https://arxiv.org/abs/2502.13138)
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg?labelColor=ffffff&color=F17E01)](https://colab.research.google.com/github/WecoAI/weco-cli/blob/main/examples/hello-kernel-world/colab_notebook_walkthrough.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg?labelColor=ffffff&color=F17E01)](https://colab.research.google.com/github/WecoAI/weco-cli/blob/main/examples/hello-world/colab_notebook_walkthrough.ipynb)
 
 `pip install weco`
 
@@ -34,77 +34,32 @@ Example applications include:
 
 The `weco` CLI leverages a tree search approach guided by LLMs to iteratively explore and refine your code. It automatically applies changes, runs your evaluation script, parses the results, and proposes further improvements based on the specified goal.
 
-![image](https://github.com/user-attachments/assets/a6ed63fa-9c40-498e-aa98-a873e5786509)
 
----
-
-## Setup
-
-1.  **Install the Package:**
-
-    ```bash
-    pip install weco
-    ```
-
-2.  **Authenticate (Required):**
-
-    `weco` now uses a **credit-based billing system** with centralized LLM access. You need to authenticate to use the service:
-
-    - **Run the CLI**: `weco` will prompt you to authenticate via your web browser
-    - **Free Credits**: New users receive **free credits** upon signup
-    - **Centralized Keys**: All LLM provider API keys are managed by Weco (no BYOK required)
-    - **Credit Top-ups**: Purchase additional credits through the dashboard at [dashboard.weco.ai](https://dashboard.weco.ai)
-
----
-
-## Get Started
-
-### Quick Start (Recommended for New Users)
-
-The easiest way to get started with Weco is to use the **interactive copilot**. Simply navigate to your project directory and run:
+## Install the Package
 
 ```bash
-weco
+pip install weco
 ```
 
-Or specify a project path:
+## Getting Started
 
-```bash
-weco /path/to/your/project
-```
-
-This launches Weco's interactive copilot that will:
-
-1. **Analyze your codebase** using AI to understand your project structure and identify optimization opportunities
-2. **Suggest specific optimizations** tailored to your code (e.g., GPU kernel optimization, model improvements, prompt engineering)
-3. **Generate evaluation scripts** automatically or help you configure existing ones
-4. **Set up the complete optimization pipeline** with appropriate metrics and commands
-5. **Run the optimization** or provide you with the exact command to execute
-
-<div style="background-color: #fff3cd; border: 1px solid #ffeeba; padding: 15px; border-radius: 4px; margin-bottom: 15px;">
-  <strong>⚠️ Warning: Code Modification</strong><br>
-  <code>weco</code> directly modifies the file specified by <code>--source</code> during the optimization process. It is <strong>strongly recommended</strong> to use version control (like Git) to track changes and revert if needed. Alternatively, ensure you have a backup of your original file before running the command. Upon completion, the file will contain the best-performing version of the code found during the run.
-</div>
-
-### Manual Setup
+### Quickstart with an example project
 
 **Configure optimization parameters yourself** - If you need precise control over the optimization parameters, you can use the direct `weco run` command:
 
 **Example: Optimizing Simple PyTorch Operations**
 
 ```bash
-# Navigate to the example directory
-cd examples/hello-kernel-world
+git clone https://github.com/WecoAI/weco-cli.git
+cd weco-cli/examples/hello-world/
+pip install -r requirements.txt
 
-# Install dependencies
-pip install torch
-
-# Run Weco with manual configuration
-weco run --source optimize.py \
-     --eval-command "python evaluate.py --solution-path optimize.py --device cpu" \
+# Run Weco with configuration
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
      --metric speedup \
      --goal maximize \
-     --steps 15 \
+     --steps 10 \
      --additional-instructions "Fuse operations in the forward method while ensuring the max float deviation remains small. Maintain the same format of the code."
 ```
 
@@ -142,37 +97,12 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 
 ---
 
-### Authentication & Dashboard
-
-The CLI requires a Weco account for authentication and billing.
-
-#### Credit-Based Authentication (Required)
-Weco now requires authentication for all operations. This enables our credit-based billing system and provides access to powerful optimizations:
-
-1. **During onboarding**: When you run `weco` for the first time, you'll be prompted to log in
-2. **Manual login**: Use `weco logout` to clear credentials, then run `weco` again to re-authenticate
-3. **Device flow**: Weco will open your browser automatically and guide you through a secure OAuth-style authentication
-
-![image (16)](https://github.com/user-attachments/assets/8a0a285b-4894-46fa-b6a2-4990017ca0c6)
-
-**Benefits:**
-- **No API Key Management**: All LLM provider keys are managed centrally
-- **Cost Transparency**: See exactly how many credits each optimization consumes
-- **Free Trial**: Free credits to get started with optimization projects
-- **Run History**: View all your optimization runs on the Weco dashboard
-- **Progress Tracking**: Monitor long-running optimizations remotely
-- **Budget Control**: Set spending limits and auto top-up preferences
-
----
-
 ## Command Reference
 
 ### Basic Usage Patterns
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
-| `weco` | Launch interactive onboarding | **Recommended for beginners** - Analyzes your codebase and guides you through setup |
-| `weco /path/to/project` | Launch onboarding for specific project | When working with a project in a different directory |
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
 | `weco resume <run-id>` | Resume an interrupted run | Continue from the last completed step |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
@@ -182,19 +112,15 @@ Weco now requires authentication for all operations. This enables our credit-bas
 You can specify which LLM model to use with the `-M` or `--model` flag:
 
 ```bash
-# Use with onboarding
-weco --model gpt-4o
-
-# Use with direct execution
-weco run --model claude-3.5-sonnet --source optimize.py [other options...]
+weco run --model gpt-5 --source optimize.py [other options...]
 ```
 
 **Available models:**
-- `o4-mini`, `o3-mini`, `gpt-4o` (OpenAI models)
+- `gpt-5`, `gpt-5-mini`, `o4-mini`, `o3-mini`, `gpt-4o` (OpenAI models)
 - `claude-sonnet-4-0`, `claude-opus-4-0` (Anthropic models)  
 - `gemini-2.5-pro`, `gemini-2.5-flash` (Google models)
 
-All models are available through Weco's centralized system. If no model is specified, Weco automatically selects the best model for your optimization task.
+All models are available through Weco. If no model is specified, Weco automatically selects the best model for your optimization task.
 
 ---
 
