@@ -89,7 +89,7 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | Argument                       | Description                                                                                                                                                                                                                | Default                                                                                                                                                | Example             |
 | :----------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------------------------------------ | :------------------ |
 | `-n, --steps`                  | Number of optimization steps (LLM iterations) to run.                                                                                                                                                                      | 100                                                                                                                                                     | `-n 50`             |
-| `-M, --model`                  | Model identifier for the LLM to use (e.g., `o4-mini`, `claude-sonnet-4-0`).                                                                                                        | `o4-mini` | `-M o4-mini`         |
+| `-M, --model`                  | Model identifier for the LLM to use (e.g., `o4-mini`, `claude-sonnet-4-5`, `gpt-5`).                                                                                                        | `o4-mini` | `-M o4-mini`         |
 | `-i, --additional-instructions`| Natural language description of specific instructions **or** path to a file containing detailed instructions to guide the LLM. Supported file formats include - `.txt`, `.md`, and `.rst`.                                                                                             | `None`                                                                                                                                                  | `-i instructions.md` or `-i "Optimize the model for faster inference"`|
 | `-l, --log-dir`                | Path to the directory to log intermediate steps and final optimization result.                                                                                                                                             | `.runs/`                                                                                                                                               | `-l ./logs/`        |
 | `--eval-timeout`       | Timeout in seconds for each step in evaluation.                                                                                                                                                                             | No timeout (unlimited)                                                                                                                                                  | `--eval-timeout 3600`             |
@@ -115,10 +115,18 @@ You can specify which LLM model to use with the `-M` or `--model` flag:
 weco run --model gpt-5 --source optimize.py [other options...]
 ```
 
-**Available models:**
-- `gpt-5`, `gpt-5-mini`, `o4-mini`, `o3-mini`, `gpt-4o` (OpenAI models)
-- `claude-sonnet-4-0`, `claude-opus-4-0` (Anthropic models)  
-- `gemini-2.5-pro`, `gemini-2.5-flash` (Google models)
+**Available models (28 total):**
+
+**OpenAI Models:**
+- GPT-5 Series: `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.1-codex-mini`, `gpt-5-codex`, `gpt-5-pro`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
+- O-Series Reasoning: `o3-pro`, `o3`, `o3-mini`, `o4-mini`, `o1-pro`, `o1`, `codex-mini-latest`
+- GPT-4 Series: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`
+
+**Anthropic Claude (via Vertex AI):**
+- `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
+
+**Google Gemini:**
+- `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
 All models are available through Weco. If no model is specified, Weco automatically selects the best model for your optimization task.
 
