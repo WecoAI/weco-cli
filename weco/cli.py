@@ -49,7 +49,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `o4-mini` when `OPENAI_API_KEY` is set, `claude-sonnet-4-0` when `ANTHROPIC_API_KEY` is set, and `gemini-2.5-pro` when `GEMINI_API_KEY` is set. When multiple keys are set, the priority is `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`.",
+        help="Model to use for optimization. Defaults to `o4-mini`. See full list at https://docs.weco.ai/cli/supported-models",
     )
     run_parser.add_argument(
         "-l", "--log-dir", type=str, default=".runs", help="Directory to store logs and results. Defaults to `.runs`."
@@ -164,7 +164,7 @@ def main() -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `o4-mini` when `OPENAI_API_KEY` is set, `claude-sonnet-4-0` when `ANTHROPIC_API_KEY` is set, and `gemini-2.5-pro` when `GEMINI_API_KEY` is set. When multiple keys are set, the priority is `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`.",
+        help="Model to use for optimization. Defaults to `o4-mini`. Available models include GPT-5 series (gpt-5, gpt-5-mini, gpt-5-nano), O-series (o1, o3, o4-mini), GPT-4 series (gpt-4o, gpt-4o-mini), Claude models (claude-opus-4-1, claude-sonnet-4-5, claude-haiku-4-5), and Gemini models (gemini-2.5-pro, gemini-2.5-flash). See full list at docs.weco.ai/cli/supported-models",
     )
 
     subparsers = parser.add_subparsers(
