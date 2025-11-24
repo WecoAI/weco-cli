@@ -337,8 +337,6 @@ def execute_optimization(
 
             # Starting from step 1 to steps (inclusive) because the baseline solution is step 0, so we want to optimize for steps worth of steps
             for step in range(1, steps + 1):
-                # Re-read instructions from the original source (file path or string) BEFORE each suggest call
-                current_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
                 if run_id:
                     try:
                         current_status_response = get_optimization_run_status(
@@ -356,12 +354,7 @@ def execute_optimization(
 
                 # Send feedback and get next suggestion
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    step=step,
-                    run_id=run_id,
-                    execution_output=term_out,
-                    additional_instructions=current_additional_instructions,
-                    auth_headers=auth_headers,
+                    console=console, step=step, run_id=run_id, execution_output=term_out, auth_headers=auth_headers
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
                 write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
@@ -415,16 +408,9 @@ def execute_optimization(
                 )
 
             if not user_stop_requested_flag:
-                # Re-read instructions from the original source (file path or string) BEFORE each suggest call
-                current_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
                 # Evaluate the final solution thats been generated
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console,
-                    step=steps,
-                    run_id=run_id,
-                    execution_output=term_out,
-                    additional_instructions=current_additional_instructions,
-                    auth_headers=auth_headers,
+                    console=console, step=steps, run_id=run_id, execution_output=term_out, auth_headers=auth_headers
                 )
                 summary_panel.set_step(step=steps)
                 status_response = get_optimization_run_status(
@@ -632,7 +618,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
         log_dir = resume_resp.get("log_dir", ".runs")
         save_logs = bool(resume_resp.get("save_logs", False))
         eval_timeout = resume_resp.get("eval_timeout")
-        additional_instructions = resume_resp.get("additional_instructions")
 
         # Write last solution code to source path
         source_fp = pathlib.Path(source_path)
@@ -739,7 +724,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     step=step,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
-                    additional_instructions=additional_instructions,
                     auth_headers=auth_headers,
                 )
 
@@ -795,7 +779,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     step=total_steps,
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
-                    additional_instructions=additional_instructions,
                     auth_headers=auth_headers,
                 )
                 summary_panel.set_step(step=total_steps)
