@@ -89,3 +89,6 @@ repomix-output.*
 examples/extract-line-plot/predictions/
 examples/extract-line-plot/subset_line_*/
 examples/extract-line-plot/subset_line_*.zip
+
+# Example: prompt
+examples/prompt/.cache
