@@ -1,8 +1,13 @@
+from re import U
 from typing import Any, Dict, List, Tuple, Union
 import json
 import time
 import subprocess
 import psutil
+import difflib
+from rich.console import Console
+from rich.syntax import Syntax
+from rich.prompt import Confirm
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
@@ -106,6 +111,41 @@ def truncate_output(output: str) -> str:
         return output
 
 
+def run_evaluation_with_file_swap(
+    file_path: pathlib.Path, new_content: str, original_content: str, eval_command: str, timeout: int | None = None
+) -> str:
+    """
+    Temporarily write new content to a file, run evaluation, then restore original.
+
+    This function ensures the file is always restored to its original state,
+    even if an exception occurs during evaluation.
+
+    Args:
+        file_path: Path to the file to temporarily modify
+        new_content: The new content to write for evaluation
+        original_content: The original content to restore after evaluation
+        eval_command: The shell command to run for evaluation
+        timeout: Optional timeout for the evaluation command
+
+    Returns:
+        The output from running the evaluation command
+
+    Raises:
+        Any exception raised by run_evaluation will be re-raised after
+        the file is restored to its original state.
+    """
+    # Write the new content
+    write_to_path(fp=file_path, content=new_content)
+
+    try:
+        # Run the evaluation
+        output = run_evaluation(eval_command=eval_command, timeout=timeout)
+        return output
+    finally:
+        # Always restore the original file, even if evaluation fails
+        write_to_path(fp=file_path, content=original_content)
+
+
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
     process = subprocess.Popen(
@@ -152,6 +192,37 @@ def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
             pass
 
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
+
+
+def show_diff_and_maybe_apply(console: Console, source_fp: pathlib.Path, original: str, updated: str) -> None:
+    """Show a diff between original and best solution and optionally apply it."""
+    if original == updated:
+        console.print("[green]Best solution is identical to the original source. No changes to apply.[/]")
+        return
+
+    diff_lines = list(
+        difflib.unified_diff(
+            original.splitlines(),
+            updated.splitlines(),
+            fromfile=f"{source_fp} (original)",
+            tofile=f"{source_fp} (best solution)",
+            lineterm="",
+        )
+    )
+
+    if not diff_lines:
+        console.print("[yellow]No textual differences detected.[/]")
+    else:
+        diff_text = "\n".join(diff_lines)
+        syntax = Syntax(diff_text, "diff", line_numbers=False)
+        console.print(Panel(syntax, title="[cyan]Diff: original vs best solution[/cyan]", border_style="cyan"))
+
+    apply_changes = Confirm.ask("Replace the source file with the best solution shown above?", default=True)
+    if apply_changes:
+        write_to_path(fp=source_fp, content=updated)
+        console.print(f"[green]Updated {source_fp} with the best solution.[/]")
+    else:
+        console.print(f"[yellow]Left {source_fp} unchanged.[/]")
 
 
 def check_for_cli_updates():

@@ -5,6 +5,11 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich import box
+from rich.console import Console
+from rich.live import Live
+from rich.text import Text
+
+from rich.prompt import Prompt, Confirm
 from typing import Dict, List, Optional, Union, Tuple
 from pathlib import Path
 from .__init__ import __dashboard_url__
@@ -22,6 +27,7 @@ class SummaryPanel:
         runs_dir: str,
         run_id: str = None,
         run_name: str = None,
+        console: Optional[Console] = None,
     ):
         self.maximize = maximize
         self.metric_name = metric_name
@@ -32,6 +38,8 @@ class SummaryPanel:
         self.run_name = run_name if run_name is not None else "N/A"
         self.dashboard_url = "N/A"
         self.thinking_content = ""
+        self.user_input = ""
+        self.console = Console()
         self.progress = Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(bar_width=20),
@@ -66,6 +74,25 @@ class SummaryPanel:
     def clear_thinking(self):
         """Clear the thinking content."""
         self.thinking_content = ""
+
+    def ask_user_feedback(self, live: Live, layout: Layout, question: str, default: bool = True) -> bool:
+        """
+        Ask a yes/no question while keeping the main layout fixed.
+        Uses Rich's Confirm for a clean user experience.
+        """
+        # Stop live updates temporarily to prevent layout from moving
+        live.stop()
+
+        try:
+            # Use Rich's built-in Confirm
+            result = Confirm.ask(question, default=default)
+        except (KeyboardInterrupt, EOFError):
+            result = default
+        finally:
+            # Resume live updates
+            live.start()
+
+        return result
 
     def get_display(self, final_message: Optional[str] = None) -> Panel:
         """Return a Rich panel summarising the current run."""
@@ -127,13 +154,14 @@ class SummaryPanel:
                 ratio=1,
             ),
         )
+        summary_table.add_row("")
 
         return Panel(
             layout,
             title=f"[bold]📊 {'Maximizing' if self.maximize else 'Minimizing'} {self.run_name}",
             border_style="magenta",
             expand=True,
-            padding=(0, 1),
+            padding=(0, 2),
         )
 
 
@@ -377,9 +405,12 @@ def create_optimization_layout() -> Layout:
     """Create the main layout for the CLI."""
     layout = Layout()
 
-    # First split into top, middle, and bottom sections
+    # First split into top, middle, eval_output, and prompt sections
     layout.split_column(
-        Layout(name="top_section", ratio=3), Layout(name="middle_section", ratio=4), Layout(name="eval_output", ratio=2)
+        Layout(name="top_section", ratio=3),
+        Layout(name="middle_section", ratio=4),
+        Layout(name="eval_output", ratio=2),
+        Layout(name="prompt_area", ratio=0, minimum_size=0),  # Reserved space for prompts
     )
 
     # Split the top section into left and right
@@ -387,6 +418,9 @@ def create_optimization_layout() -> Layout:
 
     # Split the middle section into left and right
     layout["middle_section"].split_row(Layout(name="current_solution", ratio=1), Layout(name="best_solution", ratio=1))
+
+    # Initialize prompt area with empty content
+    layout["prompt_area"].update("")
 
     return layout
 
