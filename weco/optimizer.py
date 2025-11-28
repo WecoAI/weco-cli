@@ -30,7 +30,7 @@ from .panels import (
     create_optimization_layout,
     create_end_optimization_layout,
 )
-from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation, smooth_update
+from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap, smooth_update
 
 
 def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
@@ -134,6 +134,7 @@ def execute_optimization(
     console: Optional[Console] = None,
     eval_timeout: Optional[int] = None,
     save_logs: bool = False,
+    apply_change: bool = False,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -182,6 +183,8 @@ def execute_optimization(
     optimization_completed_normally = False
     user_stop_requested_flag = False
 
+    best_solution_code = None
+    original_source_code = None  # Make available to the finally block
     try:
         # --- Login/Authentication Handling (now mandatory) ---
         weco_api_key, auth_headers = handle_authentication(console)
@@ -209,6 +212,7 @@ def execute_optimization(
         processed_additional_instructions = read_additional_instructions(additional_instructions=additional_instructions)
         source_fp = pathlib.Path(source)
         source_code = read_from_path(fp=source_fp, is_json=False)
+        original_source_code = source_code
 
         # --- Panel Initialization ---
         summary_panel = SummaryPanel(maximize=maximize, metric_name=metric, total_steps=steps, model=model, runs_dir=log_dir)
@@ -272,10 +276,6 @@ def execute_optimization(
                 }
                 with open(jsonl_file, "w", encoding="utf-8") as f:
                     f.write(json.dumps(metadata) + "\n")
-            # Write the initial code string to the logs
-            write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
-            # Write the initial code string to the source file path
-            write_to_path(fp=source_fp, content=run_response["code"])
 
             # Update the panels with the initial solution
             # Add run id and run name now that we have it
@@ -307,6 +307,7 @@ def execute_optimization(
                 best_node=None,
             )
             current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=0)
+
             # Update the live layout with the initial solution panels
             smooth_update(
                 live=live,
@@ -321,8 +322,17 @@ def execute_optimization(
                 transition_delay=0.1,
             )
 
-            # Run evaluation on the initial solution
-            term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+            # Write the initial code string to the logs
+            write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
+            # Run evaluation on the initial solution (file swap ensures original is restored)
+            term_out = run_evaluation_with_file_swap(
+                file_path=source_fp,
+                new_content=run_response["code"],
+                original_content=source_code,
+                eval_command=eval_command,
+                timeout=eval_timeout,
+            )
+
             # Save logs if requested
             if save_logs:
                 save_execution_output(runs_dir, step=0, output=term_out)
@@ -358,8 +368,7 @@ def execute_optimization(
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
                 write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
-                # Write the next solution to the source file
-                write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
+
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
                 )
@@ -395,7 +404,16 @@ def execute_optimization(
                     ],
                     transition_delay=0.08,  # Slightly longer delay for more noticeable transitions
                 )
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+
+                # Run evaluation and restore original code after
+                term_out = run_evaluation_with_file_swap(
+                    file_path=source_fp,
+                    new_content=eval_and_next_solution_response["code"],
+                    original_content=source_code,
+                    eval_command=eval_command,
+                    timeout=eval_timeout,
+                )
+
                 # Save logs if requested
                 if save_logs:
                     save_execution_output(runs_dir, step=step, output=term_out)
@@ -444,15 +462,14 @@ def execute_optimization(
                 # Save optimization results
                 # If the best solution does not exist or is has not been measured at the end of the optimization
                 # save the original solution as the best solution
-                if best_solution_node is not None:
-                    best_solution_content = best_solution_node.code
-                else:
-                    best_solution_content = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
+                try:
+                    best_solution_code = best_solution_node.code
+                except AttributeError:
+                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
 
                 # Save best solution to .runs/<run-id>/best.<extension>
-                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
-                # write the best solution to the source file
-                write_to_path(fp=source_fp, content=best_solution_content)
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
+
                 # Mark as completed normally for the finally block
                 optimization_completed_normally = True
                 live.update(end_optimization_layout)
@@ -491,6 +508,21 @@ def execute_optimization(
                     else "CLI terminated unexpectedly without a specific exception captured."
                 )
 
+            # raise Exception(best_solution_code, original_source_code)
+            if best_solution_code and best_solution_code != original_source_code:
+                # Determine whether to apply: automatically if --apply-change is set, otherwise ask user
+                should_apply = apply_change or summary_panel.ask_user_feedback(
+                    live=live,
+                    layout=end_optimization_layout,
+                    question="Would you like to apply the best solution to the source file?",
+                    default=True,
+                )
+                if should_apply:
+                    write_to_path(fp=source_fp, content=best_solution_code)
+                    console.print("[green]Best solution applied to the source file.[/]\n")
+            else:
+                console.print("[green]A better solution was not found. No changes to apply.[/]\n")
+
             report_termination(
                 run_id=run_id,
                 status_update=status,
@@ -507,7 +539,7 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
+def resume_optimization(run_id: str, console: Optional[Console] = None, apply_change: bool = False) -> bool:
     """Resume an interrupted run from the most recent node and continue optimization."""
     if console is None:
         console = Console()
@@ -542,6 +574,9 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
+
+    best_solution_code = None
+    original_source_code = None
 
     try:
         # --- Login/Authentication Handling (now mandatory) ---
@@ -619,9 +654,12 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
         save_logs = bool(resume_resp.get("save_logs", False))
         eval_timeout = resume_resp.get("eval_timeout")
 
-        # Write last solution code to source path
+        # Read the original source code from the file before we start modifying it
         source_fp = pathlib.Path(source_path)
         source_fp.parent.mkdir(parents=True, exist_ok=True)
+        # Store the original content to restore after each evaluation
+        original_source_code = read_from_path(fp=source_fp, is_json=False) if source_fp.exists() else ""
+
         code_to_restore = resume_resp.get("code") or resume_resp.get("source_code") or ""
         write_to_path(fp=source_fp, content=code_to_restore)
 
@@ -689,7 +727,13 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
 
             # If missing output, evaluate once before first suggest
             if term_out is None or len(term_out.strip()) == 0:
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                term_out = run_evaluation_with_file_swap(
+                    file_path=source_fp,
+                    new_content=code_to_restore,
+                    original_content=original_source_code,
+                    eval_command=eval_command,
+                    timeout=eval_timeout,
+                )
                 eval_output_panel.update(output=term_out)
                 # Update the evaluation output panel
                 smooth_update(
@@ -727,9 +771,8 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     auth_headers=auth_headers,
                 )
 
-                # Save next solution file(s)
+                # Save next solution to logs
                 write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
-                write_to_path(fp=source_fp, content=eval_and_next_solution_response["code"])
 
                 # Refresh status with history and update panels
                 status_response = get_optimization_run_status(
@@ -744,6 +787,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                 current_solution_node = get_node_from_status(
                     status_response=status_response, solution_id=eval_and_next_solution_response["solution_id"]
                 )
+
                 solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
                 current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
                 eval_output_panel.clear()
@@ -760,8 +804,14 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     transition_delay=0.08,
                 )
 
-                # Evaluate this new solution
-                term_out = run_evaluation(eval_command=eval_command, timeout=eval_timeout)
+                # Evaluate this new solution and restore original code after
+                term_out = run_evaluation_with_file_swap(
+                    file_path=source_fp,
+                    new_content=eval_and_next_solution_response["code"],
+                    original_content=original_source_code,
+                    eval_command=eval_command,
+                    timeout=eval_timeout,
+                )
                 if save_logs:
                     save_execution_output(runs_dir, step=step, output=term_out)
                 eval_output_panel.update(output=term_out)
@@ -801,13 +851,13 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                 end_optimization_layout["best_solution"].update(best_solution_panel)
 
                 # Save best
-                if best_solution_node is not None:
-                    best_solution_content = best_solution_node.code
-                else:
-                    best_solution_content = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
+                try:
+                    best_solution_code = best_solution_node.code
+                except AttributeError:
+                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
 
-                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_content)
-                write_to_path(fp=source_fp, content=best_solution_content)
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
+
                 optimization_completed_normally = True
                 live.update(end_optimization_layout)
 
@@ -826,7 +876,11 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
         if heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.join(timeout=2)
 
-        run_id = resume_resp.get("run_id")
+        try:
+            run_id = resume_resp.get("run_id")
+        except Exception:
+            run_id = None
+
         # Report final status if run exists
         if run_id:
             if optimization_completed_normally:
@@ -840,6 +894,20 @@ def resume_optimization(run_id: str, console: Optional[Console] = None) -> bool:
                     if "e" in locals() and isinstance(locals()["e"], Exception)
                     else "CLI terminated unexpectedly without a specific exception captured."
                 )
+
+            if best_solution_code and best_solution_code != original_source_code:
+                should_apply = apply_change or summary_panel.ask_user_feedback(
+                    live=live,
+                    layout=end_optimization_layout,
+                    question="Would you like to apply the best solution to the source file?",
+                    default=True,
+                )
+                if should_apply:
+                    write_to_path(fp=source_fp, content=best_solution_code)
+                    console.print("[green]Best solution applied to the source file.[/]\n")
+            else:
+                console.print("[green]A better solution was not found. No changes to apply.[/]\n")
+
             report_termination(
                 run_id=run_id,
                 status_update=status,
