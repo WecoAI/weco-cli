@@ -18,7 +18,7 @@ dependencies = [
     "gitingest",
     "fastapi",
     "slowapi",
-    "psutil",
+    "psutil"
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [
@@ -34,7 +34,7 @@ weco = "weco.cli:main"
 Homepage = "https://github.com/WecoAI/weco-cli"
 
 [project.optional-dependencies]
-dev = ["ruff", "build", "setuptools_scm"]
+dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0"]
 
 [tool.setuptools]
 packages = ["weco"]
