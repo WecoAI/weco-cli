@@ -95,6 +95,7 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | `--eval-timeout`       | Timeout in seconds for each step in evaluation.                                                                                                                                                                             | No timeout (unlimited)                                                                                                                                                  | `--eval-timeout 3600`             |
 | `--save-logs`          | Save execution output from each optimization step to disk. Creates timestamped directories with raw output files and a JSONL index for tracking execution history.                                                        | `False`                                                                                                                                                 | `--save-logs`       |
 | `--apply-change`       | Automatically apply the best solution to the source file without prompting.                                                                                                                                                | `False`                                                                                                                                                 | `--apply-change`       |
+| `--api-key`            | API keys for LLM providers (BYOK). Format: `provider=key`. Can specify multiple providers.                                                                                                                                  | `None`                                                                                                                                                  | `--api-key openai=sk-xxx` |
 
 ---
 
@@ -149,6 +150,7 @@ Arguments for `weco resume`:
 |----------|-------------|---------|
 | `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
 | `--apply-change` | Automatically apply the best solution to the source file without prompting | `--apply-change` |
+| `--api-key` | (Optional) API keys for LLM providers (BYOK). Format: `provider=key` | `--api-key openai=sk-xxx` |
 
 Notes:
 - Works only for interrupted runs (status: `error`, `terminated`, etc.).

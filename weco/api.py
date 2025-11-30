@@ -109,31 +109,31 @@ def start_optimization_run(
     log_dir: str = ".runs",
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    api_keys: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
         try:
-            response = requests.post(
-                f"{__base_url__}/runs/",
-                json={
-                    "source_code": source_code,
-                    "source_path": source_path,
-                    "additional_instructions": additional_instructions,
-                    "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
-                    "optimizer": {
-                        "steps": steps,
-                        "code_generator": code_generator_config,
-                        "evaluator": evaluator_config,
-                        "search_policy": search_policy_config,
-                    },
-                    "eval_timeout": eval_timeout,
-                    "save_logs": save_logs,
-                    "log_dir": log_dir,
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+            request_json = {
+                "source_code": source_code,
+                "source_path": source_path,
+                "additional_instructions": additional_instructions,
+                "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
+                "optimizer": {
+                    "steps": steps,
+                    "code_generator": code_generator_config,
+                    "evaluator": evaluator_config,
+                    "search_policy": search_policy_config,
                 },
-                headers=auth_headers,
-                timeout=timeout,
-            )
+                "eval_timeout": eval_timeout,
+                "save_logs": save_logs,
+                "log_dir": log_dir,
+                "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+            }
+            if api_keys:
+                request_json["api_keys"] = api_keys
+
+            response = requests.post(f"{__base_url__}/runs/", json=request_json, headers=auth_headers, timeout=timeout)
             response.raise_for_status()
             result = response.json()
             # Handle None values for code and plan fields
@@ -156,11 +156,10 @@ def resume_optimization_run(
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
         try:
+            request_json = {"metadata": {"client_name": "cli", "client_version": __pkg_version__}}
+
             response = requests.post(
-                f"{__base_url__}/runs/{run_id}/resume",
-                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__}},
-                headers=auth_headers,
-                timeout=timeout,
+                f"{__base_url__}/runs/{run_id}/resume", json=request_json, headers=auth_headers, timeout=timeout
             )
             response.raise_for_status()
             result = response.json()
@@ -180,17 +179,19 @@ def evaluate_feedback_then_suggest_next_solution(
     execution_output: str,
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    api_keys: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
         # Truncate the execution output before sending to backend
         truncated_output = truncate_output(execution_output)
 
+        request_json = {"execution_output": truncated_output, "metadata": {}}
+        if api_keys:
+            request_json["api_keys"] = api_keys
+
         response = requests.post(
-            f"{__base_url__}/runs/{run_id}/suggest",
-            json={"execution_output": truncated_output, "metadata": {}},
-            headers=auth_headers,
-            timeout=timeout,
+            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
         result = response.json()
