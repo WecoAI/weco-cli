@@ -115,7 +115,7 @@ You can specify which LLM model to use with the `-M` or `--model` flag:
 weco run --model gpt-5 --source optimize.py [other options...]
 ```
 
-**Available models (28 total):**
+**Available models (30 total):**
 
 **OpenAI Models:**
 - GPT-5 Series: `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.1-codex-mini`, `gpt-5-codex`, `gpt-5-pro`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
@@ -123,10 +123,10 @@ weco run --model gpt-5 --source optimize.py [other options...]
 - GPT-4 Series: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`
 
 **Anthropic Claude (via Vertex AI):**
-- `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
+- `claude-opus-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
 
 **Google Gemini:**
-- `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+- `gemini-3-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
 All models are available through Weco. If no model is specified, Weco automatically selects the best model for your optimization task.
 

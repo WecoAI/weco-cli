@@ -178,7 +178,6 @@ def evaluate_feedback_then_suggest_next_solution(
     run_id: str,
     step: int,
     execution_output: str,
-    additional_instructions: str = None,
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Dict[str, Any]:
@@ -189,7 +188,7 @@ def evaluate_feedback_then_suggest_next_solution(
 
         response = requests.post(
             f"{__base_url__}/runs/{run_id}/suggest",
-            json={"execution_output": truncated_output, "additional_instructions": additional_instructions, "metadata": {}},
+            json={"execution_output": truncated_output, "metadata": {}},
             headers=auth_headers,
             timeout=timeout,
         )
