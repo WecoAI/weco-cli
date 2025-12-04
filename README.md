@@ -94,6 +94,7 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | `-l, --log-dir`                | Path to the directory to log intermediate steps and final optimization result.                                                                                                                                             | `.runs/`                                                                                                                                               | `-l ./logs/`        |
 | `--eval-timeout`       | Timeout in seconds for each step in evaluation.                                                                                                                                                                             | No timeout (unlimited)                                                                                                                                                  | `--eval-timeout 3600`             |
 | `--save-logs`          | Save execution output from each optimization step to disk. Creates timestamped directories with raw output files and a JSONL index for tracking execution history.                                                        | `False`                                                                                                                                                 | `--save-logs`       |
+| `--api-key`            | API keys for LLM providers (BYOK). Format: `provider=key`. Can specify multiple providers.                                                                                                                                  | `None`                                                                                                                                                  | `--api-key openai=sk-xxx` |
 
 ---
 
@@ -147,6 +148,7 @@ Arguments for `weco resume`:
 | Argument | Description | Example |
 |----------|-------------|---------|
 | `run-id` | The UUID of the run to resume (shown at the start of each run) | `0002e071-1b67-411f-a514-36947f0c4b31` |
+| `--api-key` | (Optional) API keys for LLM providers (BYOK). Format: `provider=key` | `--api-key openai=sk-xxx` |
 
 Notes:
 - Works only for interrupted runs (status: `error`, `terminated`, etc.).
