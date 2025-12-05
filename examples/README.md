@@ -40,6 +40,8 @@ pip install weco
 
 Minimal commands to run each example. For full context and explanations, see the linked READMEs.
 
+> **Tip**: Add `--apply-change` to any command below to automatically apply the best solution to your source file without prompting.
+
 ### 🧭 Hello World
 
 ```bash

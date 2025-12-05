@@ -106,6 +106,41 @@ def truncate_output(output: str) -> str:
         return output
 
 
+def run_evaluation_with_file_swap(
+    file_path: pathlib.Path, new_content: str, original_content: str, eval_command: str, timeout: int | None = None
+) -> str:
+    """
+    Temporarily write new content to a file, run evaluation, then restore original.
+
+    This function ensures the file is always restored to its original state,
+    even if an exception occurs during evaluation.
+
+    Args:
+        file_path: Path to the file to temporarily modify
+        new_content: The new content to write for evaluation
+        original_content: The original content to restore after evaluation
+        eval_command: The shell command to run for evaluation
+        timeout: Optional timeout for the evaluation command
+
+    Returns:
+        The output from running the evaluation command
+
+    Raises:
+        Any exception raised by run_evaluation will be re-raised after
+        the file is restored to its original state.
+    """
+    # Write the new content
+    write_to_path(fp=file_path, content=new_content)
+
+    try:
+        # Run the evaluation
+        output = run_evaluation(eval_command=eval_command, timeout=timeout)
+        return output
+    finally:
+        # Always restore the original file, even if evaluation fails
+        write_to_path(fp=file_path, content=original_content)
+
+
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
     process = subprocess.Popen(
