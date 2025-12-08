@@ -6,9 +6,7 @@ from rich.panel import Panel
 from rich.syntax import Syntax
 from rich import box
 from rich.console import Console
-from rich.live import Live
 
-from rich.prompt import Confirm
 from typing import Dict, List, Optional, Union, Tuple
 from pathlib import Path
 from .__init__ import __dashboard_url__
@@ -73,25 +71,6 @@ class SummaryPanel:
     def clear_thinking(self):
         """Clear the thinking content."""
         self.thinking_content = ""
-
-    def ask_user_feedback(self, live: Live, layout: Layout, question: str, default: bool = True) -> bool:
-        """
-        Ask a yes/no question while keeping the main layout fixed.
-        Uses Rich's Confirm for a clean user experience.
-        """
-        # Stop live updates temporarily to prevent layout from moving
-        live.stop()
-
-        try:
-            # Use Rich's built-in Confirm
-            result = Confirm.ask(question, default=default)
-        except (KeyboardInterrupt, EOFError):
-            result = default
-        finally:
-            # Resume live updates
-            live.start()
-
-        return result
 
     def get_display(self, final_message: Optional[str] = None) -> Panel:
         """Return a Rich panel summarising the current run."""
