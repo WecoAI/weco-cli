@@ -144,17 +144,25 @@ def execute_optimization(
     """
     if console is None:
         console = Console()
-
     # Global variables for this optimization run
     heartbeat_thread = None
     stop_heartbeat_event = threading.Event()
     current_run_id_for_heartbeat = None
     current_auth_headers_for_heartbeat = {}
+    live_ref = None  # Reference to the Live object for the optimization run
+
+    best_solution_code = None
+    original_source_code = None
 
     # --- Signal Handler for this optimization run ---
     def signal_handler(signum, frame):
+        nonlocal live_ref
+
+        if live_ref is not None:
+            live_ref.stop()  # Stop the live update loop so that messages are printed to the console
+
         signal_name = signal.Signals(signum).name
-        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]\n")
 
         # Stop heartbeat thread
         stop_heartbeat_event.set()
@@ -170,7 +178,7 @@ def execute_optimization(
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
             )
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]")
+            console.print(f"[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]\n")
 
         # Exit gracefully
         sys.exit(0)
@@ -183,8 +191,6 @@ def execute_optimization(
     optimization_completed_normally = False
     user_stop_requested_flag = False
 
-    best_solution_code = None
-    original_source_code = None  # Make available to the finally block
     try:
         # --- Login/Authentication Handling (now mandatory) ---
         weco_api_key, auth_headers = handle_authentication(console)
@@ -256,6 +262,7 @@ def execute_optimization(
         # --- Live Update Loop ---
         refresh_rate = 4
         with Live(layout, refresh_per_second=refresh_rate) as live:
+            live_ref = live
             # Define the runs directory (.runs/<run-id>) to store logs and results
             runs_dir = pathlib.Path(log_dir) / run_id
             runs_dir.mkdir(parents=True, exist_ok=True)
@@ -387,6 +394,16 @@ def execute_optimization(
                     status_response=status_response, solution_id=eval_and_next_solution_response["solution_id"]
                 )
 
+                # Set best solution and save optimization results
+                try:
+                    best_solution_code = best_solution_node.code
+                except AttributeError:
+                    # Can happen if the code was buggy
+                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
+
+                # Save best solution to .runs/<run-id>/best.<extension>
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
+
                 # Update the solution panels with the current and best solution
                 solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
                 current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
@@ -443,10 +460,13 @@ def execute_optimization(
                 )
                 # No need to set any solution to unevaluated since we have finished the optimization
                 # and all solutions have been evaluated
-                # No neeed to update the current solution panel since we have finished the optimization
+                # No need to update the current solution panel since we have finished the optimization
                 # We only need to update the best solution panel
                 # Figure out if we have a best solution so far
                 best_solution_node = get_best_node_from_status(status_response=status_response)
+                best_solution_code = best_solution_node.code
+                # Save best solution to .runs/<run-id>/best.<extension>
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
                 solution_panels.update(current_node=None, best_node=best_solution_node)
                 _, best_solution_panel = solution_panels.get_display(current_step=steps)
                 # Update the end optimization layout
@@ -459,17 +479,6 @@ def execute_optimization(
                 end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
                 end_optimization_layout["best_solution"].update(best_solution_panel)
 
-                # Save optimization results
-                # If the best solution does not exist or is has not been measured at the end of the optimization
-                # save the original solution as the best solution
-                try:
-                    best_solution_code = best_solution_node.code
-                except AttributeError:
-                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
-
-                # Save best solution to .runs/<run-id>/best.<extension>
-                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
-
                 # Mark as completed normally for the finally block
                 optimization_completed_normally = True
                 live.update(end_optimization_layout)
@@ -481,7 +490,7 @@ def execute_optimization(
         except Exception:
             error_message = str(e)
         console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
-        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]")
+        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         # Ensure optimization_completed_normally is False
         optimization_completed_normally = False
     finally:
@@ -508,20 +517,16 @@ def execute_optimization(
                     else "CLI terminated unexpectedly without a specific exception captured."
                 )
 
-            # raise Exception(best_solution_code, original_source_code)
             if best_solution_code and best_solution_code != original_source_code:
                 # Determine whether to apply: automatically if --apply-change is set, otherwise ask user
-                should_apply = apply_change or summary_panel.ask_user_feedback(
-                    live=live,
-                    layout=end_optimization_layout,
-                    question="Would you like to apply the best solution to the source file?",
-                    default=True,
+                should_apply = apply_change or Confirm.ask(
+                    "Would you like to apply the best solution to the source file?", default=True
                 )
                 if should_apply:
                     write_to_path(fp=source_fp, content=best_solution_code)
-                    console.print("[green]Best solution applied to the source file.[/]\n")
+                    console.print("\n[green]Best solution applied to the source file.[/]\n")
             else:
-                console.print("[green]A better solution was not found. No changes to apply.[/]\n")
+                console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
 
             report_termination(
                 run_id=run_id,
@@ -534,7 +539,7 @@ def execute_optimization(
         # Handle exit
         if user_stop_requested_flag:
             console.print("[yellow]Run terminated by user request.[/]")
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -549,11 +554,19 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
     stop_heartbeat_event = threading.Event()
     current_run_id_for_heartbeat = None
     current_auth_headers_for_heartbeat = {}
+    live_ref = None  # Reference to the Live object for the optimization run
+
+    best_solution_code = None
+    original_source_code = None
 
     # Signal handler for this optimization run
     def signal_handler(signum, frame):
+        nonlocal live_ref
+        if live_ref is not None:
+            live_ref.stop()  # Stop the live update loop so that messages are printed to the console
+
         signal_name = signal.Signals(signum).name
-        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]")
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]\n")
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.join(timeout=2)
@@ -565,7 +578,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
             )
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]\n")
         sys.exit(0)
 
     # Set up signal handlers for this run
@@ -574,9 +587,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
 
     optimization_completed_normally = False
     user_stop_requested_flag = False
-
-    best_solution_code = None
-    original_source_code = None
 
     try:
         # --- Login/Authentication Handling (now mandatory) ---
@@ -659,9 +669,8 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
         source_fp.parent.mkdir(parents=True, exist_ok=True)
         # Store the original content to restore after each evaluation
         original_source_code = read_from_path(fp=source_fp, is_json=False) if source_fp.exists() else ""
-
+        # The code to restore is the code from the last step of the previous run
         code_to_restore = resume_resp.get("code") or resume_resp.get("source_code") or ""
-        write_to_path(fp=source_fp, content=code_to_restore)
 
         # Prepare UI panels
         summary_panel = SummaryPanel(
@@ -687,11 +696,24 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
         best_solution_node = get_best_node_from_status(status_response=status)
         current_solution_node = get_node_from_status(status_response=status, solution_id=resume_resp.get("solution_id"))
 
+        # If there's no best solution yet (baseline evaluation didn't complete),
+        # mark the current node as unevaluated so the tree renders correctly
+        if best_solution_node is None:
+            tree_panel.set_unevaluated_node(node_id=resume_resp.get("solution_id"))
+
         # Ensure runs dir exists
         runs_dir = pathlib.Path(log_dir) / resume_resp["run_id"]
         runs_dir.mkdir(parents=True, exist_ok=True)
         # Persist last step's code into logs as step_<current_step>
         write_to_path(fp=runs_dir / f"step_{current_step}{source_fp.suffix}", content=code_to_restore)
+
+        # Initialize best solution code
+        try:
+            best_solution_code = best_solution_node.code
+        except AttributeError:
+            # Edge case: best solution node is not available.
+            # This can happen if the user has cancelled the run before even running the baseline solution
+            pass  # Leave best solution code as None
 
         # Start Heartbeat Thread
         stop_heartbeat_event.clear()
@@ -705,6 +727,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
         # --- Live UI ---
         refresh_rate = 4
         with Live(layout, refresh_per_second=refresh_rate) as live:
+            live_ref = live
             # Initial panels
             current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=current_step)
             # Use backend-provided execution output only (no fallback)
@@ -788,6 +811,16 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                     status_response=status_response, solution_id=eval_and_next_solution_response["solution_id"]
                 )
 
+                # Set best solution and save optimization results
+                try:
+                    best_solution_code = best_solution_node.code
+                except AttributeError:
+                    # Can happen if the code was buggy
+                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
+
+                # Save best solution to .runs/<run-id>/best.<extension>
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
+
                 solution_panels.update(current_node=current_solution_node, best_node=best_solution_node)
                 current_solution_panel, best_solution_panel = solution_panels.get_display(current_step=step)
                 eval_output_panel.clear()
@@ -839,6 +872,10 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 tree_panel.build_metric_tree(nodes=nodes_final)
                 # Best solution panel and final message
                 best_solution_node = get_best_node_from_status(status_response=status_response)
+                best_solution_code = best_solution_node.code
+                # Save best solution to .runs/<run-id>/best.<extension>
+                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
+
                 solution_panels.update(current_node=None, best_node=best_solution_node)
                 _, best_solution_panel = solution_panels.get_display(current_step=total_steps)
                 final_message = (
@@ -850,14 +887,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 end_optimization_layout["tree"].update(tree_panel.get_display(is_done=True))
                 end_optimization_layout["best_solution"].update(best_solution_panel)
 
-                # Save best
-                try:
-                    best_solution_code = best_solution_node.code
-                except AttributeError:
-                    best_solution_code = read_from_path(fp=runs_dir / f"step_0{source_fp.suffix}", is_json=False)
-
-                write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
-
                 optimization_completed_normally = True
                 live.update(end_optimization_layout)
 
@@ -867,7 +896,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
         except Exception:
             error_message = str(e)
         console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
-        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]")
+        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         optimization_completed_normally = False
     finally:
         signal.signal(signal.SIGINT, original_sigint_handler)
@@ -896,17 +925,14 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 )
 
             if best_solution_code and best_solution_code != original_source_code:
-                should_apply = apply_change or summary_panel.ask_user_feedback(
-                    live=live,
-                    layout=end_optimization_layout,
-                    question="Would you like to apply the best solution to the source file?",
-                    default=True,
+                should_apply = apply_change or Confirm.ask(
+                    "Would you like to apply the best solution to the source file?", default=True
                 )
                 if should_apply:
                     write_to_path(fp=source_fp, content=best_solution_code)
-                    console.print("[green]Best solution applied to the source file.[/]\n")
+                    console.print("\n[green]Best solution applied to the source file.[/]\n")
             else:
-                console.print("[green]A better solution was not found. No changes to apply.[/]\n")
+                console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
 
             report_termination(
                 run_id=run_id,
@@ -917,5 +943,5 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
             )
         if user_stop_requested_flag:
             console.print("[yellow]Run terminated by user request.[/]")
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
     return optimization_completed_normally or user_stop_requested_flag
