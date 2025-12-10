@@ -12,6 +12,7 @@ from optimize import extract_csv
 
 try:
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 except Exception:  # pragma: no cover - optional dependency
@@ -164,7 +165,7 @@ def visualize_difference(
         pred_values = pred_entries[pred_idx] if pred_idx < len(pred_entries) else []
         pred_consumed[key] = pred_idx + 1
 
-        x_labels.append(x_label or f"row_{len(x_labels)+1}")
+        x_labels.append(x_label or f"row_{len(x_labels) + 1}")
 
         for col_idx, col_name in enumerate(columns):
             gt_val = _to_float(gt_row[col_idx + 1]) if col_idx + 1 < len(gt_row) else None
@@ -204,20 +205,8 @@ def visualize_difference(
         pred_values = pred_series[col_name]
         diff_values = diff_series[col_name]
 
-        ax.plot(
-            x_positions,
-            gt_values,
-            marker="o",
-            linewidth=1.5,
-            label="Ground Truth",
-        )
-        ax.plot(
-            x_positions,
-            pred_values,
-            marker="o",
-            linewidth=1.5,
-            label="Prediction",
-        )
+        ax.plot(x_positions, gt_values, marker="o", linewidth=1.5, label="Ground Truth")
+        ax.plot(x_positions, pred_values, marker="o", linewidth=1.5, label="Prediction")
         ax.set_ylabel(col_name)
         ax.grid(True, axis="y", alpha=0.3)
 
@@ -226,15 +215,7 @@ def visualize_difference(
 
         if has_diff:
             ax2 = ax.twinx()
-            ax2.plot(
-                x_positions,
-                diff_values,
-                linestyle="--",
-                color="tab:red",
-                marker="x",
-                linewidth=1.2,
-                label="Pred - GT",
-            )
+            ax2.plot(x_positions, diff_values, linestyle="--", color="tab:red", marker="x", linewidth=1.2, label="Pred - GT")
             ax2.axhline(0.0, color="tab:red", linewidth=0.8, alpha=0.4)
             ax2.set_ylabel("Pred - GT")
             handles2, labels2 = ax2.get_legend_handles_labels()
@@ -333,11 +314,7 @@ def main() -> None:
         action="store_true",
         help="If set, still plot GT vs prediction even when headers differ.",
     )
-    parser.add_argument(
-        "--visualize-verbose",
-        action="store_true",
-        help="Print reasons when a visualization is skipped.",
-    )
+    parser.add_argument("--visualize-verbose", action="store_true", help="Print reasons when a visualization is skipped.")
     args = parser.parse_args()
 
     if not os.getenv("OPENAI_API_KEY"):
@@ -414,10 +391,7 @@ def main() -> None:
     # Apply cost cap: accuracy is zeroed if average cost/query exceeds $0.02
     avg_cost_per_query = (sum(costs) / len(costs)) if costs else 0.0
     if avg_cost_per_query > 0.02:
-        print(
-            f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.02 cap; accuracy set to 0.0",
-            flush=True,
-        )
+        print(f"[cost] avg ${avg_cost_per_query:.4f}/query exceeds $0.02 cap; accuracy set to 0.0", flush=True)
         final_score = 0.0
     else:
         print(f"[cost] avg ${avg_cost_per_query:.4f}/query within cap", flush=True)

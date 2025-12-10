@@ -5,6 +5,8 @@ from rich.layout import Layout
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich import box
+from rich.console import Console
+
 from typing import Dict, List, Optional, Union, Tuple
 from pathlib import Path
 from .__init__ import __dashboard_url__
@@ -22,6 +24,7 @@ class SummaryPanel:
         runs_dir: str,
         run_id: str = None,
         run_name: str = None,
+        console: Optional[Console] = None,
     ):
         self.maximize = maximize
         self.metric_name = metric_name
@@ -32,6 +35,8 @@ class SummaryPanel:
         self.run_name = run_name if run_name is not None else "N/A"
         self.dashboard_url = "N/A"
         self.thinking_content = ""
+        self.user_input = ""
+        self.console = Console()
         self.progress = Progress(
             TextColumn("[progress.description]{task.description}"),
             BarColumn(bar_width=20),

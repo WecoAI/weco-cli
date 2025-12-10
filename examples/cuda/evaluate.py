@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import pathlib
 import importlib
 import importlib.util
@@ -55,10 +56,9 @@ class Model(nn.Module):
 
 
 ########################################################
-# Weco Solution
+# Benchmark
 ########################################################
 def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
-    # Clean out all old compiled extensions to prevent namespace collisions during build
     module_path = pathlib.Path(module_path)
     name = module_path.stem
     spec = importlib.util.spec_from_file_location(name, module_path)
@@ -69,12 +69,6 @@ def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     return mod
 
 
-########################################################
-# Benchmark
-########################################################
-os.environ["MAX_JOBS"] = "1"  # number of workers for building with ninja
-
-
 def get_inputs(batch_size, seq_len, n_embd, device):
     return torch.randn(batch_size, seq_len, n_embd, device=device, dtype=torch.float32)
 
@@ -83,8 +77,14 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--solution-path", type=str, required=True)
+    parser.add_argument("--path", type=str, required=True)
     args = parser.parse_args()
+
+    # setup local cache for PyTorch extensions
+    cache_dir = pathlib.Path.cwd() / ".weco-temp/torch_extensions"
+    shutil.rmtree(cache_dir.parent, ignore_errors=True)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ["TORCH_EXTENSIONS_DIR"] = str(cache_dir)
 
     # benchmarking parameters
     n_correctness_trials = 10
@@ -107,7 +107,7 @@ if __name__ == "__main__":
     # load solution module
     try:
         torch.manual_seed(0)
-        solution_module = load_module_from_path(args.solution_path, add_to_sys_modules=False)
+        solution_module = load_module_from_path(args.path, add_to_sys_modules=False)
         solution_model = solution_module.Model(
             n_embd=n_embd, n_head=n_head, attn_pdrop=attn_pdrop, resid_pdrop=resid_pdrop, max_seqlen=max_seqlen
         ).to("cuda")
@@ -145,3 +145,6 @@ if __name__ == "__main__":
     t_avg_optimized = do_bench(lambda: solution_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"optimized time: {t_avg_optimized:.2f}ms")
     print(f"speedup: {t_avg_baseline / t_avg_optimized:.2f}x")
+
+    # clean up
+    shutil.rmtree(cache_dir.parent, ignore_errors=True)

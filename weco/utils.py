@@ -2,13 +2,13 @@ from typing import Any, Dict, List, Tuple, Union
 import json
 import time
 import subprocess
+import psutil
 from rich.layout import Layout
 from rich.live import Live
 from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
-
 from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, DEFAULT_MODEL, SUPPORTED_FILE_EXTENSIONS
 
 
@@ -106,24 +106,89 @@ def truncate_output(output: str) -> str:
         return output
 
 
+def run_evaluation_with_file_swap(
+    file_path: pathlib.Path, new_content: str, original_content: str, eval_command: str, timeout: int | None = None
+) -> str:
+    """
+    Temporarily write new content to a file, run evaluation, then restore original.
+
+    This function ensures the file is always restored to its original state,
+    even if an exception occurs during evaluation.
+
+    Args:
+        file_path: Path to the file to temporarily modify
+        new_content: The new content to write for evaluation
+        original_content: The original content to restore after evaluation
+        eval_command: The shell command to run for evaluation
+        timeout: Optional timeout for the evaluation command
+
+    Returns:
+        The output from running the evaluation command
+
+    Raises:
+        Any exception raised by run_evaluation will be re-raised after
+        the file is restored to its original state.
+    """
+    # Write the new content
+    write_to_path(fp=file_path, content=new_content)
+
+    try:
+        # Run the evaluation
+        output = run_evaluation(eval_command=eval_command, timeout=timeout)
+        return output
+    finally:
+        # Always restore the original file, even if evaluation fails
+        write_to_path(fp=file_path, content=original_content)
+
+
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
+    process = subprocess.Popen(
+        eval_command, shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
+    )
 
-    # Run the eval command as is
     try:
-        result = subprocess.run(eval_command, shell=True, capture_output=True, text=True, check=False, timeout=timeout)
-        # Combine stdout and stderr for complete output
-        output = result.stderr if result.stderr else ""
-        if result.stdout:
-            if len(output) > 0:
-                output += "\n"
-            output += result.stdout
-        return output  # Return full output, no truncation
+        # NOTE: Process tree cleanup only happens on timeout. Normal completion relies on the OS/shell to clean up child processes, which works for typical evaluation scripts.
+        output, _ = process.communicate(timeout=timeout)
+        return output
+
     except subprocess.TimeoutExpired:
+        # Kill process tree
+        try:
+            parent = psutil.Process(process.pid)
+            children = parent.children(recursive=True)
+
+            # Terminate gracefully
+            for child in children:
+                try:
+                    child.terminate()
+                except psutil.NoSuchProcess:
+                    pass
+            try:
+                parent.terminate()
+            except psutil.NoSuchProcess:
+                pass
+
+            # Wait, then force kill survivors
+            _, alive = psutil.wait_procs(children + [parent], timeout=1)
+            for proc in alive:
+                try:
+                    proc.kill()
+                except psutil.NoSuchProcess:
+                    pass
+
+        except psutil.NoSuchProcess:
+            pass
+
+        # Drain pipes
+        try:
+            process.communicate(timeout=1)
+        except (subprocess.TimeoutExpired, ValueError, OSError):
+            pass
+
         return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
 
 
-# Update Check Function
 def check_for_cli_updates():
     """Checks PyPI for a newer version of the weco package and notifies the user."""
     try:

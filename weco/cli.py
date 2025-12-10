@@ -49,7 +49,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `o4-mini` when `OPENAI_API_KEY` is set, `claude-sonnet-4-0` when `ANTHROPIC_API_KEY` is set, and `gemini-2.5-pro` when `GEMINI_API_KEY` is set. When multiple keys are set, the priority is `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`.",
+        help="Model to use for optimization. Defaults to `o4-mini`. See full list at https://docs.weco.ai/cli/supported-models",
     )
     run_parser.add_argument(
         "-l", "--log-dir", type=str, default=".runs", help="Directory to store logs and results. Defaults to `.runs`."
@@ -71,6 +71,11 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--save-logs",
         action="store_true",
         help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt with JSONL index",
+    )
+    run_parser.add_argument(
+        "--apply-change",
+        action="store_true",
+        help="Automatically apply the best solution to the source file without prompting",
     )
 
 
@@ -118,6 +123,11 @@ def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
     resume_parser.add_argument(
         "run_id", type=str, help="The UUID of the run to resume (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
     )
+    resume_parser.add_argument(
+        "--apply-change",
+        action="store_true",
+        help="Automatically apply the best solution to the source file without prompting",
+    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -136,6 +146,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         console=console,
         eval_timeout=args.eval_timeout,
         save_logs=args.save_logs,
+        apply_change=args.apply_change,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -145,7 +156,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(run_id=args.run_id, console=console)
+    success = resume_optimization(run_id=args.run_id, console=console, apply_change=args.apply_change)
     sys.exit(0 if success else 1)
 
 
@@ -164,7 +175,7 @@ def main() -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `o4-mini` when `OPENAI_API_KEY` is set, `claude-sonnet-4-0` when `ANTHROPIC_API_KEY` is set, and `gemini-2.5-pro` when `GEMINI_API_KEY` is set. When multiple keys are set, the priority is `OPENAI_API_KEY` > `ANTHROPIC_API_KEY` > `GEMINI_API_KEY`.",
+        help="Model to use for optimization. Defaults to `o4-mini`. See full list at docs.weco.ai/cli/supported-models",
     )
 
     subparsers = parser.add_subparsers(

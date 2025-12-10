@@ -4,7 +4,6 @@ import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
-from .constants import CODEGEN_API_TIMEOUT, STATUS_API_TIMEOUT
 from .utils import truncate_output, determine_model_for_onboarding
 
 
@@ -48,6 +47,51 @@ def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None
     _render(detail)
 
 
+def _recover_suggest_after_transport_error(
+    console: Console, run_id: str, step: int, auth_headers: dict
+) -> Optional[Dict[str, Any]]:
+    """
+    Try to reconstruct the /suggest response after a transport error (ReadTimeout/502/RemoteDisconnected)
+    by fetching run status and using the latest nodes.
+
+    Args:
+        console: The console object to use for logging.
+        run_id: The ID of the run to recover.
+        step: The step of the solution to recover.
+        auth_headers: The authentication headers to use for the request.
+
+    Returns:
+        The recovered response if the run is in a valid state, otherwise None.
+    """
+    run_status_recovery_response = get_optimization_run_status(
+        console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+    )
+    current_step = run_status_recovery_response.get("current_step")
+    current_status = run_status_recovery_response.get("status")
+    # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
+    is_valid_run_state = current_status is not None and current_status == "running"
+    is_valid_step = current_step is not None and current_step == step
+    if is_valid_run_state and is_valid_step:
+        nodes = run_status_recovery_response.get("nodes") or []
+        # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
+        if len(nodes) >= 2:
+            nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
+            latest_node = nodes_sorted_ascending[-1]
+            penultimate_node = nodes_sorted_ascending[-2]
+            # If the server finished generating the next candidate, it should be exactly this step
+            if latest_node and latest_node["step"] == step:
+                # Try to reconstruct the expected response from the /suggest endpoint using the run status info
+                return {
+                    "run_id": run_id,
+                    "previous_solution_metric_value": penultimate_node.get("metric_value"),
+                    "solution_id": latest_node.get("solution_id"),
+                    "code": latest_node.get("code"),
+                    "plan": latest_node.get("plan"),
+                    "is_done": False,
+                }
+    return None
+
+
 def start_optimization_run(
     console: Console,
     source_code: str,
@@ -64,7 +108,7 @@ def start_optimization_run(
     save_logs: bool = False,
     log_dir: str = ".runs",
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -107,7 +151,7 @@ def start_optimization_run(
 
 
 def resume_optimization_run(
-    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)
 ) -> Optional[Dict[str, Any]]:
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
@@ -134,9 +178,8 @@ def evaluate_feedback_then_suggest_next_solution(
     run_id: str,
     step: int,
     execution_output: str,
-    additional_instructions: str = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
@@ -145,7 +188,7 @@ def evaluate_feedback_then_suggest_next_solution(
 
         response = requests.post(
             f"{__base_url__}/runs/{run_id}/suggest",
-            json={"execution_output": truncated_output, "additional_instructions": additional_instructions, "metadata": {}},
+            json={"execution_output": truncated_output, "metadata": {}},
             headers=auth_headers,
             timeout=timeout,
         )
@@ -158,44 +201,38 @@ def evaluate_feedback_then_suggest_next_solution(
             result["code"] = ""
         return result
     except requests.exceptions.ReadTimeout as e:
-        # NOTE: This can occur when:
-        # 1. The server is busy and the request times out
-        # 2. When intermediaries drop the connection so even after the server responds,
-        # the client doesn't receive the response and times out
-
-        # Here we ONLY try to recover in the latter case i.e., server completed request but
-        # client didn't receive the response and timed out
-        run_status_recovery_response = get_optimization_run_status(
-            console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
+        # ReadTimeout can mean either:
+        # 1) the server truly didn't finish before the client's read timeout, or
+        # 2) the server finished but an intermediary (proxy/LB) dropped the response.
+        # We only try to recover case (2): fetch run status to confirm the step completed and reconstruct the response.
+        recovered = _recover_suggest_after_transport_error(
+            console=console, run_id=run_id, step=step, auth_headers=auth_headers
         )
-        current_step = run_status_recovery_response.get("current_step")
-        current_status = run_status_recovery_response.get("status")
-        # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
-        is_valid_run_state = current_status is not None and current_status == "running"
-        is_valid_step = current_step is not None and current_step == step
-        if is_valid_run_state and is_valid_step:
-            nodes = run_status_recovery_response.get("nodes") or []
-            # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
-            if len(nodes) >= 2:
-                nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
-                latest_node = nodes_sorted_ascending[-1]
-                penultimate_node = nodes_sorted_ascending[-2]
-                # If the server finished generating the next candidate, it should be exactly this step
-                if latest_node and latest_node["step"] == step:
-                    # Try to reconstruct the expected response from the /suggest endpoint using the run status info
-                    reconstructed_expected_response = {
-                        "run_id": run_id,
-                        "previous_solution_metric_value": penultimate_node.get("metric_value"),
-                        "solution_id": latest_node.get("solution_id"),
-                        "code": latest_node.get("code"),
-                        "plan": latest_node.get("plan"),
-                        "is_done": False,
-                    }
-                    return reconstructed_expected_response
-        # If we couldn't recover, raise the timeout error so the run can be resumed by the user
+        if recovered is not None:
+            return recovered
+        # If we cannot confirm completion, bubble up the timeout so the caller can resume later.
         raise requests.exceptions.ReadTimeout(e)
     except requests.exceptions.HTTPError as e:
-        # Allow caller to handle suggest errors, maybe retry or terminate
+        # Treat only 502 Bad Gateway as a transient transport/gateway issue (akin to a dropped response).
+        # For 502, attempt the status-based recovery method used for ReadTimeout errors; otherwise render the HTTP error normally.
+        if (resp := getattr(e, "response", None)) is not None and resp.status_code == 502:
+            recovered = _recover_suggest_after_transport_error(
+                console=console, run_id=run_id, step=step, auth_headers=auth_headers
+            )
+            if recovered is not None:
+                return recovered
+        # Surface non-502 HTTP errors to the user.
+        handle_api_error(e, console)
+        raise
+    except requests.exceptions.ConnectionError as e:
+        # Covers connection resets with no HTTP response (e.g., RemoteDisconnected).
+        # Treat as a potential "response lost after completion": try status-based recovery first similar to how ReadTimeout errors are handled.
+        recovered = _recover_suggest_after_transport_error(
+            console=console, run_id=run_id, step=step, auth_headers=auth_headers
+        )
+        if recovered is not None:
+            return recovered
+        # Surface the connection error to the user.
         handle_api_error(e, console)
         raise
     except Exception as e:
@@ -208,7 +245,7 @@ def get_optimization_run_status(
     run_id: str,
     include_history: bool = False,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = STATUS_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> Dict[str, Any]:
     """Get the current status of the optimization run."""
     try:
@@ -239,7 +276,7 @@ def get_optimization_run_status(
         raise
 
 
-def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (10, 10)) -> bool:
+def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)) -> bool:
     """Send a heartbeat signal to the backend."""
     try:
         response = requests.put(f"{__base_url__}/runs/{run_id}/heartbeat", headers=auth_headers, timeout=timeout)
@@ -262,7 +299,7 @@ def report_termination(
     reason: str,
     details: Optional[str] = None,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 30),
+    timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> bool:
     """Report the termination reason to the backend."""
     try:
@@ -285,7 +322,7 @@ def get_optimization_suggestions_from_codebase(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[List[Dict[str, Any]]]:
     """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
     try:
@@ -320,7 +357,7 @@ def generate_evaluation_script_and_metrics(
     description: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
     """Generate evaluation script and determine metrics using the model-agnostic backend API."""
     try:
@@ -356,7 +393,7 @@ def analyze_evaluation_environment(
     gitingest_tree: str,
     gitingest_content_str: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[Dict[str, Any]]:
     """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
     try:
@@ -392,7 +429,7 @@ def analyze_script_execution_requirements(
     script_path: str,
     target_file: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = CODEGEN_API_TIMEOUT,
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
 ) -> Optional[str]:
     """Analyze script to determine proper execution command using the model-agnostic backend API."""
     try:
