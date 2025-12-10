@@ -1,6 +1,6 @@
-## Extract Line Plot (Chart → CSV): Accuracy/Cost Optimization for Agentic Scaffold
+## Extract Line Plot (Chart → CSV): Accuracy/Cost Optimization for Agentic Workflow
 
-This example demonstrates optimizing an AI feature that turns chart images into CSV tables, showcasing how to use Weco to improve both accuracy and cost efficiency of a VLM-based extraction pipeline.
+This example demonstrates optimizing an AI feature that turns chart images into CSV tables, showcasing how to use Weco to improve accuracy or reduce cost of a VLM-based extraction workflow.
 
 ### Prerequisites
 
