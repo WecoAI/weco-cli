@@ -262,11 +262,7 @@ def evaluate_predictions(gt_csv_path: Path, pred_csv_path: Path) -> float:
 
 
 def process_one(
-    base_dir: Path,
-    example_id: str,
-    image_rel: Path,
-    gt_table_rel: Path,
-    output_dir: Path,
+    base_dir: Path, example_id: str, image_rel: Path, gt_table_rel: Path, output_dir: Path
 ) -> Tuple[str, float, Path, Path, float]:
     image_path = base_dir / image_rel
     gt_csv_path = base_dir / gt_table_rel
@@ -343,14 +339,7 @@ def main() -> None:
 
     with ThreadPoolExecutor(max_workers=max(1, args.num_workers)) as pool:
         futures = [
-            pool.submit(
-                process_one,
-                base_dir,
-                example_id,
-                image_rel,
-                gt_table_rel,
-                Path(args.out_dir),
-            )
+            pool.submit(process_one, base_dir, example_id, image_rel, gt_table_rel, Path(args.out_dir))
             for (example_id, image_rel, gt_table_rel) in rows
         ]
 

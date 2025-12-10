@@ -73,10 +73,7 @@ def extract_csv(image_path: Path, model: Optional[str] = None) -> Tuple[str, flo
         messages=[
             {
                 "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": image_uri}},
-                ],
+                "content": [{"type": "text", "text": prompt}, {"type": "image_url", "image_url": {"url": image_uri}}],
             }
         ],
     )
@@ -93,9 +90,7 @@ def extract_csv(image_path: Path, model: Optional[str] = None) -> Tuple[str, flo
         non_cached_prompt_tokens = max(0, prompt_tokens - cached_tokens)
         rates = _pricing_for_model(effective_model)
         cost_usd = (
-            non_cached_prompt_tokens * rates["in"]
-            + cached_tokens * rates["in_cached"]
-            + completion_tokens * rates["out"]
+            non_cached_prompt_tokens * rates["in"] + cached_tokens * rates["in_cached"] + completion_tokens * rates["out"]
         )
 
     text = response.choices[0].message.content or ""
