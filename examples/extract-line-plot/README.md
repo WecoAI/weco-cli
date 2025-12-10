@@ -1,6 +1,6 @@
-## Extract Line Plot (Chart → CSV) with a VLM
+## Extract Line Plot (Chart → CSV): Accuracy/Cost Optimization for Agentic Scaffold
 
-This example is about optimizing an AI feature that turns image of chart into a table in csv format.
+This example demonstrates optimizing an AI feature that turns chart images into CSV tables, showcasing how to use Weco to improve both accuracy and cost efficiency of a VLM-based extraction pipeline.
 
 ### Prerequisites
 
