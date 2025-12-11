@@ -244,6 +244,7 @@ def execute_optimization(
 
         # --- Create Output Handler ---
         from .__init__ import __dashboard_url__
+
         output_handler = create_output_handler(
             output_mode=output_mode,
             console=console,
@@ -287,12 +288,12 @@ def execute_optimization(
                 plan=run_response["plan"],
                 initial_code=run_response["code"],
                 initial_solution_id=run_response["solution_id"],
-                )
+            )
 
             # Write the initial code string to the logs
             write_to_path(fp=runs_dir / f"step_0{source_fp.suffix}", content=run_response["code"])
 
-            # Baseline evaluation
+            # Baseline evaluation - print message before running local evaluation
             output_handler.on_baseline_evaluating()
 
             # Run evaluation on the initial solution (file swap ensures original is restored)
@@ -308,15 +309,14 @@ def execute_optimization(
             if save_logs:
                 save_execution_output(runs_dir, step=0, output=term_out)
 
-            output_handler.on_baseline_completed(eval_output=term_out)
-
             # Track previous best for detecting new bests
             previous_best_metric = None
+            baseline_reported = False
+            # Track previous solution to report its result when the API evaluates it
+            previous_solution_id = run_response["solution_id"]
 
             # Starting from step 1 to steps (inclusive) because the baseline solution is step 0, so we want to optimize for steps worth of steps
             for step in range(1, steps + 1):
-                output_handler.on_step_generating(step=step)
-
                 # Check for stop request
                 if run_id:
                     try:
@@ -333,6 +333,8 @@ def execute_optimization(
                     except Exception as e:
                         output_handler.on_warning(f"Error checking run status: {e}. Continuing optimization...")
 
+                output_handler.on_step_starting(step=step, previous_best_metric=previous_best_metric)
+
                 # Send feedback and get next suggestion
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
                     console=console, step=step, run_id=run_id, execution_output=term_out, auth_headers=auth_headers
@@ -343,6 +345,33 @@ def execute_optimization(
                 status_response = get_optimization_run_status(
                     console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
                 )
+
+                # Report baseline result after first API call evaluates it
+                if not baseline_reported:
+                    baseline_metric = status_response.get("best_result", {}).get("metric_value")
+                    output_handler.on_baseline_completed(eval_output=term_out, best_metric=baseline_metric)
+                    if baseline_metric is not None:
+                        previous_best_metric = baseline_metric
+                    baseline_reported = True
+                else:
+                    # Report the previous step's result (step - 1) now that API has evaluated it
+                    try:
+                        prev_node = get_node_from_status(status_response=status_response, solution_id=previous_solution_id)
+                        prev_metric = prev_node.metric
+                        is_new_best = prev_metric is not None and prev_metric != previous_best_metric and (
+                            previous_best_metric is None
+                            or (maximize and prev_metric > previous_best_metric)
+                            or (not maximize and prev_metric < previous_best_metric)
+                        )
+                        output_handler.on_step_result(step=step - 1, metric=prev_metric, is_new_best=is_new_best)
+                        if is_new_best:
+                            previous_best_metric = prev_metric
+                    except ValueError:
+                        # Previous node not found - report as buggy
+                        output_handler.on_step_result(step=step - 1, metric=None, is_new_best=False)
+
+                # Update previous_solution_id for next iteration
+                previous_solution_id = eval_and_next_solution_response["solution_id"]
 
                 nodes_list_from_status = status_response.get("nodes") or []
                 best_solution_node = get_best_node_from_status(status_response=status_response)
@@ -371,8 +400,6 @@ def execute_optimization(
                     solution_id=eval_and_next_solution_response["solution_id"],
                 )
 
-                output_handler.on_step_evaluating(step=step)
-
                 # Run evaluation and restore original code after
                 term_out = run_evaluation_with_file_swap(
                     file_path=source_fp,
@@ -386,18 +413,7 @@ def execute_optimization(
                 if save_logs:
                     save_execution_output(runs_dir, step=step, output=term_out)
 
-                # Determine if this is a new best
-                current_best_metric = best_solution_node.metric if best_solution_node else None
-                is_new_best = current_best_metric is not None and current_best_metric != previous_best_metric
-                if is_new_best:
-                    previous_best_metric = current_best_metric
-
-                output_handler.on_step_completed(
-                    step=step,
-                    eval_output=term_out,
-                    best_metric=current_best_metric,
-                    is_new_best=is_new_best,
-                )
+                output_handler.on_step_completed(step=step, eval_output=term_out)
 
             if not user_stop_requested_flag:
                 # Evaluate the final solution that's been generated
@@ -410,6 +426,23 @@ def execute_optimization(
 
                 nodes_list_from_status_final = status_response.get("nodes") or []
                 best_solution_node = get_best_node_from_status(status_response=status_response)
+
+                # Report the final step's result now that API has evaluated it
+                try:
+                    final_node = get_node_from_status(status_response=status_response, solution_id=previous_solution_id)
+                    final_metric = final_node.metric
+                    is_new_best = final_metric is not None and final_metric != previous_best_metric and (
+                        previous_best_metric is None
+                        or (maximize and final_metric > previous_best_metric)
+                        or (not maximize and final_metric < previous_best_metric)
+                    )
+                    output_handler.on_step_result(step=steps, metric=final_metric, is_new_best=is_new_best)
+                except ValueError:
+                    # Final node not found - use best result as fallback
+                    if best_solution_node:
+                        output_handler.on_step_result(step=steps, metric=best_solution_node.metric, is_new_best=False)
+                    else:
+                        output_handler.on_step_result(step=steps, metric=None, is_new_best=False)
                 best_solution_code = best_solution_node.code if best_solution_node else None
                 best_metric_value = status_response.get("best_result", {}).get("metric_value")
 
@@ -418,9 +451,7 @@ def execute_optimization(
                     write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
 
                 output_handler.on_run_completed(
-                    best_node=best_solution_node,
-                    best_metric_value=best_metric_value,
-                    nodes=nodes_list_from_status_final,
+                    best_node=best_solution_node, best_metric_value=best_metric_value, nodes=nodes_list_from_status_final
                 )
 
                 # Mark as completed normally for the finally block
@@ -643,6 +674,7 @@ def resume_optimization(
 
         # Create Output Handler
         from .__init__ import __dashboard_url__
+
         output_handler = create_output_handler(
             output_mode=output_mode,
             console=console,
@@ -670,10 +702,12 @@ def resume_optimization(
 
             # Use backend-provided execution output only (no fallback)
             term_out = resume_resp.get("execution_output") or ""
+            is_baseline_step = current_step == 0
 
             # If missing output, evaluate once before first suggest
             if term_out is None or len(term_out.strip()) == 0:
-                output_handler.on_baseline_evaluating()
+                if is_baseline_step:
+                    output_handler.on_baseline_evaluating()
 
                 term_out = run_evaluation_with_file_swap(
                     file_path=source_fp,
@@ -682,17 +716,20 @@ def resume_optimization(
                     eval_command=eval_command,
                     timeout=eval_timeout,
                 )
-                output_handler.on_baseline_completed(eval_output=term_out)
 
             if save_logs:
                 save_execution_output(runs_dir, step=current_step, output=term_out)
 
             # Track previous best for detecting new bests
             previous_best_metric = None
+            # Track previous solution to report its result when the API evaluates it
+            previous_solution_id = resume_resp.get("solution_id")
+            # Track if this is the first iteration (to handle baseline vs step results)
+            first_iteration = True
 
             # Continue optimization: steps current_step+1..total_steps
             for step in range(current_step + 1, total_steps + 1):
-                output_handler.on_step_generating(step=step)
+                output_handler.on_step_starting(step=step, previous_best_metric=previous_best_metric)
 
                 # Check for stop request
                 try:
@@ -724,6 +761,47 @@ def resume_optimization(
                 status_response = get_optimization_run_status(
                     console=console, run_id=resume_resp["run_id"], include_history=True, auth_headers=auth_headers
                 )
+
+                # Report the previous step's result now that API has evaluated it
+                if first_iteration:
+                    # For resume, the first iteration evaluates the step we resumed from
+                    # Report it as baseline if it was step 0, otherwise as a step result
+                    if current_step == 0:
+                        baseline_metric = status_response.get("best_result", {}).get("metric_value")
+                        output_handler.on_baseline_completed(eval_output=term_out, best_metric=baseline_metric)
+                        if baseline_metric is not None:
+                            previous_best_metric = baseline_metric
+                    else:
+                        try:
+                            prev_node = get_node_from_status(status_response=status_response, solution_id=previous_solution_id)
+                            prev_metric = prev_node.metric
+                            if prev_metric is not None:
+                                # First iteration of resume - treat as potentially new best
+                                output_handler.on_step_result(step=current_step, metric=prev_metric, is_new_best=True)
+                                previous_best_metric = prev_metric
+                        except ValueError:
+                            pass
+                    first_iteration = False
+                else:
+                    # Report the previous step's result (step - 1)
+                    try:
+                        prev_node = get_node_from_status(status_response=status_response, solution_id=previous_solution_id)
+                        prev_metric = prev_node.metric
+                        is_new_best = prev_metric is not None and prev_metric != previous_best_metric and (
+                            previous_best_metric is None
+                            or (maximize and prev_metric > previous_best_metric)
+                            or (not maximize and prev_metric < previous_best_metric)
+                        )
+                        output_handler.on_step_result(step=step - 1, metric=prev_metric, is_new_best=is_new_best)
+                        if is_new_best:
+                            previous_best_metric = prev_metric
+                    except ValueError:
+                        # Previous node not found - report as buggy
+                        output_handler.on_step_result(step=step - 1, metric=None, is_new_best=False)
+
+                # Update previous_solution_id for next iteration
+                previous_solution_id = eval_and_next_solution_response["solution_id"]
+
                 nodes_list = status_response.get("nodes") or []
                 best_solution_node = get_best_node_from_status(status_response=status_response)
                 current_solution_node = get_node_from_status(
@@ -751,8 +829,6 @@ def resume_optimization(
                     solution_id=eval_and_next_solution_response["solution_id"],
                 )
 
-                output_handler.on_step_evaluating(step=step)
-
                 # Evaluate this new solution and restore original code after
                 term_out = run_evaluation_with_file_swap(
                     file_path=source_fp,
@@ -764,18 +840,7 @@ def resume_optimization(
                 if save_logs:
                     save_execution_output(runs_dir, step=step, output=term_out)
 
-                # Determine if this is a new best
-                current_best_metric = best_solution_node.metric if best_solution_node else None
-                is_new_best = current_best_metric is not None and current_best_metric != previous_best_metric
-                if is_new_best:
-                    previous_best_metric = current_best_metric
-
-                output_handler.on_step_completed(
-                    step=step,
-                    eval_output=term_out,
-                    best_metric=current_best_metric,
-                    is_new_best=is_new_best,
-                )
+                output_handler.on_step_completed(step=step, eval_output=term_out)
 
             # Final flush if not stopped
             if not user_stop_requested_flag:
@@ -789,8 +854,26 @@ def resume_optimization(
                 status_response = get_optimization_run_status(
                     console=console, run_id=resume_resp["run_id"], include_history=True, auth_headers=auth_headers
                 )
+
                 nodes_final = status_response.get("nodes") or []
                 best_solution_node = get_best_node_from_status(status_response=status_response)
+
+                # Report the final step's result now that API has evaluated it
+                try:
+                    final_node = get_node_from_status(status_response=status_response, solution_id=previous_solution_id)
+                    final_metric = final_node.metric
+                    is_new_best = final_metric is not None and final_metric != previous_best_metric and (
+                        previous_best_metric is None
+                        or (maximize and final_metric > previous_best_metric)
+                        or (not maximize and final_metric < previous_best_metric)
+                    )
+                    output_handler.on_step_result(step=total_steps, metric=final_metric, is_new_best=is_new_best)
+                except ValueError:
+                    # Final node not found - use best result as fallback
+                    if best_solution_node:
+                        output_handler.on_step_result(step=total_steps, metric=best_solution_node.metric, is_new_best=False)
+                    else:
+                        output_handler.on_step_result(step=total_steps, metric=None, is_new_best=False)
                 best_solution_code = best_solution_node.code if best_solution_node else None
                 best_metric_value = status_response.get("best_result", {}).get("metric_value")
 
@@ -799,9 +882,7 @@ def resume_optimization(
                     write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_solution_code)
 
                 output_handler.on_run_completed(
-                    best_node=best_solution_node,
-                    best_metric_value=best_metric_value,
-                    nodes=nodes_final,
+                    best_node=best_solution_node, best_metric_value=best_metric_value, nodes=nodes_final
                 )
 
                 optimization_completed_normally = True

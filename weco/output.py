@@ -55,52 +55,37 @@ class OutputHandler(ABC):
         pass
 
     @abstractmethod
-    def on_baseline_completed(self, eval_output: str) -> None:
+    def on_baseline_completed(self, eval_output: str, best_metric: Optional[float] = None) -> None:
         """Called after baseline evaluation completes."""
         pass
 
     @abstractmethod
-    def on_step_generating(self, step: int) -> None:
-        """Called before generating code for a step."""
+    def on_step_starting(self, step: int, previous_best_metric: Optional[float] = None) -> None:
+        """Called at the start of a step (before API call that evaluates previous and generates next)."""
         pass
 
     @abstractmethod
     def on_step_generated(
-        self,
-        step: int,
-        code: str,
-        plan: str,
-        nodes: list,
-        current_node: Node,
-        best_node: Optional[Node],
-        solution_id: str,
+        self, step: int, code: str, plan: str, nodes: list, current_node: Node, best_node: Optional[Node], solution_id: str
     ) -> None:
         """Called after code generation, with updated state."""
         pass
 
     @abstractmethod
-    def on_step_evaluating(self, step: int) -> None:
-        """Called before evaluating the generated code."""
+    def on_step_completed(self, step: int, eval_output: str) -> None:
+        """Called after local evaluation completes (result not yet known)."""
         pass
 
     @abstractmethod
-    def on_step_completed(
-        self,
-        step: int,
-        eval_output: str,
-        best_metric: Optional[float],
-        is_new_best: bool,
-    ) -> None:
-        """Called after evaluation completes."""
+    def on_step_result(self, step: int, metric: Optional[float], is_new_best: bool) -> None:
+        """Called when a step's metric result becomes known (after API evaluates it).
+
+        If metric is None, the solution was buggy/invalid.
+        """
         pass
 
     @abstractmethod
-    def on_run_completed(
-        self,
-        best_node: Optional[Node],
-        best_metric_value: Optional[float],
-        nodes: list,
-    ) -> None:
+    def on_run_completed(self, best_node: Optional[Node], best_metric_value: Optional[float], nodes: list) -> None:
         """Called when run completes successfully."""
         pass
 
@@ -134,14 +119,7 @@ class RichOutputHandler(OutputHandler):
     """Rich output handler using Live displays, panels, and smooth updates."""
 
     def __init__(
-        self,
-        console: Console,
-        metric_name: str,
-        maximize: bool,
-        total_steps: int,
-        model: str,
-        runs_dir: str,
-        source_fp,
+        self, console: Console, metric_name: str, maximize: bool, total_steps: int, model: str, runs_dir: str, source_fp
     ):
         self.console = console
         self.metric_name = metric_name
@@ -153,11 +131,7 @@ class RichOutputHandler(OutputHandler):
 
         # Create panels
         self.summary_panel = SummaryPanel(
-            maximize=maximize,
-            metric_name=metric_name,
-            total_steps=total_steps,
-            model=model,
-            runs_dir=runs_dir,
+            maximize=maximize, metric_name=metric_name, total_steps=total_steps, model=model, runs_dir=runs_dir
         )
         self.solution_panels = SolutionPanels(metric_name=metric_name, source_fp=source_fp)
         self.eval_output_panel = EvaluationOutputPanel()
@@ -185,9 +159,7 @@ class RichOutputHandler(OutputHandler):
         if not self.live:
             return
 
-        current_solution_panel, best_solution_panel = self.solution_panels.get_display(
-            current_step=self.current_step
-        )
+        current_solution_panel, best_solution_panel = self.solution_panels.get_display(current_step=self.current_step)
         smooth_update(
             live=self.live,
             layout=self.layout,
@@ -234,13 +206,7 @@ class RichOutputHandler(OutputHandler):
 
         # Update solution panels
         self.solution_panels.update(
-            current_node=Node(
-                id=initial_solution_id,
-                parent_id=None,
-                code=initial_code,
-                metric=None,
-                is_buggy=None,
-            ),
+            current_node=Node(id=initial_solution_id, parent_id=None, code=initial_code, metric=None, is_buggy=None),
             best_node=None,
         )
 
@@ -250,7 +216,7 @@ class RichOutputHandler(OutputHandler):
         # No visible change for rich mode - already showing initial state
         pass
 
-    def on_baseline_completed(self, eval_output: str) -> None:
+    def on_baseline_completed(self, eval_output: str, best_metric: Optional[float] = None) -> None:
         self.eval_output_panel.update(output=eval_output)
         if self.live:
             smooth_update(
@@ -260,19 +226,12 @@ class RichOutputHandler(OutputHandler):
                 transition_delay=0.1,
             )
 
-    def on_step_generating(self, step: int) -> None:
-        # No visible change for rich mode during generation
+    def on_step_starting(self, step: int, previous_best_metric: Optional[float] = None) -> None:
+        # No visible change for rich mode - Live display updates automatically
         pass
 
     def on_step_generated(
-        self,
-        step: int,
-        code: str,
-        plan: str,
-        nodes: list,
-        current_node: Node,
-        best_node: Optional[Node],
-        solution_id: str,
+        self, step: int, code: str, plan: str, nodes: list, current_node: Node, best_node: Optional[Node], solution_id: str
     ) -> None:
         self.current_step = step
         self.summary_panel.set_step(step=step)
@@ -286,17 +245,7 @@ class RichOutputHandler(OutputHandler):
 
         self._update_display()
 
-    def on_step_evaluating(self, step: int) -> None:
-        # No visible change for rich mode during evaluation
-        pass
-
-    def on_step_completed(
-        self,
-        step: int,
-        eval_output: str,
-        best_metric: Optional[float],
-        is_new_best: bool,
-    ) -> None:
+    def on_step_completed(self, step: int, eval_output: str) -> None:
         self.eval_output_panel.update(output=eval_output)
         if self.live:
             smooth_update(
@@ -306,12 +255,11 @@ class RichOutputHandler(OutputHandler):
                 transition_delay=0.1,
             )
 
-    def on_run_completed(
-        self,
-        best_node: Optional[Node],
-        best_metric_value: Optional[float],
-        nodes: list,
-    ) -> None:
+    def on_step_result(self, step: int, metric: Optional[float], is_new_best: bool) -> None:
+        # Rich mode updates the tree panel which shows metrics - no separate action needed
+        pass
+
+    def on_run_completed(self, best_node: Optional[Node], best_metric_value: Optional[float], nodes: list) -> None:
         self.summary_panel.set_step(step=self.total_steps)
         self.tree_panel.build_metric_tree(nodes=nodes)
 
@@ -325,9 +273,7 @@ class RichOutputHandler(OutputHandler):
             else "[red] No valid solution found.[/]"
         )
 
-        self.end_optimization_layout["summary"].update(
-            self.summary_panel.get_display(final_message=final_message)
-        )
+        self.end_optimization_layout["summary"].update(self.summary_panel.get_display(final_message=final_message))
         self.end_optimization_layout["tree"].update(self.tree_panel.get_display(is_done=True))
         self.end_optimization_layout["best_solution"].update(best_solution_panel)
 
@@ -340,9 +286,7 @@ class RichOutputHandler(OutputHandler):
     def on_error(self, message: str, run_id: Optional[str] = None) -> None:
         from rich.panel import Panel
 
-        self.console.print(
-            Panel(f"[bold red]Error: {message}", title="[bold red]Optimization Error", border_style="red")
-        )
+        self.console.print(Panel(f"[bold red]Error: {message}", title="[bold red]Optimization Error", border_style="red"))
         if run_id:
             self.console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
 
@@ -354,27 +298,33 @@ class RichOutputHandler(OutputHandler):
 
 
 class PlainOutputHandler(OutputHandler):
-    """Plain output handler using simple console.print with colors."""
+    """Plain output handler using simple console.print with colors and spinners."""
 
-    def __init__(
-        self,
-        console: Console,
-        metric_name: str,
-        maximize: bool,
-        total_steps: int,
-    ):
+    def __init__(self, console: Console, metric_name: str, maximize: bool, total_steps: int):
         self.console = console
         self.metric_name = metric_name
         self.maximize = maximize
         self.total_steps = total_steps
-        self.previous_best_metric: Optional[float] = None
         self.run_id: Optional[str] = None
+        self._status = None  # Active spinner status
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        self._stop_spinner()
+
+    def _stop_spinner(self):
+        """Stop any active spinner."""
+        if self._status is not None:
+            self._status.stop()
+            self._status = None
+
+    def _start_spinner(self, message: str):
+        """Start a new spinner with the given message."""
+        self._stop_spinner()
+        self._status = self.console.status(message, spinner="dots")
+        self._status.start()
 
     def get_live_ref(self) -> Optional[Live]:
         return None
@@ -391,87 +341,71 @@ class PlainOutputHandler(OutputHandler):
         initial_solution_id: str,
     ) -> None:
         self.run_id = run_id
-        self.console.print("[cyan]Starting optimization run...[/]")
-        self.console.print(f"[bold]Run ID:[/] {run_id}")
-        self.console.print(f"[bold]Dashboard:[/] [link={dashboard_url}]{dashboard_url}[/link]")
-        self.console.print(f"[bold]Model:[/] {model}")
-        self.console.print(f"[bold]Logs:[/] {runs_dir}/{run_id}")
-        self.console.print(
-            f"[bold]Objective:[/] {'Maximize' if self.maximize else 'Minimize'} {self.metric_name}"
-        )
+        goal = "Maximize" if self.maximize else "Minimize"
+        self.console.print("[cyan]Optimization started[/]")
+        self.console.print(f"├─ Run:       {run_id}")
+        self.console.print(f"├─ Dashboard: [link={dashboard_url}]{dashboard_url}[/link]")
+        self.console.print(f"├─ Model:     {model}")
+        self.console.print(f"└─ Objective: {goal} {self.metric_name}")
         self.console.print()
 
     def on_baseline_evaluating(self) -> None:
-        self.console.print("[dim]Step 0: evaluating baseline...[/]")
+        self._start_spinner("[dim]Evaluating baseline...[/]")
 
-    def on_baseline_completed(self, eval_output: str) -> None:
-        # No explicit output for baseline completion in plain mode
+    def on_baseline_completed(self, eval_output: str, best_metric: Optional[float] = None) -> None:
+        self._stop_spinner()
+        if best_metric is not None:
+            self.console.print(f"Baseline {self.metric_name} = {best_metric:.4f}")
+
+    def on_step_starting(self, step: int, previous_best_metric: Optional[float] = None) -> None:
+        # Don't start spinner here - wait until previous result is shown
         pass
-
-    def on_step_generating(self, step: int) -> None:
-        self.console.print(f"[dim]Step {step}/{self.total_steps}: generating...[/]")
 
     def on_step_generated(
-        self,
-        step: int,
-        code: str,
-        plan: str,
-        nodes: list,
-        current_node: Node,
-        best_node: Optional[Node],
-        solution_id: str,
+        self, step: int, code: str, plan: str, nodes: list, current_node: Node, best_node: Optional[Node], solution_id: str
     ) -> None:
-        # No explicit output for step generated in plain mode
-        pass
+        self._start_spinner(f"[dim][{step}/{self.total_steps}] Evaluating...[/]")
 
-    def on_step_evaluating(self, step: int) -> None:
-        self.console.print(f"[dim]Step {step}/{self.total_steps}: evaluating...[/]")
+    def on_step_completed(self, step: int, eval_output: str) -> None:
+        self._stop_spinner()
+        # Start spinner for the analysis phase (API call that evaluates this step's output)
+        self._start_spinner(f"[dim][{step}/{self.total_steps}] Analyzing results...[/]")
 
-    def on_step_completed(
-        self,
-        step: int,
-        eval_output: str,
-        best_metric: Optional[float],
-        is_new_best: bool,
-    ) -> None:
-        if best_metric is not None:
-            if is_new_best:
-                self.console.print(
-                    f"[green]Step {step}/{self.total_steps}: new best {self.metric_name} = {best_metric:.4f}[/]"
-                )
-                self.previous_best_metric = best_metric
-            else:
-                self.console.print(
-                    f"Step {step}/{self.total_steps}: {self.metric_name} = {best_metric:.4f} (best so far)"
-                )
-
-    def on_run_completed(
-        self,
-        best_node: Optional[Node],
-        best_metric_value: Optional[float],
-        nodes: list,
-    ) -> None:
-        self.console.print()
-        self.console.print("[bold green]Optimization complete![/]")
-        if best_metric_value is not None:
-            goal_word = "maximized" if self.maximize else "minimized"
-            self.console.print(f"[green]{self.metric_name.capitalize()} {goal_word}![/]")
-            self.console.print(f"[bold]Best {self.metric_name}:[/] [green]{best_metric_value:.4f}[/]")
+    def on_step_result(self, step: int, metric: Optional[float], is_new_best: bool) -> None:
+        self._stop_spinner()  # Ensure no spinner is running when printing result
+        if metric is None:
+            self.console.print(f"[dim][{step}/{self.total_steps}] buggy solution[/]")
+        elif is_new_best:
+            self.console.print(f"[green][{step}/{self.total_steps}] {self.metric_name} = {metric:.4f} ★ new best[/]")
         else:
+            self.console.print(f"[{step}/{self.total_steps}] {self.metric_name} = {metric:.4f}")
+
+    def on_run_completed(self, best_node: Optional[Node], best_metric_value: Optional[float], nodes: list) -> None:
+        self._stop_spinner()
+        self.console.print()
+        if best_metric_value is not None:
+            self.console.print("[bold green]Optimization complete![/]")
+            self.console.print(f"Best {self.metric_name}: [green]{best_metric_value:.4f}[/]")
+        else:
+            self.console.print("[bold yellow]Optimization complete![/]")
             self.console.print("[red]No valid solution found.[/]")
 
     def on_run_stopped(self) -> None:
+        self._stop_spinner()
         self.console.print("[yellow]Run terminated by user request.[/]")
 
     def on_error(self, message: str, run_id: Optional[str] = None) -> None:
+        self._stop_spinner()
         self.console.print(f"\n[bold red]Error:[/] {message}")
         if run_id:
             self.console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
 
     def on_warning(self, message: str) -> None:
+        self._stop_spinner()
         self.console.print(f"\n[bold red]Warning: {message}[/]")
 
     def on_stop_requested(self) -> None:
+        self._stop_spinner()
         self.console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
 
 
@@ -497,9 +431,4 @@ def create_output_handler(
             source_fp=source_fp,
         )
     else:
-        return PlainOutputHandler(
-            console=console,
-            metric_name=metric_name,
-            maximize=maximize,
-            total_steps=total_steps,
-        )
+        return PlainOutputHandler(console=console, metric_name=metric_name, maximize=maximize, total_steps=total_steps)
