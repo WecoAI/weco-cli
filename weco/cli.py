@@ -77,6 +77,13 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    run_parser.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for colored panels/progress (default), 'plain' for simple text updates",
+    )
 
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
@@ -128,6 +135,13 @@ def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    resume_parser.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for colored panels/progress (default), 'plain' for simple text updates",
+    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -147,6 +161,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         eval_timeout=args.eval_timeout,
         save_logs=args.save_logs,
         apply_change=args.apply_change,
+        output_mode=args.output,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -156,7 +171,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(run_id=args.run_id, console=console, apply_change=args.apply_change)
+    success = resume_optimization(run_id=args.run_id, console=console, apply_change=args.apply_change, output_mode=args.output)
     sys.exit(0 if success else 1)
 
 
