@@ -11,6 +11,36 @@ install(show_locals=True)
 console = Console()
 
 
+def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
+    """Parse API key arguments from CLI into a dictionary.
+
+    Args:
+        api_key_args: List of strings in format 'provider=key' (e.g., ['openai=sk-xxx', 'anthropic=sk-ant-yyy'])
+
+    Returns:
+        Dictionary mapping provider names to API keys. Returns empty dict if no keys provided.
+
+    Raises:
+        ValueError: If any argument is not in the correct format.
+    """
+    if not api_key_args:
+        return {}
+
+    api_keys = {}
+    for arg in api_key_args:
+        try:
+            provider, key = (s.strip() for s in arg.split("=", 1))
+        except Exception:
+            raise ValueError(f"Invalid API key format: '{arg}'. Expected format: 'provider=key'")
+
+        if not provider or not key:
+            raise ValueError(f"Invalid API key format: '{arg}'. Provider and key must be non-empty.")
+
+        api_keys[provider.lower()] = key
+
+    return api_keys
+
+
 # Function to define and return the run_parser (or configure it on a passed subparser object)
 # This helps keep main() cleaner and centralizes run command arg definitions.
 def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
@@ -77,6 +107,13 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    run_parser.add_argument(
+        "--api-key",
+        nargs="+",
+        type=str,
+        default=None,
+        help="API keys for LLM providers in the format 'provider=key' (e.g., '--api-key openai=sk-xxx anthropic=sk-ant-yyy'). Only available to authenticated users.",
+    )
 
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
@@ -128,11 +165,24 @@ def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    resume_parser.add_argument(
+        "--api-key",
+        nargs="+",
+        type=str,
+        default=None,
+        help="API keys for LLM providers in the format 'provider=key' (e.g., '--api-key openai=sk-xxx anthropic=sk-ant-yyy'). Only available to authenticated users.",
+    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import execute_optimization
+
+    try:
+        api_keys = parse_api_keys(args.api_key)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing API keys: {e}[/]")
+        sys.exit(1)
 
     success = execute_optimization(
         source=args.source,
@@ -147,6 +197,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         eval_timeout=args.eval_timeout,
         save_logs=args.save_logs,
         apply_change=args.apply_change,
+        api_keys=api_keys,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -156,7 +207,13 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(run_id=args.run_id, console=console, apply_change=args.apply_change)
+    try:
+        api_keys = parse_api_keys(args.api_key)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing API keys: {e}[/]")
+        sys.exit(1)
+
+    success = resume_optimization(run_id=args.run_id, console=console, api_keys=api_keys, apply_change=args.apply_change)
     sys.exit(0 if success else 1)
 
 

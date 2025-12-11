@@ -135,6 +135,7 @@ def execute_optimization(
     eval_timeout: Optional[int] = None,
     save_logs: bool = False,
     apply_change: bool = False,
+    api_keys: Optional[dict[str, str]] = None,
 ) -> bool:
     """
     Execute the core optimization logic.
@@ -245,6 +246,7 @@ def execute_optimization(
             save_logs=save_logs,
             log_dir=log_dir,
             auth_headers=auth_headers,
+            api_keys=api_keys,
         )
         # Indicate the endpoint failed to return a response and the optimization was unsuccessful
         if run_response is None:
@@ -371,7 +373,12 @@ def execute_optimization(
 
                 # Send feedback and get next suggestion
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console, step=step, run_id=run_id, execution_output=term_out, auth_headers=auth_headers
+                    console=console,
+                    step=step,
+                    run_id=run_id,
+                    execution_output=term_out,
+                    auth_headers=auth_headers,
+                    api_keys=api_keys,
                 )
                 # Save next solution (.runs/<run-id>/step_<step>.<extension>)
                 write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=eval_and_next_solution_response["code"])
@@ -445,7 +452,12 @@ def execute_optimization(
             if not user_stop_requested_flag:
                 # Evaluate the final solution thats been generated
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
-                    console=console, step=steps, run_id=run_id, execution_output=term_out, auth_headers=auth_headers
+                    console=console,
+                    step=steps,
+                    run_id=run_id,
+                    execution_output=term_out,
+                    auth_headers=auth_headers,
+                    api_keys=api_keys,
                 )
                 summary_panel.set_step(step=steps)
                 status_response = get_optimization_run_status(
@@ -544,7 +556,9 @@ def execute_optimization(
     return optimization_completed_normally or user_stop_requested_flag
 
 
-def resume_optimization(run_id: str, console: Optional[Console] = None, apply_change: bool = False) -> bool:
+def resume_optimization(
+    run_id: str, console: Optional[Console] = None, apply_change: bool = False, api_keys: Optional[dict[str, str]] = None
+) -> bool:
     """Resume an interrupted run from the most recent node and continue optimization."""
     if console is None:
         console = Console()
@@ -792,6 +806,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
                     auth_headers=auth_headers,
+                    api_keys=api_keys,
                 )
 
                 # Save next solution to logs
@@ -863,6 +878,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                     run_id=resume_resp["run_id"],
                     execution_output=term_out,
                     auth_headers=auth_headers,
+                    api_keys=api_keys,
                 )
                 summary_panel.set_step(step=total_steps)
                 status_response = get_optimization_run_status(
