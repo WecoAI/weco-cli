@@ -271,6 +271,7 @@ def execute_optimization(
             metric_name=metric,
             maximize=maximize,
             total_steps=steps,
+            console=console,
         )
 
         # --- Live Update Loop ---
@@ -394,22 +395,13 @@ def execute_optimization(
                         )
                         current_run_status_val = current_status_response.get("status")
                         if current_run_status_val == "stopping":
-                            if use_rich:
-                                console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
-                            else:
-                                print("\nStop request received. Terminating run gracefully...")
+                            console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
                             user_stop_requested_flag = True
                             break
                     except requests.exceptions.RequestException as e:
-                        if use_rich:
-                            console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
-                        else:
-                            print(f"\nWarning: Unable to check run status: {e}. Continuing optimization...")
+                        console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
                     except Exception as e:
-                        if use_rich:
-                            console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
-                        else:
-                            print(f"\nWarning: Error checking run status: {e}. Continuing optimization...")
+                        console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
                 # Send feedback and get next suggestion
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
@@ -489,8 +481,6 @@ def execute_optimization(
                 # Plain mode: print step completion with metric info
                 if plain_handler:
                     # Get the metric value from the current solution (from previous step's evaluation)
-                    current_metric = None
-                    current_is_buggy = False
                     # We need to check the status for the result of this evaluation in the next iteration
                     # For now, get info from tree_panel's metric tree
                     best_node = tree_panel.metric_tree.get_best_node()
@@ -502,9 +492,9 @@ def execute_optimization(
                     # For plain output, we print current best status
                     if current_best_metric is not None:
                         if is_new_best:
-                            print(f"Step {step}/{steps}: new best {metric} = {current_best_metric:.4f}")
+                            console.print(f"[green]Step {step}/{steps}: new best {metric} = {current_best_metric:.4f}[/]")
                         else:
-                            print(f"Step {step}/{steps}: {metric} = {current_best_metric:.4f} (best so far)")
+                            console.print(f"Step {step}/{steps}: {metric} = {current_best_metric:.4f} (best so far)")
 
             if not user_stop_requested_flag:
                 # Evaluate the final solution thats been generated
@@ -565,10 +555,9 @@ def execute_optimization(
             error_message = str(e)
         if use_rich:
             console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         else:
-            print(f"\nError: {error_message}")
-            print(f"\nTo resume this run, use: weco resume {run_id}\n")
+            console.print(f"\n[bold red]Error:[/] {error_message}")
+        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         # Ensure optimization_completed_normally is False
         optimization_completed_normally = False
     finally:
@@ -602,15 +591,9 @@ def execute_optimization(
                 )
                 if should_apply:
                     write_to_path(fp=source_fp, content=best_solution_code)
-                    if use_rich:
-                        console.print("\n[green]Best solution applied to the source file.[/]\n")
-                    else:
-                        print("\nBest solution applied to the source file.\n")
+                    console.print("\n[green]Best solution applied to the source file.[/]\n")
             else:
-                if use_rich:
-                    console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
-                else:
-                    print("\nA better solution was not found. No changes to apply.\n")
+                console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
 
             report_termination(
                 run_id=run_id,
@@ -622,12 +605,8 @@ def execute_optimization(
 
         # Handle exit
         if user_stop_requested_flag:
-            if use_rich:
-                console.print("[yellow]Run terminated by user request.[/]")
-                console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
-            else:
-                print("Run terminated by user request.")
-                print(f"\nTo resume this run, use: weco resume {run_id}\n")
+            console.print("[yellow]Run terminated by user request.[/]")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
 
     return optimization_completed_normally or user_stop_requested_flag
 
@@ -657,10 +636,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
             live_ref.stop()  # Stop the live update loop so that messages are printed to the console
 
         signal_name = signal.Signals(signum).name
-        if use_rich:
-            console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]\n")
-        else:
-            print(f"\nTermination signal ({signal_name}) received. Shutting down...\n")
+        console.print(f"\n[bold yellow]Termination signal ({signal_name}) received. Shutting down...[/]\n")
         stop_heartbeat_event.set()
         if heartbeat_thread and heartbeat_thread.is_alive():
             heartbeat_thread.join(timeout=2)
@@ -672,10 +648,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 details=f"Process terminated by signal {signal_name} ({signum}).",
                 auth_headers=current_auth_headers_for_heartbeat,
             )
-            if use_rich:
-                console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]\n")
-            else:
-                print(f"\nTo resume this run, use: weco resume {current_run_id_for_heartbeat}\n")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {current_run_id_for_heartbeat}[/]\n")
         sys.exit(0)
 
     # Set up signal handlers for this run
@@ -705,7 +678,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                     Panel(f"[bold red]Error fetching run status: {e}", title="[bold red]Resume Error", border_style="red")
                 )
             else:
-                print(f"Error fetching run status: {e}")
+                console.print(f"[bold red]Error fetching run status:[/] {e}")
             return False
 
         run_status_val = status.get("status")
@@ -719,7 +692,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                     )
                 )
             else:
-                print(f"Run {run_id} cannot be resumed (status: {run_status_val}). Only 'error' or 'terminated' runs can be resumed.")
+                console.print(f"[yellow]Run {run_id} cannot be resumed (status: {run_status_val}). Only 'error' or 'terminated' runs can be resumed.[/]")
             return False
 
         objective = status.get("objective", {})
@@ -737,35 +710,21 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
         current_step = int(status["current_step"])
         steps_remaining = int(total_steps) - int(current_step)
 
-        if use_rich:
-            console.print("[cyan]Resume Run Confirmation[/]")
-            console.print(f"  Run ID: {run_id}")
-            console.print(f"  Run Name: {status.get('run_name', 'N/A')}")
-            console.print(f"  Status: {run_status_val}")
-            console.print(f"  Objective: {metric_name} ({'maximize' if maximize else 'minimize'})")
-            console.print(f"  Model: {model_name}")
-            console.print(f"  Eval Command: {objective.get('evaluation_command', 'N/A')}")
-            console.print(f"  Total Steps: {total_steps} | Resume Step: {current_step} | Steps Remaining: {steps_remaining}")
-            console.print(f"  Last Updated: {status.get('updated_at', 'N/A')}")
-        else:
-            print("Resume Run Confirmation")
-            print(f"  Run ID: {run_id}")
-            print(f"  Run Name: {status.get('run_name', 'N/A')}")
-            print(f"  Status: {run_status_val}")
-            print(f"  Objective: {metric_name} ({'maximize' if maximize else 'minimize'})")
-            print(f"  Model: {model_name}")
-            print(f"  Eval Command: {objective.get('evaluation_command', 'N/A')}")
-            print(f"  Total Steps: {total_steps} | Resume Step: {current_step} | Steps Remaining: {steps_remaining}")
-            print(f"  Last Updated: {status.get('updated_at', 'N/A')}")
+        console.print("[cyan]Resume Run Confirmation[/]")
+        console.print(f"  [bold]Run ID:[/] {run_id}")
+        console.print(f"  [bold]Run Name:[/] {status.get('run_name', 'N/A')}")
+        console.print(f"  [bold]Status:[/] {run_status_val}")
+        console.print(f"  [bold]Objective:[/] {metric_name} ({'maximize' if maximize else 'minimize'})")
+        console.print(f"  [bold]Model:[/] {model_name}")
+        console.print(f"  [bold]Eval Command:[/] {objective.get('evaluation_command', 'N/A')}")
+        console.print(f"  [bold]Total Steps:[/] {total_steps} | [bold]Resume Step:[/] {current_step} | [bold]Steps Remaining:[/] {steps_remaining}")
+        console.print(f"  [bold]Last Updated:[/] {status.get('updated_at', 'N/A')}")
 
         unchanged = Confirm.ask(
             "Have you kept the source file and evaluation command unchanged since the original run?", default=True
         )
         if not unchanged:
-            if use_rich:
-                console.print("[yellow]Resume cancelled. Please start a new run if the environment changed.[/]")
-            else:
-                print("Resume cancelled. Please start a new run if the environment changed.")
+            console.print("[yellow]Resume cancelled. Please start a new run if the environment changed.[/]")
             return False
 
         # Call backend to prepare resume
@@ -846,6 +805,7 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
             metric_name=metric_name,
             maximize=maximize,
             total_steps=total_steps,
+            console=console,
         )
 
         # Plain mode: print resume started info
@@ -921,22 +881,13 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                         console=console, run_id=resume_resp["run_id"], include_history=False, auth_headers=auth_headers
                     )
                     if current_status_response.get("status") == "stopping":
-                        if use_rich:
-                            console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
-                        else:
-                            print("\nStop request received. Terminating run gracefully...")
+                        console.print("\n[bold yellow]Stop request received. Terminating run gracefully...[/]")
                         user_stop_requested_flag = True
                         break
                 except requests.exceptions.RequestException as e:
-                    if use_rich:
-                        console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
-                    else:
-                        print(f"\nWarning: Unable to check run status: {e}. Continuing optimization...")
+                    console.print(f"\n[bold red]Warning: Unable to check run status: {e}. Continuing optimization...[/]")
                 except Exception as e:
-                    if use_rich:
-                        console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
-                    else:
-                        print(f"\nWarning: Error checking run status: {e}. Continuing optimization...")
+                    console.print(f"\n[bold red]Warning: Error checking run status: {e}. Continuing optimization...[/]")
 
                 # Suggest next
                 eval_and_next_solution_response = evaluate_feedback_then_suggest_next_solution(
@@ -1019,9 +970,9 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                         previous_best_metric = current_best_metric
                     if current_best_metric is not None:
                         if is_new_best:
-                            print(f"Step {step}/{total_steps}: new best {metric_name} = {current_best_metric:.4f}")
+                            console.print(f"[green]Step {step}/{total_steps}: new best {metric_name} = {current_best_metric:.4f}[/]")
                         else:
-                            print(f"Step {step}/{total_steps}: {metric_name} = {current_best_metric:.4f} (best so far)")
+                            console.print(f"Step {step}/{total_steps}: {metric_name} = {current_best_metric:.4f} (best so far)")
 
             # Final flush if not stopped
             if not user_stop_requested_flag:
@@ -1075,10 +1026,9 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
             error_message = str(e)
         if use_rich:
             console.print(Panel(f"[bold red]Error: {error_message}", title="[bold red]Optimization Error", border_style="red"))
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         else:
-            print(f"\nError: {error_message}")
-            print(f"\nTo resume this run, use: weco resume {run_id}\n")
+            console.print(f"\n[bold red]Error:[/] {error_message}")
+        console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
         optimization_completed_normally = False
     finally:
         signal.signal(signal.SIGINT, original_sigint_handler)
@@ -1112,15 +1062,9 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 )
                 if should_apply:
                     write_to_path(fp=source_fp, content=best_solution_code)
-                    if use_rich:
-                        console.print("\n[green]Best solution applied to the source file.[/]\n")
-                    else:
-                        print("\nBest solution applied to the source file.\n")
+                    console.print("\n[green]Best solution applied to the source file.[/]\n")
             else:
-                if use_rich:
-                    console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
-                else:
-                    print("\nA better solution was not found. No changes to apply.\n")
+                console.print("\n[green]A better solution was not found. No changes to apply.[/]\n")
 
             report_termination(
                 run_id=run_id,
@@ -1130,10 +1074,6 @@ def resume_optimization(run_id: str, console: Optional[Console] = None, apply_ch
                 auth_headers=current_auth_headers_for_heartbeat,
             )
         if user_stop_requested_flag:
-            if use_rich:
-                console.print("[yellow]Run terminated by user request.[/]")
-                console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
-            else:
-                print("Run terminated by user request.")
-                print(f"\nTo resume this run, use: weco resume {run_id}\n")
+            console.print("[yellow]Run terminated by user request.[/]")
+            console.print(f"\n[cyan]To resume this run, use:[/] [bold cyan]weco resume {run_id}[/]\n")
     return optimization_completed_normally or user_stop_requested_flag
