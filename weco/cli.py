@@ -1,14 +1,45 @@
 import argparse
 import sys
-import pathlib
 from rich.console import Console
 from rich.traceback import install
 
 from .auth import clear_api_key
-from .utils import check_for_cli_updates
+from .constants import DEFAULT_MODELS
+from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
+
 
 install(show_locals=True)
 console = Console()
+
+
+def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
+    """Parse API key arguments from CLI into a dictionary.
+
+    Args:
+        api_key_args: List of strings in format 'provider=key' (e.g., ['openai=sk-xxx', 'anthropic=sk-ant-yyy'])
+
+    Returns:
+        Dictionary mapping provider names to API keys. Returns empty dict if no keys provided.
+
+    Raises:
+        ValueError: If any argument is not in the correct format.
+    """
+    if not api_key_args:
+        return {}
+
+    api_keys = {}
+    for arg in api_key_args:
+        try:
+            provider, key = (s.strip() for s in arg.split("=", 1))
+        except Exception:
+            raise ValueError(f"Invalid API key format: '{arg}'. Expected format: 'provider=key'")
+
+        if not provider or not key:
+            raise ValueError(f"Invalid API key format: '{arg}'. Provider and key must be non-empty.")
+
+        api_keys[provider.lower()] = key
+
+    return api_keys
 
 
 # Function to define and return the run_parser (or configure it on a passed subparser object)
@@ -78,6 +109,29 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         help="Automatically apply the best solution to the source file without prompting",
     )
 
+    default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
+    supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
+    default_models_for_providers = "\n".join([f"- {provider}: {model}" for provider, model in DEFAULT_MODELS])
+    run_parser.add_argument(
+        "--api-key",
+        nargs="+",
+        type=str,
+        default=None,
+        help=f"""Provide one or more API keys for supported LLM providers. Specify a model with the --model flag.
+Weco will use the default model for the provider if no model is specified.
+
+Use the format 'provider=KEY', separated by spaces to specify multiple keys.
+
+Example:
+    --api-key {default_api_keys}
+
+Supported provider names: {supported_providers}.
+
+Default models for providers:
+{default_models_for_providers}
+""",
+    )
+
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
     """Configure the credits command parser and all its subcommands."""
@@ -129,24 +183,62 @@ def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
         help="Automatically apply the best solution to the source file without prompting",
     )
 
+    default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
+    supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
+
+    resume_parser.add_argument(
+        "--api-key",
+        nargs="+",
+        type=str,
+        default=None,
+        help=f"""Provide one or more API keys for supported LLM providers.
+Weco will use the model associated with the run you are resuming.
+
+Use the format 'provider=KEY', separated by spaces to specify multiple keys.
+
+Example:
+    --api-key {default_api_keys}
+
+Supported provider names: {supported_providers}.
+""",
+    )
+
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import execute_optimization
+
+    try:
+        api_keys = parse_api_keys(args.api_key)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing API keys: {e}[/]")
+        sys.exit(1)
+
+    model = args.model
+    if not model:
+        try:
+            model = get_default_model(api_keys=api_keys)
+        except (UnrecognizedAPIKeysError, DefaultModelNotFoundError) as e:
+            console.print(f"[bold red]Error: {e}[/]")
+            sys.exit(1)
+
+        if api_keys:
+            console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
 
     success = execute_optimization(
         source=args.source,
         eval_command=args.eval_command,
         metric=args.metric,
         goal=args.goal,
+        model=model,
         steps=args.steps,
-        model=args.model,
         log_dir=args.log_dir,
         additional_instructions=args.additional_instructions,
         console=console,
         eval_timeout=args.eval_timeout,
         save_logs=args.save_logs,
         apply_change=args.apply_change,
+        api_keys=api_keys,
     )
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -156,7 +248,13 @@ def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
     from .optimizer import resume_optimization
 
-    success = resume_optimization(run_id=args.run_id, console=console, apply_change=args.apply_change)
+    try:
+        api_keys = parse_api_keys(args.api_key)
+    except ValueError as e:
+        console.print(f"[bold red]Error parsing API keys: {e}[/]")
+        sys.exit(1)
+
+    success = resume_optimization(run_id=args.run_id, console=console, api_keys=api_keys, apply_change=args.apply_change)
     sys.exit(0 if success else 1)
 
 
@@ -169,22 +267,13 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
-    # Add global model argument
-    parser.add_argument(
-        "-M",
-        "--model",
-        type=str,
-        default=None,
-        help="Model to use for optimization. Defaults to `o4-mini`. See full list at docs.weco.ai/cli/supported-models",
-    )
-
     subparsers = parser.add_subparsers(
         dest="command", help="Available commands"
     )  # Removed required=True for now to handle chatbot case easily
 
     # --- Run Command Parser Setup ---
     run_parser = subparsers.add_parser(
-        "run", help="Run code optimization", formatter_class=argparse.RawDescriptionHelpFormatter, allow_abbrev=False
+        "run", help="Run code optimization", formatter_class=argparse.RawTextHelpFormatter, allow_abbrev=False
     )
     configure_run_parser(run_parser)  # Use the helper to add arguments
 
@@ -199,86 +288,11 @@ def main() -> None:
     resume_parser = subparsers.add_parser(
         "resume",
         help="Resume an interrupted optimization run",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
+        formatter_class=argparse.RawTextHelpFormatter,
         allow_abbrev=False,
     )
     configure_resume_parser(resume_parser)
 
-    # Check if we should run the chatbot
-    # This logic needs to be robust. If 'run' or 'logout' is present, or -h/--help, don't run chatbot.
-    # Otherwise, if it's just 'weco' or 'weco <path>' (with optional --model), run chatbot.
-
-    def should_run_chatbot(args_list):
-        """Determine if we should run chatbot by filtering out model arguments."""
-        filtered = []
-        i = 0
-        while i < len(args_list):
-            if args_list[i] in ["-M", "--model"]:
-                # Skip the model argument and its value (if it exists)
-                i += 1  # Skip the model flag
-                if i < len(args_list):  # Skip the model value if it exists
-                    i += 1
-            elif args_list[i].startswith("--model="):
-                i += 1  # Skip --model=value format
-            else:
-                filtered.append(args_list[i])
-                i += 1
-
-        # Apply existing chatbot detection logic to filtered args
-        return len(filtered) == 0 or (len(filtered) == 1 and not filtered[0].startswith("-"))
-
-    # Check for known commands by looking at the first non-option argument
-    def get_first_non_option_arg():
-        for arg in sys.argv[1:]:
-            if not arg.startswith("-"):
-                return arg
-        return None
-
-    first_non_option = get_first_non_option_arg()
-    is_known_command = first_non_option in ["run", "logout", "credits"]
-    is_help_command = len(sys.argv) > 1 and sys.argv[1] in ["-h", "--help"]  # Check for global help
-
-    should_run_chatbot_result = should_run_chatbot(sys.argv[1:])
-    should_run_chatbot_flag = not is_known_command and not is_help_command and should_run_chatbot_result
-
-    if should_run_chatbot_flag:
-        from .chatbot import run_onboarding_chatbot  # Moved import inside
-
-        # Create a simple parser just for extracting the model argument
-        model_parser = argparse.ArgumentParser(add_help=False)
-        model_parser.add_argument("-M", "--model", type=str, default=None)
-
-        # Parse args to extract model
-        args, unknown = model_parser.parse_known_args()
-
-        # Determine project path from remaining arguments
-        filtered_args = []
-        i = 1
-        while i < len(sys.argv):
-            if sys.argv[i] in ["-M", "--model"]:
-                # Skip the model argument and its value (if it exists)
-                i += 1  # Skip the model flag
-                if i < len(sys.argv):  # Skip the model value if it exists
-                    i += 1
-            elif sys.argv[i].startswith("--model="):
-                i += 1  # Skip --model=value format
-            else:
-                filtered_args.append(sys.argv[i])
-                i += 1
-
-        project_path = pathlib.Path(filtered_args[0]) if filtered_args else pathlib.Path.cwd()
-        if not project_path.is_dir():
-            console.print(
-                f"[bold red]Error:[/] The path '{project_path}' is not a valid directory. Please provide a valid directory path."
-            )
-            sys.exit(1)
-
-        # Pass the run_parser and model to the chatbot
-        run_onboarding_chatbot(project_path, console, run_parser, model=args.model)
-        sys.exit(0)
-
-    # If not running chatbot, proceed with normal arg parsing
-    # If we reached here, a command (run, logout) or help is expected.
     args = parser.parse_args()
 
     if args.command == "logout":

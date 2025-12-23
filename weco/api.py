@@ -1,10 +1,10 @@
 import sys
-from typing import Dict, Any, Optional, Union, Tuple, List
+from typing import Dict, Any, Optional, Union, Tuple
 import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
-from .utils import truncate_output, determine_model_for_onboarding
+from .utils import truncate_output
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
@@ -109,31 +109,31 @@ def start_optimization_run(
     log_dir: str = ".runs",
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    api_keys: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
         try:
-            response = requests.post(
-                f"{__base_url__}/runs/",
-                json={
-                    "source_code": source_code,
-                    "source_path": source_path,
-                    "additional_instructions": additional_instructions,
-                    "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
-                    "optimizer": {
-                        "steps": steps,
-                        "code_generator": code_generator_config,
-                        "evaluator": evaluator_config,
-                        "search_policy": search_policy_config,
-                    },
-                    "eval_timeout": eval_timeout,
-                    "save_logs": save_logs,
-                    "log_dir": log_dir,
-                    "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+            request_json = {
+                "source_code": source_code,
+                "source_path": source_path,
+                "additional_instructions": additional_instructions,
+                "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
+                "optimizer": {
+                    "steps": steps,
+                    "code_generator": code_generator_config,
+                    "evaluator": evaluator_config,
+                    "search_policy": search_policy_config,
                 },
-                headers=auth_headers,
-                timeout=timeout,
-            )
+                "eval_timeout": eval_timeout,
+                "save_logs": save_logs,
+                "log_dir": log_dir,
+                "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+            }
+            if api_keys:
+                request_json["api_keys"] = api_keys
+
+            response = requests.post(f"{__base_url__}/runs/", json=request_json, headers=auth_headers, timeout=timeout)
             response.raise_for_status()
             result = response.json()
             # Handle None values for code and plan fields
@@ -156,11 +156,10 @@ def resume_optimization_run(
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
         try:
+            request_json = {"metadata": {"client_name": "cli", "client_version": __pkg_version__}}
+
             response = requests.post(
-                f"{__base_url__}/runs/{run_id}/resume",
-                json={"metadata": {"client_name": "cli", "client_version": __pkg_version__}},
-                headers=auth_headers,
-                timeout=timeout,
+                f"{__base_url__}/runs/{run_id}/resume", json=request_json, headers=auth_headers, timeout=timeout
             )
             response.raise_for_status()
             result = response.json()
@@ -180,17 +179,19 @@ def evaluate_feedback_then_suggest_next_solution(
     execution_output: str,
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    api_keys: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
     try:
         # Truncate the execution output before sending to backend
         truncated_output = truncate_output(execution_output)
 
+        request_json = {"execution_output": truncated_output, "metadata": {}}
+        if api_keys:
+            request_json["api_keys"] = api_keys
+
         response = requests.post(
-            f"{__base_url__}/runs/{run_id}/suggest",
-            json={"execution_output": truncated_output, "metadata": {}},
-            headers=auth_headers,
-            timeout=timeout,
+            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
         result = response.json()
@@ -314,145 +315,3 @@ def report_termination(
     except Exception as e:
         print(f"Warning: Failed to report termination to backend for run {run_id}: {e}", file=sys.stderr)
         return False
-
-
-def get_optimization_suggestions_from_codebase(
-    console: Console,
-    gitingest_summary: str,
-    gitingest_tree: str,
-    gitingest_content_str: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 3650),
-) -> Optional[List[Dict[str, Any]]]:
-    """Analyze codebase and get optimization suggestions using the model-agnostic backend API."""
-    try:
-        model = determine_model_for_onboarding()
-        response = requests.post(
-            f"{__base_url__}/onboard/analyze-codebase",
-            json={
-                "gitingest_summary": gitingest_summary,
-                "gitingest_tree": gitingest_tree,
-                "gitingest_content": gitingest_content_str,
-                "model": model,
-                "metadata": {},
-            },
-            headers=auth_headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return [option for option in result.get("options", [])]
-
-    except requests.exceptions.HTTPError as e:
-        handle_api_error(e, console)
-        return None
-    except Exception as e:
-        console.print(f"[bold red]Error: {e}[/]")
-        return None
-
-
-def generate_evaluation_script_and_metrics(
-    console: Console,
-    target_file: str,
-    description: str,
-    gitingest_content_str: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 3650),
-) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
-    """Generate evaluation script and determine metrics using the model-agnostic backend API."""
-    try:
-        model = determine_model_for_onboarding()
-        response = requests.post(
-            f"{__base_url__}/onboard/generate-script",
-            json={
-                "target_file": target_file,
-                "description": description,
-                "gitingest_content": gitingest_content_str,
-                "model": model,
-                "metadata": {},
-            },
-            headers=auth_headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return result.get("script_content"), result.get("metric_name"), result.get("goal"), result.get("reasoning")
-    except requests.exceptions.HTTPError as e:
-        handle_api_error(e, console)
-        return None, None, None, None
-    except Exception as e:
-        console.print(f"[bold red]Error: {e}[/]")
-        return None, None, None, None
-
-
-def analyze_evaluation_environment(
-    console: Console,
-    target_file: str,
-    description: str,
-    gitingest_summary: str,
-    gitingest_tree: str,
-    gitingest_content_str: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 3650),
-) -> Optional[Dict[str, Any]]:
-    """Analyze existing evaluation scripts and environment using the model-agnostic backend API."""
-    try:
-        model = determine_model_for_onboarding()
-        response = requests.post(
-            f"{__base_url__}/onboard/analyze-environment",
-            json={
-                "target_file": target_file,
-                "description": description,
-                "gitingest_summary": gitingest_summary,
-                "gitingest_tree": gitingest_tree,
-                "gitingest_content": gitingest_content_str,
-                "model": model,
-                "metadata": {},
-            },
-            headers=auth_headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        return response.json()
-
-    except requests.exceptions.HTTPError as e:
-        handle_api_error(e, console)
-        return None
-    except Exception as e:
-        console.print(f"[bold red]Error: {e}[/]")
-        return None
-
-
-def analyze_script_execution_requirements(
-    console: Console,
-    script_content: str,
-    script_path: str,
-    target_file: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 3650),
-) -> Optional[str]:
-    """Analyze script to determine proper execution command using the model-agnostic backend API."""
-    try:
-        model = determine_model_for_onboarding()
-        response = requests.post(
-            f"{__base_url__}/onboard/analyze-script",
-            json={
-                "script_content": script_content,
-                "script_path": script_path,
-                "target_file": target_file,
-                "model": model,
-                "metadata": {},
-            },
-            headers=auth_headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result = response.json()
-        return result.get("command", f"python {script_path}")
-
-    except requests.exceptions.HTTPError as e:
-        handle_api_error(e, console)
-        return f"python {script_path}"
-    except Exception as e:
-        console.print(f"[bold red]Error: {e}[/]")
-        return f"python {script_path}"

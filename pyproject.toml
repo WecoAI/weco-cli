@@ -8,7 +8,7 @@ name = "weco"
 authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
 description = "Documentation for `weco`, a CLI for using Weco AI's code optimizer."
 readme = "README.md"
-version = "0.3.5"
+version = "0.3.6"
 license = { file = "LICENSE" }
 requires-python = ">=3.8"
 dependencies = [
@@ -18,7 +18,7 @@ dependencies = [
     "gitingest",
     "fastapi",
     "slowapi",
-    "psutil",
+    "psutil"
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [
@@ -34,7 +34,7 @@ weco = "weco.cli:main"
 Homepage = "https://github.com/WecoAI/weco-cli"
 
 [project.optional-dependencies]
-dev = ["ruff", "build", "setuptools_scm"]
+dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0"]
 
 [tool.setuptools]
 packages = ["weco"]
