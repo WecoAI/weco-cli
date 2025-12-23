@@ -127,8 +127,8 @@ def execute_optimization(
     eval_command: str,
     metric: str,
     goal: str,  # "maximize" or "minimize"
+    model: str,
     steps: int = 100,
-    model: Optional[str] = None,
     log_dir: str = ".runs",
     additional_instructions: Optional[str] = None,
     console: Optional[Console] = None,
@@ -203,11 +203,6 @@ def execute_optimization(
 
         # --- Process Parameters ---
         maximize = goal.lower() in ["maximize", "max"]
-
-        # Determine the model to use
-        if model is None:
-            # Default to o4-mini with credit-based billing
-            model = "o4-mini"
 
         code_generator_config = {"model": model}
         evaluator_config = {"model": model, "include_analysis": True}

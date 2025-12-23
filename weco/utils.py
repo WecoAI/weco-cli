@@ -9,13 +9,26 @@ from rich.panel import Panel
 import pathlib
 import requests
 from packaging.version import parse as parse_version
-from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, DEFAULT_MODEL, SUPPORTED_FILE_EXTENSIONS
+from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, SUPPORTED_FILE_EXTENSIONS, DEFAULT_MODELS
 
 
-# Env/arg helper functions
-def determine_model_for_onboarding() -> str:
-    """Determine which model to use for onboarding chatbot. Defaults to o4-mini."""
-    return DEFAULT_MODEL
+class UnrecognizedAPIKeysError(Exception):
+    """Exception raised when unrecognized API keys are provided."""
+
+    def __init__(self, api_keys: dict[str, str]):
+        self.api_keys = api_keys
+        providers = {provider for provider, _ in DEFAULT_MODELS}
+        super().__init__(
+            f"Unrecognized API key provider in {set(api_keys.keys())}. Supported providers: {', '.join(providers)}"
+        )
+
+
+class DefaultModelNotFoundError(Exception):
+    """Exception raised when no default model is found for the API keys."""
+
+    def __init__(self, api_keys: dict[str, str]):
+        self.api_keys = api_keys
+        super().__init__(f"No default model found for any of the provided API keys: {set(api_keys.keys())}")
 
 
 def read_additional_instructions(additional_instructions: str | None) -> str | None:
@@ -218,3 +231,18 @@ def check_for_cli_updates():
     except Exception:
         # Catch any other unexpected error during the check
         pass
+
+
+def get_default_model(api_keys: dict[str, str] | None = None) -> str:
+    """Determine the default model to use based on the API keys."""
+    providers = {provider for provider, _ in DEFAULT_MODELS}
+    if api_keys and not all(provider in providers for provider in api_keys.keys()):
+        raise UnrecognizedAPIKeysError(api_keys)
+
+    if api_keys:
+        for provider, model in DEFAULT_MODELS:
+            if provider in api_keys:
+                return model
+        # Should never happen, but just in case
+        raise DefaultModelNotFoundError(api_keys)
+    return DEFAULT_MODELS[0][1]
