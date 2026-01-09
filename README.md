@@ -128,7 +128,7 @@ weco run --model gpt-5 --source optimize.py [other options...]
 - `claude-opus-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
 
 **Google Gemini:**
-- `gemini-3-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+- `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
 All models are available through Weco. If no model is specified, Weco automatically selects the best model for your optimization task.
 
