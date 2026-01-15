@@ -407,11 +407,19 @@ def resume_optimization(
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
+    # Extract best solution info from resume response (if available)
+    best_metric_value = resume_resp.get("best_metric_value")
+    best_step = resume_resp.get("best_step")
+
     result: Optional[OptimizationResult] = None
     try:
         with LiveOptimizationUI(
             console, run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
         ) as ui:
+            # Populate UI with best solution from previous run if available
+            if best_metric_value is not None and best_step is not None:
+                ui.on_metric(best_step, best_metric_value)
+
             result = _run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
