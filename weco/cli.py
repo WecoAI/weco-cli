@@ -131,11 +131,6 @@ Default models for providers:
 {default_models_for_providers}
 """,
     )
-    run_parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Use the legacy optimization flow with full UI (default: use simplified queue-based flow)",
-    )
 
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
@@ -207,16 +202,11 @@ Example:
 Supported provider names: {supported_providers}.
 """,
     )
-    resume_parser.add_argument(
-        "--legacy",
-        action="store_true",
-        help="Use the legacy optimization flow with full UI (default: use simplified queue-based flow)",
-    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
-    from .optimizer import execute_optimization, optimize_with_queue
+    from .optimizer import optimize
 
     try:
         api_keys = parse_api_keys(args.api_key)
@@ -235,39 +225,20 @@ def execute_run_command(args: argparse.Namespace) -> None:
         if api_keys:
             console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
 
-    # Use legacy flow with full UI if --legacy flag is set
-    if args.legacy:
-        success = execute_optimization(
-            source=args.source,
-            eval_command=args.eval_command,
-            metric=args.metric,
-            goal=args.goal,
-            model=model,
-            steps=args.steps,
-            log_dir=args.log_dir,
-            additional_instructions=args.additional_instructions,
-            console=console,
-            eval_timeout=args.eval_timeout,
-            save_logs=args.save_logs,
-            apply_change=args.apply_change,
-            api_keys=api_keys,
-        )
-    else:
-        # Use new queue-based flow (simplified, no fancy UI)
-        success = optimize_with_queue(
-            source=args.source,
-            eval_command=args.eval_command,
-            metric=args.metric,
-            goal=args.goal,
-            model=model,
-            steps=args.steps,
-            log_dir=args.log_dir,
-            additional_instructions=args.additional_instructions,
-            eval_timeout=args.eval_timeout,
-            save_logs=args.save_logs,
-            api_keys=api_keys,
-            apply_change=args.apply_change,
-        )
+    success = optimize(
+        source=args.source,
+        eval_command=args.eval_command,
+        metric=args.metric,
+        goal=args.goal,
+        model=model,
+        steps=args.steps,
+        log_dir=args.log_dir,
+        additional_instructions=args.additional_instructions,
+        eval_timeout=args.eval_timeout,
+        save_logs=args.save_logs,
+        api_keys=api_keys,
+        apply_change=args.apply_change,
+    )
 
     exit_code = 0 if success else 1
     sys.exit(exit_code)
@@ -275,7 +246,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
 
 def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
-    from .optimizer import resume_optimization, resume_with_queue
+    from .optimizer import resume_optimization
 
     try:
         api_keys = parse_api_keys(args.api_key)
@@ -283,12 +254,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         console.print(f"[bold red]Error parsing API keys: {e}[/]")
         sys.exit(1)
 
-    # Use legacy flow with full UI if --legacy flag is set
-    if args.legacy:
-        success = resume_optimization(run_id=args.run_id, console=console, api_keys=api_keys, apply_change=args.apply_change)
-    else:
-        # Use new queue-based flow (simplified, no fancy UI)
-        success = resume_with_queue(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change)
+    success = resume_optimization(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change)
 
     sys.exit(0 if success else 1)
 
