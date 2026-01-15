@@ -24,6 +24,7 @@ from .api import (
     submit_execution_result,
 )
 from .auth import handle_authentication
+from .browser import open_browser
 from .ui import OptimizationUI, LiveOptimizationUI
 from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap
 
@@ -398,6 +399,9 @@ def resume_optimization(
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
 
+    # Open dashboard in the user's browser
+    open_browser(dashboard_url)
+
     # Setup logging directory
     runs_dir = pathlib.Path(log_dir) / run_id
     runs_dir.mkdir(parents=True, exist_ok=True)
@@ -558,6 +562,9 @@ def optimize(
     run_id = run_response["run_id"]
     run_name = run_response["run_name"]
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
+
+    # Open dashboard in the user's browser
+    open_browser(dashboard_url)
 
     # Setup logging directory
     runs_dir = pathlib.Path(log_dir) / run_id
