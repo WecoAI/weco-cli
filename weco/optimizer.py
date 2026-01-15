@@ -6,14 +6,14 @@ import signal
 import sys
 import traceback
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Optional, Protocol
+from typing import Optional
 from rich.console import Console
 from rich.live import Live
 from rich.panel import Panel
 from rich.prompt import Confirm
-import time
 from .api import (
     start_optimization_run,
     evaluate_feedback_then_suggest_next_solution,
@@ -36,6 +36,7 @@ from .panels import (
     create_optimization_layout,
     create_end_optimization_layout,
 )
+from .ui import OptimizationUI, LiveOptimizationUI
 from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap, smooth_update
 
 
@@ -48,97 +49,6 @@ class QueueLoopResult:
     status: str  # "completed", "terminated", "error"
     reason: str  # e.g. "completed_successfully", "user_terminated_sigint"
     details: Optional[str] = None
-
-
-class QueueLoopUI(Protocol):
-    """Protocol for queue loop UI event handlers."""
-
-    def on_polling(self, step: int) -> None:
-        """Called when polling for execution tasks."""
-        ...
-
-    def on_task_claimed(self, task_id: str, plan: Optional[str]) -> None:
-        """Called when a task is successfully claimed."""
-        ...
-
-    def on_executing(self, step: int) -> None:
-        """Called when starting to execute code."""
-        ...
-
-    def on_output(self, output: str, max_preview: int = 200) -> None:
-        """Called with execution output."""
-        ...
-
-    def on_submitting(self) -> None:
-        """Called when submitting result to backend."""
-        ...
-
-    def on_metric(self, step: int, value: float) -> None:
-        """Called when a metric value is received."""
-        ...
-
-    def on_complete(self, total_steps: int) -> None:
-        """Called when optimization completes successfully."""
-        ...
-
-    def on_stop_requested(self) -> None:
-        """Called when a stop request is received from dashboard."""
-        ...
-
-    def on_interrupted(self) -> None:
-        """Called when interrupted by user (Ctrl+C)."""
-        ...
-
-    def on_warning(self, message: str) -> None:
-        """Called for non-fatal warnings."""
-        ...
-
-    def on_error(self, message: str) -> None:
-        """Called for errors."""
-        ...
-
-
-class RichQueueLoopUI:
-    """Rich console implementation of QueueLoopUI."""
-
-    def __init__(self, console: Console):
-        self.console = console
-
-    def on_polling(self, step: int) -> None:
-        self.console.print(f"[dim]Step {step}: Polling for execution tasks...[/]")
-
-    def on_task_claimed(self, task_id: str, plan: Optional[str]) -> None:
-        if plan:
-            plan_preview = plan[:100] + ("..." if len(plan) > 100 else "")
-            self.console.print(f"[dim]Plan: {plan_preview}[/]")
-
-    def on_executing(self, step: int) -> None:
-        self.console.print(f"[bold]Step {step}:[/] Executing code...")
-
-    def on_output(self, output: str, max_preview: int = 200) -> None:
-        preview = output[:max_preview] + ("..." if len(output) > max_preview else "")
-        self.console.print(f"[dim]Output: {preview}[/]")
-
-    def on_submitting(self) -> None:
-        self.console.print("[dim]Submitting result...[/]")
-
-    def on_metric(self, step: int, value: float) -> None:
-        self.console.print(f"[green]Step {step} metric: {value}[/]")
-
-    def on_complete(self, total_steps: int) -> None:
-        self.console.print(f"[bold green]Optimization complete after {total_steps} steps![/]")
-
-    def on_stop_requested(self) -> None:
-        self.console.print("\n[yellow]Stop request received. Terminating run gracefully...[/]")
-
-    def on_interrupted(self) -> None:
-        self.console.print("\n[yellow]Interrupted by user[/]")
-
-    def on_warning(self, message: str) -> None:
-        self.console.print(f"[dim]Warning: {message}[/]")
-
-    def on_error(self, message: str) -> None:
-        self.console.print(f"[red]{message}[/]")
 
 
 def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
@@ -1067,7 +977,7 @@ def resume_optimization(
 
 
 def _run_queue_loop(
-    ui: QueueLoopUI,
+    ui: OptimizationUI,
     run_id: str,
     auth_headers: dict,
     source_fp: pathlib.Path,
@@ -1215,7 +1125,70 @@ def _run_queue_loop(
         return QueueLoopResult(success=False, final_step=step, status="error", reason="unknown", details=str(e))
 
 
-def resume_with_queue(run_id: str, api_keys: Optional[dict] = None, poll_interval: float = 2.0) -> bool:
+def _offer_apply_best_solution(
+    console: Console,
+    run_id: str,
+    source_fp: pathlib.Path,
+    source_code: str,
+    runs_dir: pathlib.Path,
+    auth_headers: dict,
+    apply_change: bool = False,
+) -> None:
+    """
+    Fetch the best solution from the backend and offer to apply it to the source file.
+
+    Args:
+        console: Rich console for output.
+        run_id: The optimization run ID.
+        source_fp: Path to the source file.
+        source_code: Original source code content.
+        runs_dir: Directory for run logs.
+        auth_headers: Authentication headers.
+        apply_change: If True, apply automatically without prompting.
+    """
+    try:
+        # Fetch final status to get best solution
+        status = get_optimization_run_status(console=console, run_id=run_id, include_history=False, auth_headers=auth_headers)
+        best_result = status.get("best_result")
+
+        if best_result is None:
+            console.print("\n[yellow]No solution found. No changes to apply.[/]\n")
+            return
+
+        best_code = best_result.get("code")
+        best_metric = best_result.get("metric_value")
+
+        if not best_code or best_code == source_code:
+            console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
+            return
+
+        # Save best solution to logs
+        write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_code)
+
+        # Show summary
+        console.print(f"\n[bold green]Optimization complete![/]")
+        if best_metric is not None:
+            console.print(f"[green]Best metric value: {best_metric}[/]")
+
+        # Ask user or auto-apply
+        if apply_change:
+            should_apply = True
+        else:
+            should_apply = Confirm.ask("Would you like to apply the best solution to your source file?", default=True)
+
+        if should_apply:
+            write_to_path(fp=source_fp, content=best_code)
+            console.print(f"[green]Best solution applied to {source_fp}[/]\n")
+        else:
+            console.print(f"[dim]Best solution saved to {runs_dir / f'best{source_fp.suffix}'}[/]\n")
+
+    except Exception as e:
+        console.print(f"[yellow]Could not fetch best solution: {e}[/]")
+
+
+def resume_with_queue(
+    run_id: str, api_keys: Optional[dict] = None, poll_interval: float = 2.0, apply_change: bool = False
+) -> bool:
     """
     Resume an interrupted run using the queue-based optimization loop.
 
@@ -1226,6 +1199,7 @@ def resume_with_queue(run_id: str, api_keys: Optional[dict] = None, poll_interva
         run_id: The UUID of the run to resume.
         api_keys: Optional API keys for LLM providers.
         poll_interval: Seconds between polling attempts.
+        apply_change: If True, automatically apply best solution; if False, prompt user.
 
     Returns:
         True if optimization completed successfully, False otherwise.
@@ -1300,8 +1274,7 @@ def resume_with_queue(run_id: str, api_keys: Optional[dict] = None, poll_interva
     source_code = read_from_path(fp=source_fp, is_json=False) if source_fp.exists() else ""
 
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
-    console.print(f"[green]Run resumed:[/] {resume_resp.get('run_name', run_id)}")
-    console.print(f"[blue]Dashboard:[/] [underline]{dashboard_url}[/]")
+    run_name = resume_resp.get("run_name", run_id)
 
     # Setup logging directory
     runs_dir = pathlib.Path(log_dir) / run_id
@@ -1312,24 +1285,37 @@ def resume_with_queue(run_id: str, api_keys: Optional[dict] = None, poll_interva
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
-    # Create UI handler
-    ui = RichQueueLoopUI(console)
-
+    result: Optional[QueueLoopResult] = None
     try:
-        result = _run_queue_loop(
-            ui=ui,
+        with LiveOptimizationUI(
+            console, run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
+        ) as ui:
+            result = _run_queue_loop(
+                ui=ui,
+                run_id=run_id,
+                auth_headers=auth_headers,
+                source_fp=source_fp,
+                source_code=source_code,
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                runs_dir=runs_dir,
+                save_logs=save_logs,
+                start_step=current_step,
+                poll_interval=poll_interval,
+                api_keys=api_keys,
+            )
+
+        # Offer to apply best solution
+        _offer_apply_best_solution(
+            console=console,
             run_id=run_id,
-            auth_headers=auth_headers,
             source_fp=source_fp,
             source_code=source_code,
-            eval_command=eval_command,
-            eval_timeout=eval_timeout,
             runs_dir=runs_dir,
-            save_logs=save_logs,
-            start_step=current_step,
-            poll_interval=poll_interval,
-            api_keys=api_keys,
+            auth_headers=auth_headers,
+            apply_change=apply_change,
         )
+
         return result.success
     finally:
         # Stop heartbeat
@@ -1337,16 +1323,17 @@ def resume_with_queue(run_id: str, api_keys: Optional[dict] = None, poll_interva
         heartbeat_thread.join(timeout=2)
 
         # Report termination to backend
-        try:
-            report_termination(
-                run_id=run_id,
-                status_update=result.status,
-                reason=result.reason,
-                details=result.details,
-                auth_headers=auth_headers,
-            )
-        except Exception:
-            pass  # Best effort
+        if result is not None:
+            try:
+                report_termination(
+                    run_id=run_id,
+                    status_update=result.status,
+                    reason=result.reason,
+                    details=result.details,
+                    auth_headers=auth_headers,
+                )
+            except Exception:
+                pass  # Best effort
 
 
 def optimize_with_queue(
@@ -1362,6 +1349,7 @@ def optimize_with_queue(
     log_dir: str = ".runs",
     api_keys: Optional[dict] = None,
     poll_interval: float = 2.0,
+    apply_change: bool = False,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -1382,6 +1370,7 @@ def optimize_with_queue(
         log_dir: Directory for logs.
         api_keys: Optional API keys for LLM providers.
         poll_interval: Seconds between polling attempts.
+        apply_change: If True, automatically apply best solution; if False, prompt user.
 
     Returns:
         True if optimization completed successfully, False otherwise.
@@ -1409,7 +1398,6 @@ def optimize_with_queue(
     processed_instructions = read_additional_instructions(additional_instructions)
 
     # Start the run
-    console.print("[bold green]Starting optimization run...[/]")
     run_response = start_optimization_run(
         console=console,
         source_code=source_code,
@@ -1436,8 +1424,6 @@ def optimize_with_queue(
     run_id = run_response["run_id"]
     run_name = run_response["run_name"]
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
-    console.print(f"[green]Run started:[/] {run_name} ({run_id})")
-    console.print(f"[blue]Dashboard:[/] [underline]{dashboard_url}[/]")
 
     # Setup logging directory
     runs_dir = pathlib.Path(log_dir) / run_id
@@ -1448,24 +1434,35 @@ def optimize_with_queue(
     heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
-    # Create UI handler
-    ui = RichQueueLoopUI(console)
-
+    result: Optional[QueueLoopResult] = None
     try:
-        result = _run_queue_loop(
-            ui=ui,
+        with LiveOptimizationUI(console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric) as ui:
+            result = _run_queue_loop(
+                ui=ui,
+                run_id=run_id,
+                auth_headers=auth_headers,
+                source_fp=source_fp,
+                source_code=source_code,
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                runs_dir=runs_dir,
+                save_logs=save_logs,
+                start_step=0,
+                poll_interval=poll_interval,
+                api_keys=api_keys,
+            )
+
+        # Offer to apply best solution
+        _offer_apply_best_solution(
+            console=console,
             run_id=run_id,
-            auth_headers=auth_headers,
             source_fp=source_fp,
             source_code=source_code,
-            eval_command=eval_command,
-            eval_timeout=eval_timeout,
             runs_dir=runs_dir,
-            save_logs=save_logs,
-            start_step=0,
-            poll_interval=poll_interval,
-            api_keys=api_keys,
+            auth_headers=auth_headers,
+            apply_change=apply_change,
         )
+
         return result.success
     finally:
         # Stop heartbeat
@@ -1473,13 +1470,14 @@ def optimize_with_queue(
         heartbeat_thread.join(timeout=2)
 
         # Report termination to backend
-        try:
-            report_termination(
-                run_id=run_id,
-                status_update=result.status,
-                reason=result.reason,
-                details=result.details,
-                auth_headers=auth_headers,
-            )
-        except Exception:
-            pass  # Best effort
+        if result is not None:
+            try:
+                report_termination(
+                    run_id=run_id,
+                    status_update=result.status,
+                    reason=result.reason,
+                    details=result.details,
+                    auth_headers=auth_headers,
+                )
+            except Exception:
+                pass  # Best effort

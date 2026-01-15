@@ -266,6 +266,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
             eval_timeout=args.eval_timeout,
             save_logs=args.save_logs,
             api_keys=api_keys,
+            apply_change=args.apply_change,
         )
 
     exit_code = 0 if success else 1
@@ -287,7 +288,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         success = resume_optimization(run_id=args.run_id, console=console, api_keys=api_keys, apply_change=args.apply_change)
     else:
         # Use new queue-based flow (simplified, no fancy UI)
-        success = resume_with_queue(run_id=args.run_id, api_keys=api_keys)
+        success = resume_with_queue(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change)
 
     sys.exit(0 if success else 1)
 
