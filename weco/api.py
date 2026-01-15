@@ -321,9 +321,7 @@ def report_termination(
 
 
 def get_execution_tasks(
-    run_id: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (5, 30),
+    run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[list]:
     """Poll for ready execution tasks.
 
@@ -337,10 +335,7 @@ def get_execution_tasks(
     """
     try:
         response = requests.get(
-            f"{__base_url__}/execution-tasks/",
-            params={"run_id": run_id},
-            headers=auth_headers,
-            timeout=timeout,
+            f"{__base_url__}/execution-tasks/", params={"run_id": run_id}, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
         return response.json()
@@ -351,9 +346,7 @@ def get_execution_tasks(
 
 
 def claim_execution_task(
-    task_id: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (5, 30),
+    task_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[Dict[str, Any]]:
     """Claim an execution task.
 
@@ -366,11 +359,7 @@ def claim_execution_task(
         The claimed task with revision, or None if already claimed or error.
     """
     try:
-        response = requests.post(
-            f"{__base_url__}/execution-tasks/{task_id}/claim",
-            headers=auth_headers,
-            timeout=timeout,
-        )
+        response = requests.post(f"{__base_url__}/execution-tasks/{task_id}/claim", headers=auth_headers, timeout=timeout)
         if response.status_code == 409:
             return None  # Already claimed
         response.raise_for_status()
@@ -404,19 +393,12 @@ def submit_execution_result(
     """
     try:
         truncated_output = truncate_output(execution_output)
-        request_json = {
-            "execution_output": truncated_output,
-            "task_id": task_id,
-            "metadata": {},
-        }
+        request_json = {"execution_output": truncated_output, "task_id": task_id, "metadata": {}}
         if api_keys:
             request_json["api_keys"] = api_keys
 
         response = requests.post(
-            f"{__base_url__}/runs/{run_id}/suggest",
-            json=request_json,
-            headers=auth_headers,
-            timeout=timeout,
+            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
         return response.json()

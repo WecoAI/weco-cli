@@ -6,6 +6,7 @@ from rich.traceback import install
 from .auth import clear_api_key
 from .constants import DEFAULT_MODELS
 from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
+from .validation import validate_source_file, validate_log_directory, ValidationError, print_validation_error
 
 
 install(show_locals=True)
@@ -208,6 +209,14 @@ def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import optimize
 
+    # Early validation — fail fast with helpful errors
+    try:
+        validate_source_file(args.source)
+        validate_log_directory(args.log_dir)
+    except ValidationError as e:
+        print_validation_error(e, console)
+        sys.exit(1)
+
     try:
         api_keys = parse_api_keys(args.api_key)
     except ValueError as e:
@@ -261,6 +270,16 @@ def execute_resume_command(args: argparse.Namespace) -> None:
 
 def main() -> None:
     """Main function for the Weco CLI."""
+    try:
+        _main()
+    except KeyboardInterrupt:
+        # Clean exit on Ctrl+C without traceback
+        console.print("\n[yellow]Interrupted.[/]")
+        sys.exit(130)  # Standard exit code for SIGINT
+
+
+def _main() -> None:
+    """Internal main function containing the CLI logic."""
     check_for_cli_updates()
 
     parser = argparse.ArgumentParser(
