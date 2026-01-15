@@ -439,6 +439,10 @@ def resume_optimization(
                 api_keys=api_keys,
             )
 
+        # Stop heartbeat immediately after loop completes
+        stop_heartbeat_event.set()
+        heartbeat_thread.join(timeout=2)
+
         # Show resume message if interrupted
         if result.status == "terminated":
             console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
@@ -456,7 +460,7 @@ def resume_optimization(
 
         return result.success
     finally:
-        # Stop heartbeat
+        # Ensure heartbeat is stopped (in case of early exit/exception)
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
 
@@ -593,6 +597,10 @@ def optimize(
                 api_keys=api_keys,
             )
 
+        # Stop heartbeat immediately after loop completes
+        stop_heartbeat_event.set()
+        heartbeat_thread.join(timeout=2)
+
         # Show resume message if interrupted
         if result.status == "terminated":
             console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
@@ -610,7 +618,7 @@ def optimize(
 
         return result.success
     finally:
-        # Stop heartbeat
+        # Ensure heartbeat is stopped (in case of early exit/exception)
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
 
