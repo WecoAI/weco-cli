@@ -492,6 +492,7 @@ def optimize(
     api_keys: Optional[dict] = None,
     poll_interval: float = 2.0,
     apply_change: bool = False,
+    require_review: bool = False,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -557,7 +558,7 @@ def optimize(
         log_dir=log_dir,
         auth_headers=auth_headers,
         api_keys=api_keys,
-        # require_review defaults to False on server, so execution task is created automatically
+        require_review=require_review,
     )
 
     if run_response is None:

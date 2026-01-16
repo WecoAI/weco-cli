@@ -109,6 +109,11 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    run_parser.add_argument(
+        "--require-review",
+        action="store_true",
+        help="Require manual review and approval of each proposed change before execution",
+    )
 
     default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
     supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
@@ -247,6 +252,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         save_logs=args.save_logs,
         api_keys=api_keys,
         apply_change=args.apply_change,
+        require_review=args.require_review,
     )
 
     exit_code = 0 if success else 1

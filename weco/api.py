@@ -110,6 +110,7 @@ def start_optimization_run(
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
     api_keys: Optional[Dict[str, str]] = None,
+    require_review: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -128,6 +129,7 @@ def start_optimization_run(
                 "eval_timeout": eval_timeout,
                 "save_logs": save_logs,
                 "log_dir": log_dir,
+                "require_review": require_review,
                 "metadata": {"client_name": "cli", "client_version": __pkg_version__},
             }
             if api_keys:
