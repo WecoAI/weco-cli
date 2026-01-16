@@ -1,10 +1,29 @@
 import sys
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, Union, Tuple
 import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
 from .utils import truncate_output
+
+
+@dataclass
+class RunSummary:
+    """Brief run summary from execution task response."""
+
+    id: str
+    status: str
+    name: Optional[str] = None
+    require_review: bool = False
+
+
+@dataclass
+class ExecutionTasksResult:
+    """Result from get_execution_tasks containing tasks and run info."""
+
+    tasks: list
+    run: Optional[RunSummary] = None
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
@@ -324,7 +343,7 @@ def report_termination(
 
 def get_execution_tasks(
     run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
-) -> Optional[list]:
+) -> Optional[ExecutionTasksResult]:
     """Poll for ready execution tasks.
 
     Args:
@@ -333,14 +352,27 @@ def get_execution_tasks(
         timeout: Request timeout.
 
     Returns:
-        List of execution tasks, or None if request failed.
+        ExecutionTasksResult with tasks and run summary, or None if request failed.
     """
     try:
         response = requests.get(
             f"{__base_url__}/execution-tasks/", params={"run_id": run_id}, headers=auth_headers, timeout=timeout
         )
         response.raise_for_status()
-        return response.json()
+        data = response.json()
+
+        # Extract run summary from top-level run field
+        run_summary = None
+        if data.get("run"):
+            run_data = data["run"]
+            run_summary = RunSummary(
+                id=run_data["id"],
+                status=run_data["status"],
+                name=run_data.get("name"),
+                require_review=run_data.get("require_review", False),
+            )
+
+        return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
     except requests.exceptions.HTTPError:
         return None
     except Exception:

@@ -162,12 +162,26 @@ def _run_optimization_loop(
 
             # Poll for ready tasks
             ui.on_polling(step)
-            tasks = None
+            tasks_result = None
             poll_attempts = 0
 
-            while not tasks:
-                tasks = get_execution_tasks(run_id, auth_headers)
-                if not tasks:
+            while not tasks_result or not tasks_result.tasks:
+                tasks_result = get_execution_tasks(run_id, auth_headers)
+
+                # Check if run was stopped (from run summary in response)
+                if tasks_result and tasks_result.run:
+                    run_status = tasks_result.run.status
+                    if run_status in ("stopping", "stopped", "terminated", "error", "completed"):
+                        ui.on_stop_requested()
+                        return OptimizationResult(
+                            success=False,
+                            final_step=step,
+                            status="terminated",
+                            reason="user_requested_stop",
+                            details=f"Run status is '{run_status}'.",
+                        )
+
+                if not tasks_result or not tasks_result.tasks:
                     poll_attempts += 1
                     if poll_attempts >= max_poll_attempts:
                         ui.on_error("Timeout waiting for execution tasks")
@@ -180,7 +194,7 @@ def _run_optimization_loop(
                         )
                     time.sleep(poll_interval)
 
-            task = tasks[0]
+            task = tasks_result.tasks[0]
             task_id = task["id"]
 
             # Claim the task
