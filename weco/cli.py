@@ -3,7 +3,7 @@ import sys
 from rich.console import Console
 from rich.traceback import install
 
-from .auth import clear_api_key
+from .auth import clear_api_key, perform_login, load_weco_api_key
 from .constants import DEFAULT_MODELS
 from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
 from .validation import validate_source_file, validate_log_directory, ValidationError, print_validation_error
@@ -303,6 +303,9 @@ def _main() -> None:
     )
     configure_run_parser(run_parser)  # Use the helper to add arguments
 
+    # --- Login Command Parser Setup ---
+    _ = subparsers.add_parser("login", help="Log in to Weco and save your API key.")
+
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
 
@@ -321,7 +324,20 @@ def _main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "logout":
+    if args.command == "login":
+        # Check if already logged in
+        existing_key = load_weco_api_key()
+        if existing_key:
+            console.print("[bold green]You are already logged in.[/]")
+            console.print("[dim]Use 'weco logout' to log out first if you want to switch accounts.[/]")
+            sys.exit(0)
+
+        # Perform the login flow
+        if perform_login(console):
+            sys.exit(0)
+        else:
+            sys.exit(1)
+    elif args.command == "logout":
         clear_api_key()
         sys.exit(0)
     elif args.command == "run":

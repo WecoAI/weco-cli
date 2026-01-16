@@ -303,7 +303,7 @@ def _offer_apply_best_solution(
         write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_code)
 
         # Show summary
-        console.print(f"\n[bold green]Optimization complete![/]")
+        console.print("\n[bold green]Optimization complete![/]")
         if best_metric is not None:
             console.print(f"[green]Best metric value: {best_metric}[/]")
 
