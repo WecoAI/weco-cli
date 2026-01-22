@@ -1,10 +1,29 @@
 import sys
+from dataclasses import dataclass
 from typing import Dict, Any, Optional, Union, Tuple
 import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
 from .utils import truncate_output
+
+
+@dataclass
+class RunSummary:
+    """Brief run summary from execution task response."""
+
+    id: str
+    status: str
+    name: Optional[str] = None
+    require_review: bool = False
+
+
+@dataclass
+class ExecutionTasksResult:
+    """Result from get_execution_tasks containing tasks and run info."""
+
+    tasks: list
+    run: Optional[RunSummary] = None
 
 
 def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
@@ -110,6 +129,7 @@ def start_optimization_run(
     auth_headers: dict = {},
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
     api_keys: Optional[Dict[str, str]] = None,
+    require_review: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -128,6 +148,7 @@ def start_optimization_run(
                 "eval_timeout": eval_timeout,
                 "save_logs": save_logs,
                 "log_dir": log_dir,
+                "require_review": require_review,
                 "metadata": {"client_name": "cli", "client_version": __pkg_version__},
             }
             if api_keys:
@@ -315,3 +336,107 @@ def report_termination(
     except Exception as e:
         print(f"Warning: Failed to report termination to backend for run {run_id}: {e}", file=sys.stderr)
         return False
+
+
+# --- Execution Queue API Functions ---
+
+
+def get_execution_tasks(
+    run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
+) -> Optional[ExecutionTasksResult]:
+    """Poll for ready execution tasks.
+
+    Args:
+        run_id: The run ID to get tasks for.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+
+    Returns:
+        ExecutionTasksResult with tasks and run summary, or None if request failed.
+    """
+    try:
+        response = requests.get(
+            f"{__base_url__}/execution-tasks/", params={"run_id": run_id}, headers=auth_headers, timeout=timeout
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        # Extract run summary from top-level run field
+        run_summary = None
+        if data.get("run"):
+            run_data = data["run"]
+            run_summary = RunSummary(
+                id=run_data["id"],
+                status=run_data["status"],
+                name=run_data.get("name"),
+                require_review=run_data.get("require_review", False),
+            )
+
+        return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
+    except requests.exceptions.HTTPError:
+        return None
+    except Exception:
+        return None
+
+
+def claim_execution_task(
+    task_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
+) -> Optional[Dict[str, Any]]:
+    """Claim an execution task.
+
+    Args:
+        task_id: The task ID to claim.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+
+    Returns:
+        The claimed task with revision, or None if already claimed or error.
+    """
+    try:
+        response = requests.post(f"{__base_url__}/execution-tasks/{task_id}/claim", headers=auth_headers, timeout=timeout)
+        if response.status_code == 409:
+            return None  # Already claimed
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError:
+        return None
+    except Exception:
+        return None
+
+
+def submit_execution_result(
+    run_id: str,
+    task_id: str,
+    execution_output: str,
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    api_keys: Optional[Dict[str, str]] = None,
+) -> Optional[Dict[str, Any]]:
+    """Submit execution result for a task.
+
+    Args:
+        run_id: The run ID.
+        task_id: The task ID being completed.
+        execution_output: The execution output to submit.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+        api_keys: Optional API keys for LLM providers.
+
+    Returns:
+        The suggest response, or None if request failed.
+    """
+    try:
+        truncated_output = truncate_output(execution_output)
+        request_json = {"execution_output": truncated_output, "task_id": task_id, "metadata": {}}
+        if api_keys:
+            request_json["api_keys"] = api_keys
+
+        response = requests.post(
+            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError:
+        return None
+    except Exception:
+        return None
