@@ -1,6 +1,6 @@
-## Extract Line Plot (Chart → CSV) with a VLM
+## Extract Line Plot (Chart → CSV): Accuracy/Cost Optimization for Agentic Workflow
 
-This example is about optimizing an AI feature that turns image of chart into a table in csv format.
+This example demonstrates optimizing an AI feature that turns chart images into CSV tables, showcasing how to use Weco to improve accuracy or reduce cost of a VLM-based extraction workflow.
 
 ### Prerequisites
 
@@ -15,8 +15,9 @@ export OPENAI_API_KEY=your_key_here
 ### Files
 
 - `prepare_data.py`: downloads ChartQA (full) and prepares a 100-sample subset of line charts.
-- `optimize.py`: baseline VLM function (`VLMExtractor.image_to_csv`) to be optimized.
+- `optimize.py`: exposes `extract_csv(image_path)` which returns CSV text plus the per-call cost (helpers stay private).
 - `eval.py`: evaluation harness that runs the baseline on images and reports a similarity score as "accuracy".
+- `guide.md`: optional additional instructions you can feed to Weco via `--additional-instructions guide.md`.
 
 Generated artifacts (gitignored):
 - `subset_line_100/` and `subset_line_100.zip`
@@ -47,12 +48,21 @@ Metric definition (summarized):
 - Per-sample score = 0.2 × header match + 0.8 × Jaccard(similarity of content rows).
 - Reported `accuracy` is the mean score over all evaluated samples.
 
+To emit a secondary `cost` metric that Weco can minimize (while enforcing `accuracy > 0.45`), append `--cost-metric`:
+
+```bash
+uv run --with openai python eval.py --max-samples 10 --num-workers 4 --cost-metric
+```
+
+If the final accuracy falls at or below `0.45`, the reported cost is replaced with a large penalty so Weco keeps searching for higher-accuracy solutions.
+You can tighten or relax this constraint with `--cost-accuracy-threshold`, e.g. `--cost-accuracy-threshold 0.50`.
+
 ### 3) Optimize the baseline with Weco
 
 Run Weco to iteratively improve `optimize.py` using 100 examples and many workers:
 
 ```bash
-weco run --source optimize.py --eval-command 'uv run --with openai python eval.py --max-samples 100 --num-workers 50' --metric accuracy --goal maximize --steps 20 --model gpt-5
+weco run --source optimize.py --eval-command 'uv run --with openai python eval.py --max-samples 100 --num-workers 50' --metric accuracy --goal maximize --steps 20 --model gpt-5 --additional-instructions guide.md
 ```
 
 Arguments:
@@ -63,10 +73,20 @@ Arguments:
 - `--steps 20`: number of optimization iterations.
 - `--model gpt-5`: model used by Weco to propose edits (change as desired).
 
+To minimize cost instead (subject to the accuracy constraint), enable the flag in the eval command and switch the optimization target:
+
+```bash
+weco run --source optimize.py --eval-command 'uv run --with openai python eval.py --max-samples 100 --num-workers 50 --cost-metric' --metric cost --goal minimize --steps 20 --model gpt-5 --additional-instructions guide.md
+```
+
+#### Cost optimization workflow
+- Run the evaluation command with `--cost-metric` once to confirm accuracy meets your threshold and note the baseline cost.
+- Adjust `--cost-accuracy-threshold` if you want to tighten or relax the constraint before launching optimization.
+- Kick off Weco with `--metric cost --goal minimize --additional-instructions guide.md` so the optimizer respects the constraint while acting on the extra tips.
+
 ### Tips
 
 - Ensure your OpenAI key has access to a vision-capable model (default: `gpt-4o-mini` in the eval; change via `--model`).
 - Adjust `--num-workers` to balance throughput and rate limits.
 - You can tweak baseline behavior in `optimize.py` (prompt, temperature) — Weco will explore modifications automatically during optimization.
-
-
+- Include `--additional-instructions guide.md` whenever you run Weco so those cost-conscious hints influence the generated proposals.
