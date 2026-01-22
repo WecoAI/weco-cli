@@ -3,9 +3,10 @@ import sys
 from rich.console import Console
 from rich.traceback import install
 
-from .auth import clear_api_key
+from .auth import clear_api_key, perform_login, load_weco_api_key
 from .constants import DEFAULT_MODELS
 from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
+from .validation import validate_source_file, validate_log_directory, ValidationError, print_validation_error
 
 
 install(show_locals=True)
@@ -108,6 +109,11 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    run_parser.add_argument(
+        "--require-review",
+        action="store_true",
+        help="Require manual review and approval of each proposed change before execution",
+    )
 
     default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
     supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
@@ -206,7 +212,15 @@ Supported provider names: {supported_providers}.
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
-    from .optimizer import execute_optimization
+    from .optimizer import optimize
+
+    # Early validation — fail fast with helpful errors
+    try:
+        validate_source_file(args.source)
+        validate_log_directory(args.log_dir)
+    except ValidationError as e:
+        print_validation_error(e, console)
+        sys.exit(1)
 
     try:
         api_keys = parse_api_keys(args.api_key)
@@ -225,7 +239,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         if api_keys:
             console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
 
-    success = execute_optimization(
+    success = optimize(
         source=args.source,
         eval_command=args.eval_command,
         metric=args.metric,
@@ -234,12 +248,13 @@ def execute_run_command(args: argparse.Namespace) -> None:
         steps=args.steps,
         log_dir=args.log_dir,
         additional_instructions=args.additional_instructions,
-        console=console,
         eval_timeout=args.eval_timeout,
         save_logs=args.save_logs,
-        apply_change=args.apply_change,
         api_keys=api_keys,
+        apply_change=args.apply_change,
+        require_review=args.require_review,
     )
+
     exit_code = 0 if success else 1
     sys.exit(exit_code)
 
@@ -254,12 +269,23 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         console.print(f"[bold red]Error parsing API keys: {e}[/]")
         sys.exit(1)
 
-    success = resume_optimization(run_id=args.run_id, console=console, api_keys=api_keys, apply_change=args.apply_change)
+    success = resume_optimization(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change)
+
     sys.exit(0 if success else 1)
 
 
 def main() -> None:
     """Main function for the Weco CLI."""
+    try:
+        _main()
+    except KeyboardInterrupt:
+        # Clean exit on Ctrl+C without traceback
+        console.print("\n[yellow]Interrupted.[/]")
+        sys.exit(130)  # Standard exit code for SIGINT
+
+
+def _main() -> None:
+    """Internal main function containing the CLI logic."""
     check_for_cli_updates()
 
     parser = argparse.ArgumentParser(
@@ -276,6 +302,9 @@ def main() -> None:
         "run", help="Run code optimization", formatter_class=argparse.RawTextHelpFormatter, allow_abbrev=False
     )
     configure_run_parser(run_parser)  # Use the helper to add arguments
+
+    # --- Login Command Parser Setup ---
+    _ = subparsers.add_parser("login", help="Log in to Weco and save your API key.")
 
     # --- Logout Command Parser Setup ---
     _ = subparsers.add_parser("logout", help="Log out from Weco and clear saved API key.")
@@ -295,7 +324,20 @@ def main() -> None:
 
     args = parser.parse_args()
 
-    if args.command == "logout":
+    if args.command == "login":
+        # Check if already logged in
+        existing_key = load_weco_api_key()
+        if existing_key:
+            console.print("[bold green]You are already logged in.[/]")
+            console.print("[dim]Use 'weco logout' to log out first if you want to switch accounts.[/]")
+            sys.exit(0)
+
+        # Perform the login flow
+        if perform_login(console):
+            sys.exit(0)
+        else:
+            sys.exit(1)
+    elif args.command == "logout":
         clear_api_key()
         sys.exit(0)
     elif args.command == "run":
