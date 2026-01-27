@@ -158,7 +158,9 @@ def clone_skill_repo(skill_dir: pathlib.Path, console: Console) -> bool:
             return False
 
 
-def update_agent_rules_file(rules_file: pathlib.Path, snippet_path: pathlib.Path, skill_dir: pathlib.Path, console: Console) -> bool:
+def update_agent_rules_file(
+    rules_file: pathlib.Path, snippet_path: pathlib.Path, skill_dir: pathlib.Path, console: Console
+) -> bool:
     """
     Update an agent's rules file with the Weco skill reference.
 
@@ -188,7 +190,9 @@ def update_agent_rules_file(rules_file: pathlib.Path, snippet_path: pathlib.Path
     if rules_file.exists():
         try:
             existing_content = rules_file.read_text()
-            has_existing_section = WECO_RULES_BEGIN_DELIMITER in existing_content and WECO_RULES_END_DELIMITER in existing_content
+            has_existing_section = (
+                WECO_RULES_BEGIN_DELIMITER in existing_content and WECO_RULES_END_DELIMITER in existing_content
+            )
         except Exception as e:
             console.print(f"[bold yellow]Warning:[/] Could not read {rules_file_name}: {e}")
 
@@ -208,9 +212,7 @@ def update_agent_rules_file(rules_file: pathlib.Path, snippet_path: pathlib.Path
     elif rules_file.exists():
         console.print(f"\n[bold yellow]{rules_file_name} Update[/]")
         console.print(f"To enable automatic skill discovery, we can add Weco rules to your {rules_file_name} file.")
-        should_update = Confirm.ask(
-            f"Would you like to update your {rules_file_name}?", default=True
-        )
+        should_update = Confirm.ask(f"Would you like to update your {rules_file_name}?", default=True)
     else:
         console.print(f"\n[bold yellow]{rules_file_name} Creation[/]")
         console.print(f"To enable automatic skill discovery, we can create a {rules_file_name} file.")
