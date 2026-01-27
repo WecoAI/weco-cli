@@ -25,7 +25,7 @@ from .api import (
 )
 from .auth import handle_authentication
 from .browser import open_browser
-from .ui import OptimizationUI, LiveOptimizationUI
+from .ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
 from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap
 
 
@@ -324,7 +324,11 @@ def _offer_apply_best_solution(
 
 
 def resume_optimization(
-    run_id: str, api_keys: Optional[dict] = None, poll_interval: float = 2.0, apply_change: bool = False
+    run_id: str,
+    api_keys: Optional[dict] = None,
+    poll_interval: float = 2.0,
+    apply_change: bool = False,
+    output_mode: str = "rich",
 ) -> bool:
     """
     Resume an interrupted run using the queue-based optimization loop.
@@ -337,11 +341,12 @@ def resume_optimization(
         api_keys: Optional API keys for LLM providers.
         poll_interval: Seconds between polling attempts.
         apply_change: If True, automatically apply best solution; if False, prompt user.
+        output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
 
     Returns:
         True if optimization completed successfully, False otherwise.
     """
-    console = Console()
+    console = Console(force_terminal=output_mode == "rich")
 
     # Authenticate
     weco_api_key, auth_headers = handle_authentication(console)
@@ -431,9 +436,17 @@ def resume_optimization(
 
     result: Optional[OptimizationResult] = None
     try:
-        with LiveOptimizationUI(
-            console, run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
-        ) as ui:
+        # Select UI implementation based on output mode
+        if output_mode == "plain":
+            ui_instance = PlainOptimizationUI(
+                run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
+            )
+        else:
+            ui_instance = LiveOptimizationUI(
+                console, run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
+            )
+
+        with ui_instance as ui:
             # Populate UI with best solution from previous run if available
             if best_metric_value is not None and best_step is not None:
                 ui.on_metric(best_step, best_metric_value)
@@ -459,7 +472,10 @@ def resume_optimization(
 
         # Show resume message if interrupted
         if result.status == "terminated":
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
+            if output_mode == "plain":
+                print(f"\nTo resume this run, use: weco resume {run_id}\n", flush=True)
+            else:
+                console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
         _offer_apply_best_solution(
@@ -507,6 +523,7 @@ def optimize(
     poll_interval: float = 2.0,
     apply_change: bool = False,
     require_review: bool = False,
+    output_mode: str = "rich",
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -528,11 +545,12 @@ def optimize(
         api_keys: Optional API keys for LLM providers.
         poll_interval: Seconds between polling attempts.
         apply_change: If True, automatically apply best solution; if False, prompt user.
+        output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
 
     Returns:
         True if optimization completed successfully, False otherwise.
     """
-    console = Console()
+    console = Console(force_terminal=output_mode == "rich")
 
     # Authenticate
     weco_api_key, auth_headers = handle_authentication(console)
@@ -596,7 +614,17 @@ def optimize(
 
     result: Optional[OptimizationResult] = None
     try:
-        with LiveOptimizationUI(console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric) as ui:
+        # Select UI implementation based on output mode
+        if output_mode == "plain":
+            ui_instance = PlainOptimizationUI(
+                run_id, run_name, steps, dashboard_url, model=model, metric_name=metric
+            )
+        else:
+            ui_instance = LiveOptimizationUI(
+                console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric
+            )
+
+        with ui_instance as ui:
             result = _run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
@@ -618,7 +646,10 @@ def optimize(
 
         # Show resume message if interrupted
         if result.status == "terminated":
-            console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
+            if output_mode == "plain":
+                print(f"\nTo resume this run, use: weco resume {run_id}\n", flush=True)
+            else:
+                console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
         _offer_apply_best_solution(

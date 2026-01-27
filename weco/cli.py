@@ -137,6 +137,13 @@ Default models for providers:
 {default_models_for_providers}
 """,
     )
+    run_parser.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
+    )
 
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
@@ -208,6 +215,13 @@ Example:
 Supported provider names: {supported_providers}.
 """,
     )
+    resume_parser.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
+    )
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -253,6 +267,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         api_keys=api_keys,
         apply_change=args.apply_change,
         require_review=args.require_review,
+        output_mode=args.output,
     )
 
     exit_code = 0 if success else 1
@@ -269,7 +284,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         console.print(f"[bold red]Error parsing API keys: {e}[/]")
         sys.exit(1)
 
-    success = resume_optimization(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change)
+    success = resume_optimization(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change, output_mode=args.output)
 
     sys.exit(0 if success else 1)
 
