@@ -616,13 +616,9 @@ def optimize(
     try:
         # Select UI implementation based on output mode
         if output_mode == "plain":
-            ui_instance = PlainOptimizationUI(
-                run_id, run_name, steps, dashboard_url, model=model, metric_name=metric
-            )
+            ui_instance = PlainOptimizationUI(run_id, run_name, steps, dashboard_url, model=model, metric_name=metric)
         else:
-            ui_instance = LiveOptimizationUI(
-                console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric
-            )
+            ui_instance = LiveOptimizationUI(console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric)
 
         with ui_instance as ui:
             result = _run_optimization_loop(

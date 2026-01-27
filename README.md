@@ -107,7 +107,25 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 |---------|-------------|-------------|
 | `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
 | `weco resume <run-id>` | Resume an interrupted run | Continue from the last completed step |
+| `weco login` | Authenticate with Weco | First-time setup or switching accounts |
 | `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
+| `weco credits balance` | Check your current credit balance | Monitor usage |
+| `weco credits topup [amount]` | Purchase additional credits | When you need more credits (default: 10) |
+| `weco credits autotopup` | Configure automatic top-up | Set up automatic credit replenishment |
+
+### Setup Commands (Experimental)
+
+| Command | Description |
+|---------|-------------|
+| `weco setup claude-code` | Set up Weco skill for Claude Code |
+
+The `setup` command installs Weco skills for AI coding assistants. Currently supports Claude Code:
+
+```bash
+weco setup claude-code
+```
+
+This clones the Weco skill to `~/.claude/skills/weco/` and optionally updates your `~/.claude/CLAUDE.md` to enable automatic skill discovery.
 
 ### Model Selection
 
