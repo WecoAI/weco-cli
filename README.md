@@ -118,14 +118,17 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | Command | Description |
 |---------|-------------|
 | `weco setup claude-code` | Set up Weco skill for Claude Code |
+| `weco setup cursor` | Set up Weco rules for Cursor |
 
-The `setup` command installs Weco skills for AI coding assistants. Currently supports Claude Code:
+The `setup` command installs Weco skills for AI coding assistants:
 
 ```bash
-weco setup claude-code
+weco setup claude-code  # For Claude Code
+weco setup cursor       # For Cursor
 ```
 
-This clones the Weco skill to `~/.claude/skills/weco/` and optionally updates your `~/.claude/CLAUDE.md` to enable automatic skill discovery.
+- **Claude Code**: Clones the Weco skill to `~/.claude/skills/weco/` and updates `~/.claude/CLAUDE.md`
+- **Cursor**: Clones the Weco skill to `~/.cursor/skills/weco/` and creates `~/.cursor/rules/weco.mdc`
 
 ### Model Selection
 

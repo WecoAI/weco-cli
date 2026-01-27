@@ -17,6 +17,14 @@ WECO_SKILL_DIR = CLAUDE_SKILLS_DIR / "weco"
 WECO_SKILL_REPO = "git@github.com:WecoAI/weco-skill.git"
 WECO_RULES_SNIPPET_PATH = WECO_SKILL_DIR / "rules-snippet.md"
 
+# Cursor paths
+CURSOR_DIR = pathlib.Path.home() / ".cursor"
+CURSOR_RULES_DIR = CURSOR_DIR / "rules"
+CURSOR_WECO_RULES_PATH = CURSOR_RULES_DIR / "weco.mdc"
+CURSOR_SKILLS_DIR = CURSOR_DIR / "skills"
+CURSOR_WECO_SKILL_DIR = CURSOR_SKILLS_DIR / "weco"
+CURSOR_RULES_SNIPPET_PATH = CURSOR_WECO_SKILL_DIR / "rules-snippet.md"
+
 # Delimiters for agent rules files - allows automatic updates
 WECO_RULES_BEGIN_DELIMITER = "<!-- BEGIN WECO_RULES -->"
 WECO_RULES_END_DELIMITER = "<!-- END WECO_RULES -->"
@@ -27,23 +35,67 @@ def is_git_available() -> bool:
     return shutil.which("git") is not None
 
 
-def read_rules_snippet(console: Console) -> str | None:
+def read_rules_snippet(snippet_path: pathlib.Path, console: Console) -> str | None:
     """
     Read the rules snippet from the cloned skill repository.
+
+    Args:
+        snippet_path: Path to the rules-snippet.md file.
+        console: Rich console for output.
 
     Returns:
         The snippet content wrapped in delimiters, or None if not found.
     """
-    if not WECO_RULES_SNIPPET_PATH.exists():
-        console.print(f"[bold red]Error:[/] Snippet file not found at {WECO_RULES_SNIPPET_PATH}")
+    if not snippet_path.exists():
+        console.print(f"[bold red]Error:[/] Snippet file not found at {snippet_path}")
         return None
 
     try:
-        snippet_content = WECO_RULES_SNIPPET_PATH.read_text().strip()
+        snippet_content = snippet_path.read_text().strip()
         return f"\n{WECO_RULES_BEGIN_DELIMITER}\n{snippet_content}\n{WECO_RULES_END_DELIMITER}\n"
     except Exception as e:
         console.print(f"[bold red]Error:[/] Failed to read snippet file: {e}")
         return None
+
+
+def read_rules_snippet_raw(snippet_path: pathlib.Path, console: Console) -> str | None:
+    """
+    Read the raw rules snippet from the cloned skill repository (without delimiters).
+
+    Args:
+        snippet_path: Path to the rules-snippet.md file.
+        console: Rich console for output.
+
+    Returns:
+        The raw snippet content, or None if not found.
+    """
+    if not snippet_path.exists():
+        console.print(f"[bold red]Error:[/] Snippet file not found at {snippet_path}")
+        return None
+
+    try:
+        return snippet_path.read_text().strip()
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] Failed to read snippet file: {e}")
+        return None
+
+
+def generate_cursor_mdc_content(snippet_content: str) -> str:
+    """
+    Generate Cursor MDC file content with YAML frontmatter.
+
+    Args:
+        snippet_content: The raw rules snippet content.
+
+    Returns:
+        MDC formatted content with frontmatter.
+    """
+    return f"""---
+description: Weco code optimization skill - invoke for speed, accuracy, loss optimization
+alwaysApply: true
+---
+{snippet_content}
+"""
 
 
 def is_git_repo(path: pathlib.Path) -> bool:
@@ -51,9 +103,13 @@ def is_git_repo(path: pathlib.Path) -> bool:
     return (path / ".git").is_dir()
 
 
-def clone_skill_repo(console: Console) -> bool:
+def clone_skill_repo(skill_dir: pathlib.Path, console: Console) -> bool:
     """
-    Clone or update the weco-skill repository.
+    Clone or update the weco-skill repository to the specified directory.
+
+    Args:
+        skill_dir: The directory to clone/update the skill repository in.
+        console: Rich console for output.
 
     Returns:
         True if successful, False otherwise.
@@ -63,15 +119,15 @@ def clone_skill_repo(console: Console) -> bool:
         console.print("Please install git and try again.")
         return False
 
-    # Ensure the skills directory exists
-    CLAUDE_SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    # Ensure the parent skills directory exists
+    skill_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    if WECO_SKILL_DIR.exists():
-        if is_git_repo(WECO_SKILL_DIR):
+    if skill_dir.exists():
+        if is_git_repo(skill_dir):
             # Directory exists and is a git repo - pull latest
-            console.print(f"[cyan]Updating existing skill at {WECO_SKILL_DIR}...[/]")
+            console.print(f"[cyan]Updating existing skill at {skill_dir}...[/]")
             try:
-                result = subprocess.run(["git", "pull"], cwd=WECO_SKILL_DIR, capture_output=True, text=True)
+                result = subprocess.run(["git", "pull"], cwd=skill_dir, capture_output=True, text=True)
                 if result.returncode != 0:
                     console.print("[bold red]Error:[/] Failed to update skill repository.")
                     console.print(f"[dim]{result.stderr}[/]")
@@ -83,14 +139,14 @@ def clone_skill_repo(console: Console) -> bool:
                 return False
         else:
             # Directory exists but is not a git repo
-            console.print(f"[bold red]Error:[/] Directory {WECO_SKILL_DIR} exists but is not a git repository.")
+            console.print(f"[bold red]Error:[/] Directory {skill_dir} exists but is not a git repository.")
             console.print("Please remove it manually and try again.")
             return False
     else:
         # Clone the repository
-        console.print(f"[cyan]Cloning Weco skill to {WECO_SKILL_DIR}...[/]")
+        console.print(f"[cyan]Cloning Weco skill to {skill_dir}...[/]")
         try:
-            result = subprocess.run(["git", "clone", WECO_SKILL_REPO, str(WECO_SKILL_DIR)], capture_output=True, text=True)
+            result = subprocess.run(["git", "clone", WECO_SKILL_REPO, str(skill_dir)], capture_output=True, text=True)
             if result.returncode != 0:
                 console.print("[bold red]Error:[/] Failed to clone skill repository.")
                 console.print(f"[dim]{result.stderr}[/]")
@@ -102,7 +158,7 @@ def clone_skill_repo(console: Console) -> bool:
             return False
 
 
-def update_agent_rules_file(rules_file: pathlib.Path, console: Console) -> bool:
+def update_agent_rules_file(rules_file: pathlib.Path, snippet_path: pathlib.Path, skill_dir: pathlib.Path, console: Console) -> bool:
     """
     Update an agent's rules file with the Weco skill reference.
 
@@ -110,6 +166,8 @@ def update_agent_rules_file(rules_file: pathlib.Path, console: Console) -> bool:
 
     Args:
         rules_file: Path to the agent's rules file (e.g., ~/.claude/CLAUDE.md)
+        snippet_path: Path to the rules-snippet.md file.
+        skill_dir: Path to the skill directory (for user messaging).
         console: Rich console for output.
 
     Returns:
@@ -120,7 +178,7 @@ def update_agent_rules_file(rules_file: pathlib.Path, console: Console) -> bool:
     rules_file_name = rules_file.name
 
     # Read the snippet from the cloned skill repo
-    snippet_section = read_rules_snippet(console)
+    snippet_section = read_rules_snippet(snippet_path, console)
     if snippet_section is None:
         return False
 
@@ -162,7 +220,7 @@ def update_agent_rules_file(rules_file: pathlib.Path, console: Console) -> bool:
         console.print(f"\n[yellow]Skipping {rules_file_name} update.[/]")
         console.print(
             "[dim]The Weco skill has been installed but may not be discovered automatically.\n"
-            f"You can manually reference it at {WECO_SKILL_DIR}[/]"
+            f"You can manually reference it at {skill_dir}[/]"
         )
         return True
 
@@ -202,15 +260,79 @@ def setup_claude_code(console: Console) -> bool:
     console.print("[bold blue]Setting up Weco for Claude Code...[/]\n")
 
     # Step 1: Clone or update the skill repository
-    if not clone_skill_repo(console):
+    if not clone_skill_repo(WECO_SKILL_DIR, console):
         return False
 
     # Step 2: Update CLAUDE.md
-    if not update_agent_rules_file(CLAUDE_MD_PATH, console):
+    if not update_agent_rules_file(CLAUDE_MD_PATH, WECO_RULES_SNIPPET_PATH, WECO_SKILL_DIR, console):
         return False
 
     console.print("\n[bold green]Setup complete![/]")
     console.print(f"[dim]Skill installed at: {WECO_SKILL_DIR}[/]")
+    return True
+
+
+def setup_cursor(console: Console) -> bool:
+    """
+    Set up Weco rules for Cursor.
+
+    Creates a weco.mdc file in ~/.cursor/rules/ with the Weco optimization rules.
+
+    Returns:
+        True if setup was successful, False otherwise.
+    """
+    console.print("[bold blue]Setting up Weco for Cursor...[/]\n")
+
+    # Step 1: Clone or update the skill repository to Cursor's path
+    if not clone_skill_repo(CURSOR_WECO_SKILL_DIR, console):
+        return False
+
+    # Step 2: Read the rules snippet
+    snippet_content = read_rules_snippet_raw(CURSOR_RULES_SNIPPET_PATH, console)
+    if snippet_content is None:
+        return False
+
+    # Step 3: Check if weco.mdc already exists
+    if CURSOR_WECO_RULES_PATH.exists():
+        try:
+            existing_content = CURSOR_WECO_RULES_PATH.read_text()
+            new_content = generate_cursor_mdc_content(snippet_content)
+            if existing_content.strip() == new_content.strip():
+                console.print("[dim]weco.mdc already contains the latest Weco rules.[/]")
+                console.print("\n[bold green]Setup complete![/]")
+                console.print(f"[dim]Rules file at: {CURSOR_WECO_RULES_PATH}[/]")
+                return True
+        except Exception as e:
+            console.print(f"[bold yellow]Warning:[/] Could not read existing weco.mdc: {e}")
+
+        console.print("\n[bold yellow]weco.mdc Update[/]")
+        console.print("The Weco rules file can be updated to the latest version.")
+        should_update = Confirm.ask("Would you like to update weco.mdc?", default=True)
+    else:
+        console.print("\n[bold yellow]weco.mdc Creation[/]")
+        console.print("To enable Weco optimization rules, we can create a weco.mdc file.")
+        should_update = Confirm.ask("Would you like to create weco.mdc?", default=True)
+
+    if not should_update:
+        console.print("\n[yellow]Skipping weco.mdc update.[/]")
+        console.print(
+            "[dim]The Weco skill has been installed but rules are not configured.\n"
+            f"You can manually create the rules file at {CURSOR_WECO_RULES_PATH}[/]"
+        )
+        return True
+
+    # Step 4: Write the MDC file
+    try:
+        CURSOR_RULES_DIR.mkdir(parents=True, exist_ok=True)
+        mdc_content = generate_cursor_mdc_content(snippet_content)
+        CURSOR_WECO_RULES_PATH.write_text(mdc_content)
+        console.print("[green]weco.mdc created successfully.[/]")
+    except Exception as e:
+        console.print(f"[bold red]Error:[/] Failed to write weco.mdc: {e}")
+        return False
+
+    console.print("\n[bold green]Setup complete![/]")
+    console.print(f"[dim]Rules file at: {CURSOR_WECO_RULES_PATH}[/]")
     return True
 
 
@@ -222,16 +344,22 @@ def handle_setup_command(args, console: Console) -> None:
             import sys
 
             sys.exit(1)
+    elif args.tool == "cursor":
+        success = setup_cursor(console)
+        if not success:
+            import sys
+
+            sys.exit(1)
     elif args.tool is None:
         console.print("[bold red]Error:[/] Please specify a tool to set up.")
-        console.print("Available tools: claude-code")
-        console.print("\nUsage: weco setup claude-code")
+        console.print("Available tools: claude-code, cursor")
+        console.print("\nUsage: weco setup <tool>")
         import sys
 
         sys.exit(1)
     else:
         console.print(f"[bold red]Error:[/] Unknown tool: {args.tool}")
-        console.print("Available tools: claude-code")
+        console.print("Available tools: claude-code, cursor")
         import sys
 
         sys.exit(1)
