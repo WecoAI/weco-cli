@@ -189,6 +189,7 @@ def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
     """Configure the setup command parser and its subcommands."""
     setup_subparsers = setup_parser.add_subparsers(dest="tool", help="AI tool to set up")
     setup_subparsers.add_parser("claude-code", help="Set up Weco skill for Claude Code")
+    setup_subparsers.add_parser("cursor", help="Set up Weco rules for Cursor")
 
 
 def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
