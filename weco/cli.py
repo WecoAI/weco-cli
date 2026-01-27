@@ -185,6 +185,12 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
+    """Configure the setup command parser and its subcommands."""
+    setup_subparsers = setup_parser.add_subparsers(dest="tool", help="AI tool to set up")
+    setup_subparsers.add_parser("claude-code", help="Set up Weco skill for Claude Code")
+
+
 def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
     """Configure arguments for the resume command."""
     resume_parser.add_argument(
@@ -284,7 +290,9 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         console.print(f"[bold red]Error parsing API keys: {e}[/]")
         sys.exit(1)
 
-    success = resume_optimization(run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change, output_mode=args.output)
+    success = resume_optimization(
+        run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change, output_mode=args.output
+    )
 
     sys.exit(0 if success else 1)
 
@@ -337,6 +345,10 @@ def _main() -> None:
     )
     configure_resume_parser(resume_parser)
 
+    # --- Setup Command Parser Setup ---
+    setup_parser = subparsers.add_parser("setup", help="Set up Weco for use with AI tools")
+    configure_setup_parser(setup_parser)
+
     args = parser.parse_args()
 
     if args.command == "login":
@@ -364,6 +376,11 @@ def _main() -> None:
         sys.exit(0)
     elif args.command == "resume":
         execute_resume_command(args)
+    elif args.command == "setup":
+        from .setup import handle_setup_command
+
+        handle_setup_command(args, console)
+        sys.exit(0)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,
         # or if an invalid command is provided.
