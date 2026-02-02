@@ -185,11 +185,30 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
     )
 
 
+def _add_setup_source_args(parser: argparse.ArgumentParser) -> None:
+    """Add common source arguments to a setup subparser."""
+    source_group = parser.add_mutually_exclusive_group()
+    source_group.add_argument(
+        "--local", type=str, metavar="PATH", help="Use a local weco-skill directory (creates symlink for development)"
+    )
+    source_group.add_argument("--repo", type=str, metavar="URL", help="Use a different git repo URL (for forks or testing)")
+    parser.add_argument(
+        "--ref",
+        type=str,
+        metavar="REF",
+        help="Checkout a specific branch, tag, or commit hash (used with git clone, not --local)",
+    )
+
+
 def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
     """Configure the setup command parser and its subcommands."""
     setup_subparsers = setup_parser.add_subparsers(dest="tool", help="AI tool to set up")
-    setup_subparsers.add_parser("claude-code", help="Set up Weco skill for Claude Code")
-    setup_subparsers.add_parser("cursor", help="Set up Weco rules for Cursor")
+
+    claude_parser = setup_subparsers.add_parser("claude-code", help="Set up Weco skill for Claude Code")
+    _add_setup_source_args(claude_parser)
+
+    cursor_parser = setup_subparsers.add_parser("cursor", help="Set up Weco rules for Cursor")
+    _add_setup_source_args(cursor_parser)
 
 
 def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
