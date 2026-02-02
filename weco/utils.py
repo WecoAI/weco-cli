@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Tuple, Union
 import json
+import shutil
 import time
 import subprocess
 import psutil
@@ -63,8 +64,19 @@ def read_from_path(fp: pathlib.Path, is_json: bool = False) -> Union[str, Dict[s
         return f.read()
 
 
-def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json: bool = False) -> None:
-    """Write content to a file path, optionally as JSON."""
+def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json: bool = False, mkdir: bool = False) -> None:
+    """
+    Write content to a file path, optionally as JSON.
+
+    Args:
+        fp: File path to write to.
+        content: Content to write (string or dict for JSON).
+        is_json: If True, write as JSON.
+        mkdir: If True, create parent directories if they don't exist.
+    """
+    if mkdir:
+        fp.parent.mkdir(parents=True, exist_ok=True)
+
     with fp.open("w", encoding="utf-8") as f:
         if is_json:
             json.dump(content, f, indent=4)
@@ -72,6 +84,60 @@ def write_to_path(fp: pathlib.Path, content: Union[str, Dict[str, Any]], is_json
             f.write(content)
         else:
             raise TypeError("Error writing to file. Please verify the file path and try again.")
+
+
+def copy_file(src: pathlib.Path, dest: pathlib.Path, mkdir: bool = False) -> None:
+    """
+    Copy a single file.
+
+    Args:
+        src: Source file path.
+        dest: Destination file path.
+        mkdir: If True, create parent directories if they don't exist.
+
+    Raises:
+        FileNotFoundError: If source doesn't exist.
+        OSError: If copy fails.
+    """
+    if not src.exists():
+        raise FileNotFoundError(f"Source file not found: {src}")
+    if mkdir:
+        dest.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy(src, dest)
+
+
+def copy_directory(src: pathlib.Path, dest: pathlib.Path, ignore_patterns: set[str] | None = None) -> None:
+    """
+    Copy a directory tree.
+
+    Args:
+        src: Source directory path.
+        dest: Destination directory path.
+        ignore_patterns: Optional set of file/directory names to skip.
+
+    Raises:
+        FileNotFoundError: If source doesn't exist.
+        OSError: If copy fails.
+    """
+    if not src.exists():
+        raise FileNotFoundError(f"Source directory not found: {src}")
+
+    def ignore_func(_: str, files: list[str]) -> list[str]:
+        if not ignore_patterns:
+            return []
+        return [f for f in files if f in ignore_patterns]
+
+    shutil.copytree(src, dest, ignore=ignore_func)
+
+
+def remove_directory(path: pathlib.Path) -> None:
+    """
+    Remove a directory and all its contents.
+
+    Does nothing if the directory doesn't exist.
+    """
+    if path.exists():
+        shutil.rmtree(path)
 
 
 # Visualization helper functions
