@@ -24,6 +24,7 @@ from .api import (
     submit_execution_result,
 )
 from .auth import handle_authentication
+from .events import get_event_context
 from .browser import open_browser
 from .ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
 from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap
@@ -572,6 +573,9 @@ def optimize(
     }
     processed_instructions = read_additional_instructions(additional_instructions)
 
+    # Get event context for tracking
+    event_ctx = get_event_context()
+
     # Start the run
     run_response = start_optimization_run(
         console=console,
@@ -591,6 +595,9 @@ def optimize(
         auth_headers=auth_headers,
         api_keys=api_keys,
         require_review=require_review,
+        installation_id=event_ctx.installation_id,
+        invocation_id=event_ctx.invocation_id,
+        invoked_via=event_ctx.invoked_via,
     )
 
     if run_response is None:

@@ -130,10 +130,20 @@ def start_optimization_run(
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
     api_keys: Optional[Dict[str, str]] = None,
     require_review: bool = False,
+    installation_id: Optional[str] = None,
+    invocation_id: Optional[str] = None,
+    invoked_via: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
         try:
+            # Build metadata with client info and optional event context
+            metadata = {"client_name": invoked_via or "cli", "client_version": __pkg_version__}
+            if installation_id:
+                metadata["installation_id"] = installation_id
+            if invocation_id:
+                metadata["invocation_id"] = invocation_id
+
             request_json = {
                 "source_code": source_code,
                 "source_path": source_path,
@@ -149,7 +159,7 @@ def start_optimization_run(
                 "save_logs": save_logs,
                 "log_dir": log_dir,
                 "require_review": require_review,
-                "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+                "metadata": metadata,
             }
             if api_keys:
                 request_json["api_keys"] = api_keys
