@@ -138,10 +138,10 @@ You can specify which LLM model to use with the `-M` or `--model` flag:
 weco run --model gpt-5 --source optimize.py [other options...]
 ```
 
-**Available models (30 total):**
+**Available models (31 total):**
 
 **OpenAI Models:**
-- GPT-5 Series: `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.1-codex-mini`, `gpt-5-codex`, `gpt-5-pro`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
+- GPT-5 Series: `gpt-5.2`, `gpt-5.1`, `gpt-5.1-codex`, `gpt-5.1-codex-mini`, `gpt-5-codex`, `gpt-5-pro`, `gpt-5`, `gpt-5-mini`, `gpt-5-nano`
 - O-Series Reasoning: `o3-pro`, `o3`, `o3-mini`, `o4-mini`, `o1-pro`, `o1`, `codex-mini-latest`
 - GPT-4 Series: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`
 

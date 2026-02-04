@@ -5,11 +5,19 @@ Setup commands for integrating Weco with various AI tools.
 
 import pathlib
 import sys
+import time
 
 from rich.console import Console
 from rich.prompt import Confirm
 
 from . import git
+from .events import (
+    send_event,
+    create_event_context,
+    SkillInstallStartedEvent,
+    SkillInstallCompletedEvent,
+    SkillInstallFailedEvent,
+)
 from .utils import copy_directory, copy_file, read_from_path, remove_directory, write_to_path
 
 
@@ -257,6 +265,7 @@ SETUP_HANDLERS = {"claude-code": setup_claude_code, "cursor": setup_cursor}
 def handle_setup_command(args, console: Console) -> None:
     """Handle the setup command with its subcommands."""
     available_tools = ", ".join(SETUP_HANDLERS)
+    ctx = create_event_context()
 
     if args.tool is None:
         console.print("[bold red]Error:[/] Please specify a tool to set up.")
@@ -277,6 +286,14 @@ def handle_setup_command(args, console: Console) -> None:
     if hasattr(args, "local") and args.local:
         local_path = pathlib.Path(args.local).expanduser().resolve()
 
+    # Determine source type for event reporting
+    source = "local" if local_path else "repo"
+
+    # Send skill install started event
+    send_event(SkillInstallStartedEvent(tool=args.tool, source=source), ctx)
+
+    start_time = time.time()
+
     try:
         if repo_url:
             git.validate_repo_url(repo_url)
@@ -285,11 +302,20 @@ def handle_setup_command(args, console: Console) -> None:
 
         handler(console, local_path=local_path, repo_url=repo_url, ref=ref)
 
+        # Send successful completion event
+        duration_ms = int((time.time() - start_time) * 1000)
+        send_event(SkillInstallCompletedEvent(tool=args.tool, source=source, duration_ms=duration_ms), ctx)
+
     except git.GitError as e:
+        # Send failure event
+        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="git_error", stage="git_operation"), ctx)
         console.print(f"[bold red]Error:[/] {e}")
         if e.stderr:
             console.print(f"[dim]{e.stderr}[/]")
         sys.exit(1)
     except (SetupError, git.GitNotFoundError, FileNotFoundError, OSError, ValueError) as e:
+        # Send failure event
+        error_type = type(e).__name__
+        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type=error_type, stage="setup"), ctx)
         console.print(f"[bold red]Error:[/] {e}")
         sys.exit(1)
