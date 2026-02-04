@@ -196,16 +196,8 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
 
 def _add_setup_source_args(parser: argparse.ArgumentParser) -> None:
     """Add common source arguments to a setup subparser."""
-    source_group = parser.add_mutually_exclusive_group()
-    source_group.add_argument(
-        "--local", type=str, metavar="PATH", help="Use a local weco-skill directory (creates symlink for development)"
-    )
-    source_group.add_argument("--repo", type=str, metavar="URL", help="Use a different git repo URL (for forks or testing)")
     parser.add_argument(
-        "--ref",
-        type=str,
-        metavar="REF",
-        help="Checkout a specific branch, tag, or commit hash (used with git clone, not --local)",
+        "--local", type=str, metavar="PATH", help="Use a local weco-skill directory instead of downloading (for development)"
     )
 
 

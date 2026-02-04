@@ -3,14 +3,19 @@
 Setup commands for integrating Weco with various AI tools.
 """
 
+import io
 import pathlib
+import shutil
 import sys
+import tempfile
 import time
+import zipfile
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 
 from rich.console import Console
 from rich.prompt import Confirm
 
-from . import git
 from .events import (
     send_event,
     create_event_context,
@@ -18,7 +23,7 @@ from .events import (
     SkillInstallCompletedEvent,
     SkillInstallFailedEvent,
 )
-from .utils import copy_directory, copy_file, read_from_path, remove_directory, write_to_path
+from .utils import copy_directory, copy_file, read_from_path, write_to_path
 
 
 # =============================================================================
@@ -38,15 +43,30 @@ class InvalidLocalRepoError(SetupError):
     pass
 
 
+class DownloadError(SetupError):
+    """Raised when downloading the skill fails."""
+
+    pass
+
+
+class SafetyError(SetupError):
+    """Raised when a safety check fails during directory operations."""
+
+    pass
+
+
 # =============================================================================
 # Path constants
 # =============================================================================
+
+# Skill repository
+WECO_SKILL_REPO_URL = "https://github.com/WecoAI/weco-skill"
+WECO_SKILL_BRANCH = "main"
 
 # Claude Code paths
 CLAUDE_DIR = pathlib.Path.home() / ".claude"
 CLAUDE_SKILLS_DIR = CLAUDE_DIR / "skills"
 WECO_SKILL_DIR = CLAUDE_SKILLS_DIR / "weco"
-WECO_SKILL_REPO = "git@github.com:WecoAI/weco-skill.git"
 WECO_CLAUDE_SNIPPET_PATH = WECO_SKILL_DIR / "snippets" / "claude.md"
 WECO_CLAUDE_MD_PATH = WECO_SKILL_DIR / "CLAUDE.md"
 
@@ -60,6 +80,88 @@ CURSOR_RULES_SNIPPET_PATH = CURSOR_WECO_SKILL_DIR / "snippets" / "cursor.md"
 
 # Files/directories to skip when copying local repos
 _COPY_IGNORE_PATTERNS = {".git", "__pycache__", ".DS_Store"}
+
+# Allowed parent directories for safe removal (defense in depth)
+_ALLOWED_SKILL_PARENTS = {CLAUDE_SKILLS_DIR, CURSOR_SKILLS_DIR}
+
+
+# =============================================================================
+# Safety utilities
+# =============================================================================
+
+
+def safe_remove_directory(path: pathlib.Path, allowed_parents: set[pathlib.Path] | None = None) -> None:
+    """
+    Safely remove a directory with multiple defensive checks.
+
+    This function is paranoid by design to prevent accidental deletion of
+    important directories due to bugs, path traversal, or misconfiguration.
+
+    Args:
+        path: The directory to remove.
+        allowed_parents: Optional set of allowed parent directories. If provided,
+                         the path must be a direct child of one of these directories.
+
+    Raises:
+        SafetyError: If any safety check fails.
+    """
+    if allowed_parents is None:
+        allowed_parents = _ALLOWED_SKILL_PARENTS
+
+    # Resolve to absolute path to prevent path traversal tricks
+    resolved_path = path.resolve()
+
+    # Safety check 1: Path must exist (if not, nothing to do)
+    if not resolved_path.exists():
+        return
+
+    # Safety check 2: Must be a directory, not a file or symlink to file
+    if not resolved_path.is_dir():
+        raise SafetyError(f"Refusing to remove: not a directory: {resolved_path}")
+
+    # Safety check 3: Must not be a symlink (could point anywhere)
+    if resolved_path.is_symlink():
+        raise SafetyError(f"Refusing to remove: path is a symlink: {resolved_path}")
+
+    # Safety check 4: Must not be the home directory or root
+    home = pathlib.Path.home().resolve()
+    if resolved_path == home:
+        raise SafetyError(f"Refusing to remove: path is home directory: {resolved_path}")
+    if resolved_path == pathlib.Path("/").resolve():
+        raise SafetyError(f"Refusing to remove: path is root directory: {resolved_path}")
+
+    # Safety check 5: Must not be a parent of home directory
+    try:
+        home.relative_to(resolved_path)
+        raise SafetyError(f"Refusing to remove: path is a parent of home directory: {resolved_path}")
+    except ValueError:
+        pass  # Good - resolved_path is not a parent of home
+
+    # Safety check 6: Must be a direct child of one of the allowed parent directories
+    resolved_allowed = {p.resolve() for p in allowed_parents}
+    parent = resolved_path.parent
+
+    if parent not in resolved_allowed:
+        raise SafetyError(
+            f"Refusing to remove: path {resolved_path} is not a direct child of allowed directories: "
+            f"{[str(p) for p in resolved_allowed]}"
+        )
+
+    # Safety check 7: Verify the path is exactly 1 level below the allowed parent
+    # This is redundant with check 6 but provides defense in depth
+    try:
+        relative = resolved_path.relative_to(parent)
+        if len(relative.parts) != 1:
+            raise SafetyError(f"Refusing to remove: path {resolved_path} is not exactly 1 level below parent {parent}")
+    except ValueError:
+        raise SafetyError(f"Refusing to remove: path {resolved_path} is not relative to any allowed parent")
+
+    # Safety check 8: Directory name must be 'weco' (our expected skill directory name)
+    if resolved_path.name != "weco":
+        raise SafetyError(f"Refusing to remove: directory name is not 'weco': {resolved_path}")
+
+    # All checks passed - safe to remove
+    shutil.rmtree(resolved_path)
 
 
 # =============================================================================
@@ -95,44 +197,132 @@ def validate_local_skill_repo(local_path: pathlib.Path) -> None:
 
 
 # =============================================================================
+# Download functions
+# =============================================================================
+
+
+def get_zip_url() -> str:
+    """
+    Build the GitHub zip download URL.
+
+    Returns:
+        The zip download URL for the weco-skill repository.
+    """
+    return f"{WECO_SKILL_REPO_URL}/archive/refs/heads/{WECO_SKILL_BRANCH}.zip"
+
+
+def download_and_extract_zip(dest: pathlib.Path, console: Console) -> None:
+    """
+    Download the weco-skill zip and extract its contents.
+
+    GitHub archives have a single top-level directory (e.g., 'weco-skill-main/'),
+    so we extract that directory's contents directly to dest.
+
+    Args:
+        dest: Destination directory for extracted contents.
+        console: Console for output.
+
+    Raises:
+        DownloadError: If download or extraction fails.
+    """
+    url = get_zip_url()
+    console.print(f"[cyan]Downloading skill from {url}...[/]")
+
+    try:
+        with urlopen(url, timeout=60) as response:
+            zip_data = io.BytesIO(response.read())
+    except HTTPError as e:
+        raise DownloadError(f"Failed to download: HTTP {e.code} - {e.reason}")
+    except URLError as e:
+        raise DownloadError(f"Failed to download: {e.reason}")
+    except TimeoutError:
+        raise DownloadError("Failed to download: connection timed out")
+    except Exception as e:
+        raise DownloadError(f"Failed to download: {e}")
+
+    try:
+        with zipfile.ZipFile(zip_data) as zf:
+            # GitHub zips have a single top-level dir like 'repo-branch/'
+            # Find it and extract contents to dest
+            top_level_dirs = {name.split("/")[0] for name in zf.namelist() if "/" in name}
+
+            if len(top_level_dirs) != 1:
+                raise DownloadError("Unexpected zip structure: expected single top-level directory")
+
+            top_dir = top_level_dirs.pop()
+            prefix = f"{top_dir}/"
+
+            dest.mkdir(parents=True, exist_ok=True)
+
+            for member in zf.namelist():
+                if not member.startswith(prefix):
+                    continue
+
+                # Strip the top-level directory prefix
+                relative_path = member[len(prefix) :]
+                if not relative_path:
+                    continue
+
+                target_path = dest / relative_path
+
+                if member.endswith("/"):
+                    target_path.mkdir(parents=True, exist_ok=True)
+                else:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as source, open(target_path, "wb") as target:
+                        target.write(source.read())
+
+            console.print("[green]Skill downloaded and extracted successfully.[/]")
+
+    except zipfile.BadZipFile:
+        raise DownloadError("Downloaded file is not a valid zip archive")
+    except DownloadError:
+        raise
+    except Exception as e:
+        raise DownloadError(f"Failed to extract zip: {e}")
+
+
+# =============================================================================
 # Installation functions
 # =============================================================================
 
 
-def install_skill_from_git(skill_dir: pathlib.Path, console: Console, repo_url: str | None, ref: str | None) -> None:
+def install_skill_from_zip(skill_dir: pathlib.Path, console: Console) -> None:
     """
-    Clone or update skill from git.
+    Download and install skill from GitHub zip archive.
+
+    Downloads to a temporary directory first, validates the contents,
+    then moves to the final location for safer installation.
+
+    Args:
+        skill_dir: Destination directory for the skill.
+        console: Console for output.
 
     Raises:
-        git.GitNotFoundError: If git is not available.
-        git.GitError: If git operations fail.
+        DownloadError: If download or extraction fails.
+        SafetyError: If directory removal fails safety checks.
     """
-    if not git.is_available():
-        raise git.GitNotFoundError("git is not installed or not in PATH")
-
     skill_dir.parent.mkdir(parents=True, exist_ok=True)
 
-    if skill_dir.exists():
-        if git.is_repo(skill_dir):
-            console.print(f"[cyan]Updating existing skill at {skill_dir}...[/]")
-            if ref:
-                git.fetch_and_checkout(skill_dir, ref)
-                console.print(f"[green]Checked out {ref}.[/]")
-            else:
-                git.pull(skill_dir)
-                console.print("[green]Skill updated successfully.[/]")
-            return
+    # Download to a temp location first for atomic replacement
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        tmp_path = pathlib.Path(tmp_dir) / "skill"
 
-        # Not a git repo — clear and re-clone
-        console.print(f"[cyan]Removing existing directory at {skill_dir}...[/]")
-        remove_directory(skill_dir)
+        download_and_extract_zip(tmp_path, console)
 
-    console.print(f"[cyan]Cloning Weco skill to {skill_dir}...[/]")
-    git.clone(repo_url or WECO_SKILL_REPO, skill_dir, ref=ref)
-    if ref:
-        console.print(f"[green]Cloned and checked out {ref}.[/]")
-    else:
-        console.print("[green]Skill cloned successfully.[/]")
+        # Validate before replacing
+        if not (tmp_path / "SKILL.md").exists():
+            raise DownloadError("Downloaded content does not appear to be a valid weco-skill repository")
+
+        # Now replace existing skill safely
+        if skill_dir.exists():
+            console.print(f"[cyan]Replacing existing skill at {skill_dir}...[/]")
+            safe_remove_directory(skill_dir)
+
+        # Move from temp to final location
+        shutil.move(str(tmp_path), str(skill_dir))
+
+    console.print("[green]Skill installed successfully.[/]")
 
 
 def install_skill_from_local(skill_dir: pathlib.Path, console: Console, local_path: pathlib.Path) -> None:
@@ -141,6 +331,7 @@ def install_skill_from_local(skill_dir: pathlib.Path, console: Console, local_pa
 
     Raises:
         InvalidLocalRepoError: If local path is invalid.
+        SafetyError: If directory removal fails safety checks.
         OSError: If copy fails.
     """
     validate_local_skill_repo(local_path)
@@ -149,22 +340,18 @@ def install_skill_from_local(skill_dir: pathlib.Path, console: Console, local_pa
 
     if skill_dir.exists():
         console.print(f"[cyan]Removing existing directory at {skill_dir}...[/]")
-        remove_directory(skill_dir)
+        safe_remove_directory(skill_dir)
 
     copy_directory(local_path, skill_dir, ignore_patterns=_COPY_IGNORE_PATTERNS)
     console.print(f"[green]Copied local repo from: {local_path}[/]")
 
 
-def install_skill(
-    skill_dir: pathlib.Path, console: Console, local_path: pathlib.Path | None, repo_url: str | None, ref: str | None
-) -> None:
-    """Install skill by copying from local path or cloning from git."""
+def install_skill(skill_dir: pathlib.Path, console: Console, local_path: pathlib.Path | None) -> None:
+    """Install skill by copying from local path or downloading from GitHub."""
     if local_path:
-        if ref:
-            console.print("[bold yellow]Warning:[/] --ref is ignored when using --local")
         install_skill_from_local(skill_dir, console, local_path)
     else:
-        install_skill_from_git(skill_dir, console, repo_url, ref)
+        install_skill_from_zip(skill_dir, console)
 
 
 # =============================================================================
@@ -172,9 +359,7 @@ def install_skill(
 # =============================================================================
 
 
-def setup_claude_code(
-    console: Console, local_path: pathlib.Path | None = None, repo_url: str | None = None, ref: str | None = None
-) -> None:
+def setup_claude_code(console: Console, local_path: pathlib.Path | None = None) -> None:
     """Set up Weco skill for Claude Code."""
     console.print("[bold blue]Setting up Weco for Claude Code...[/]\n")
 
@@ -183,7 +368,7 @@ def setup_claude_code(
     # - `CLAUDE.md` lives *inside* that installed skill folder, so configuration is just
     #   copying a file within the skill directory.
     # - There is no separate global config file to reconcile or prompt before overwriting.
-    install_skill(WECO_SKILL_DIR, console, local_path, repo_url, ref)
+    install_skill(WECO_SKILL_DIR, console, local_path)
 
     # Copy snippets/claude.md to CLAUDE.md (skip for local - user manages their own)
     if not local_path:
@@ -196,9 +381,7 @@ def setup_claude_code(
     console.print(f"[dim]Skill installed at: {WECO_SKILL_DIR}[/]")
 
 
-def setup_cursor(
-    console: Console, local_path: pathlib.Path | None = None, repo_url: str | None = None, ref: str | None = None
-) -> None:
+def setup_cursor(console: Console, local_path: pathlib.Path | None = None) -> None:
     """Set up Weco rules for Cursor."""
     console.print("[bold blue]Setting up Weco for Cursor...[/]\n")
 
@@ -210,7 +393,7 @@ def setup_cursor(
     #   1) compute desired content from the snippet
     #   2) check if it is already up to date
     #   3) prompt before creating/updating it
-    install_skill(CURSOR_WECO_SKILL_DIR, console, local_path, repo_url, ref)
+    install_skill(CURSOR_WECO_SKILL_DIR, console, local_path)
 
     snippet_content = read_from_path(CURSOR_RULES_SNIPPET_PATH)
     mdc_content = generate_cursor_mdc_content(snippet_content.strip())
@@ -279,15 +462,13 @@ def handle_setup_command(args, console: Console) -> None:
         console.print(f"Available tools: {available_tools}")
         sys.exit(1)
 
-    # Validate and extract args
-    repo_url = getattr(args, "repo", None)
-    ref = getattr(args, "ref", None)
+    # Extract local path if provided
     local_path = None
     if hasattr(args, "local") and args.local:
         local_path = pathlib.Path(args.local).expanduser().resolve()
 
     # Determine source type for event reporting
-    source = "local" if local_path else "repo"
+    source = "local" if local_path else "download"
 
     # Send skill install started event
     send_event(SkillInstallStartedEvent(tool=args.tool, source=source), ctx)
@@ -295,25 +476,23 @@ def handle_setup_command(args, console: Console) -> None:
     start_time = time.time()
 
     try:
-        if repo_url:
-            git.validate_repo_url(repo_url)
-        if ref:
-            git.validate_ref(ref)
-
-        handler(console, local_path=local_path, repo_url=repo_url, ref=ref)
+        handler(console, local_path=local_path)
 
         # Send successful completion event
         duration_ms = int((time.time() - start_time) * 1000)
         send_event(SkillInstallCompletedEvent(tool=args.tool, source=source, duration_ms=duration_ms), ctx)
 
-    except git.GitError as e:
+    except DownloadError as e:
         # Send failure event
-        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="git_error", stage="git_operation"), ctx)
+        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="download_error", stage="download"), ctx)
         console.print(f"[bold red]Error:[/] {e}")
-        if e.stderr:
-            console.print(f"[dim]{e.stderr}[/]")
         sys.exit(1)
-    except (SetupError, git.GitNotFoundError, FileNotFoundError, OSError, ValueError) as e:
+    except SafetyError as e:
+        # Send failure event
+        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="safety_error", stage="setup"), ctx)
+        console.print(f"[bold red]Safety Error:[/] {e}")
+        sys.exit(1)
+    except (SetupError, FileNotFoundError, OSError, ValueError) as e:
         # Send failure event
         error_type = type(e).__name__
         send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type=error_type, stage="setup"), ctx)

@@ -127,8 +127,8 @@ weco setup claude-code  # For Claude Code
 weco setup cursor       # For Cursor
 ```
 
-- **Claude Code**: Clones the Weco skill to `~/.claude/skills/weco/` and updates `~/.claude/CLAUDE.md`
-- **Cursor**: Clones the Weco skill to `~/.cursor/skills/weco/` and creates `~/.cursor/rules/weco.mdc`
+- **Claude Code**: Downloads the Weco skill to `~/.claude/skills/weco/` and updates `~/.claude/CLAUDE.md`
+- **Cursor**: Downloads the Weco skill to `~/.cursor/skills/weco/` and creates `~/.cursor/rules/weco.mdc`
 
 ### Model Selection
 
