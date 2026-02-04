@@ -3,8 +3,17 @@ import sys
 from rich.console import Console
 from rich.traceback import install
 
-from .auth import clear_api_key, perform_login, load_weco_api_key
+from .auth import perform_login
+from .config import clear_api_key, load_weco_api_key
 from .constants import DEFAULT_MODELS
+from .events import (
+    send_event,
+    create_event_context,
+    get_event_context,
+    set_event_context,
+    CLIInvokedEvent,
+    RunStartAttemptedEvent,
+)
 from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
 from .validation import validate_source_file, validate_log_directory, ValidationError, print_validation_error
 
@@ -187,16 +196,8 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
 
 def _add_setup_source_args(parser: argparse.ArgumentParser) -> None:
     """Add common source arguments to a setup subparser."""
-    source_group = parser.add_mutually_exclusive_group()
-    source_group.add_argument(
-        "--local", type=str, metavar="PATH", help="Use a local weco-skill directory (creates symlink for development)"
-    )
-    source_group.add_argument("--repo", type=str, metavar="URL", help="Use a different git repo URL (for forks or testing)")
     parser.add_argument(
-        "--ref",
-        type=str,
-        metavar="REF",
-        help="Checkout a specific branch, tag, or commit hash (used with git clone, not --local)",
+        "--local", type=str, metavar="PATH", help="Use a local weco-skill directory instead of downloading (for development)"
     )
 
 
@@ -254,6 +255,8 @@ def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
     from .optimizer import optimize
 
+    ctx = get_event_context()
+
     # Early validation — fail fast with helpful errors
     try:
         validate_source_file(args.source)
@@ -278,6 +281,18 @@ def execute_run_command(args: argparse.Namespace) -> None:
 
         if api_keys:
             console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
+
+    # Send run attempt event before starting (helps measure dropoff before server)
+    send_event(
+        RunStartAttemptedEvent(
+            output_mode=args.output,
+            require_review=args.require_review,
+            save_logs=args.save_logs,
+            steps=args.steps,
+            model=model,
+        ),
+        ctx,
+    )
 
     success = optimize(
         source=args.source,
@@ -336,6 +351,13 @@ def _main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
+    # Global flags
+    parser.add_argument(
+        "--via-skill",
+        action="store_true",
+        help=argparse.SUPPRESS,  # Hidden flag for AI agents invoking via skill
+    )
+
     subparsers = parser.add_subparsers(
         dest="command", help="Available commands"
     )  # Removed required=True for now to handle chatbot case easily
@@ -370,6 +392,14 @@ def _main() -> None:
     configure_setup_parser(setup_parser)
 
     args = parser.parse_args()
+
+    # Create event context with via_skill flag
+    via_skill = getattr(args, "via_skill", False)
+    ctx = create_event_context(via_skill=via_skill)
+    set_event_context(ctx)
+
+    # Send CLI invocation event
+    send_event(CLIInvokedEvent(command=args.command or "help"), ctx)
 
     if args.command == "login":
         # Check if already logged in

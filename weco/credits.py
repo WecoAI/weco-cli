@@ -6,7 +6,8 @@ from rich.console import Console
 from rich.table import Table
 from . import __base_url__
 from .api import handle_api_error
-from .auth import load_weco_api_key, handle_authentication
+from .auth import handle_authentication
+from .config import load_weco_api_key
 
 
 def handle_credits_command(args, console: Console) -> None:

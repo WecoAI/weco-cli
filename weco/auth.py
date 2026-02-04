@@ -1,8 +1,4 @@
 # weco/auth.py
-import os
-import pathlib
-import json
-import stat
 import time
 import requests
 import webbrowser
@@ -10,67 +6,17 @@ from rich.console import Console
 from rich.live import Live
 from rich.prompt import Prompt
 from . import __base_url__
-
-CONFIG_DIR = pathlib.Path.home() / ".config" / "weco"
-CREDENTIALS_FILE = CONFIG_DIR / "credentials.json"
-
-
-def ensure_config_dir():
-    """Ensures the configuration directory exists."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    # Ensure directory permissions are secure (optional but good practice)
-    try:
-        os.chmod(CONFIG_DIR, stat.S_IRWXU)  # Read/Write/Execute for owner only
-    except OSError as e:
-        print(f"Warning: Could not set permissions on {CONFIG_DIR}: {e}")
-
-
-def save_api_key(api_key: str):
-    """Saves the Weco API key securely."""
-    ensure_config_dir()
-    credentials = {"api_key": api_key}
-    try:
-        with open(CREDENTIALS_FILE, "w") as f:
-            json.dump(credentials, f)
-        # Set file permissions to read/write for owner only (600)
-        os.chmod(CREDENTIALS_FILE, stat.S_IRUSR | stat.S_IWUSR)
-    except OSError as e:
-        print(f"Error: Unable to save credentials file or set permissions on {CREDENTIALS_FILE}: {e}")
-
-
-def load_weco_api_key() -> str | None:
-    """Loads the Weco API key."""
-    if not CREDENTIALS_FILE.exists():
-        return None
-    try:
-        # Check permissions before reading (optional but safer)
-        file_stat = os.stat(CREDENTIALS_FILE)
-        if file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):  # Check if group/other have permissions
-            print(f"Warning: Credentials file {CREDENTIALS_FILE} has insecure permissions. Please set to 600.")
-            # Optionally, refuse to load or try to fix permissions
-
-        with open(CREDENTIALS_FILE, "r") as f:
-            credentials = json.load(f)
-            return credentials.get("api_key")
-    except (IOError, json.JSONDecodeError, OSError) as e:
-        print(f"Warning: Unable to read credentials file at {CREDENTIALS_FILE}: {e}")
-        return None
-
-
-def clear_api_key():
-    """Removes the stored API key."""
-    if CREDENTIALS_FILE.exists():
-        try:
-            os.remove(CREDENTIALS_FILE)
-            print("Logged out successfully.")
-        except OSError as e:
-            print(f"Error: Unable to remove credentials file at {CREDENTIALS_FILE}: {e}")
-    else:
-        print("Already logged out.")
+from .config import save_api_key, load_weco_api_key
+from .events import send_event, get_event_context, AuthStartedEvent, AuthCompletedEvent, AuthFailedEvent
 
 
 def perform_login(console: Console):
     """Handles the device login flow."""
+    ctx = get_event_context()
+
+    # Track auth started
+    send_event(AuthStartedEvent(), ctx)
+
     try:
         # 1. Initiate device login
         console.print("Initiating login...")
@@ -109,6 +55,7 @@ def perform_login(console: Console):
             while True:
                 # Check for timeout
                 if time.time() - start_time > expires_in:
+                    send_event(AuthFailedEvent(reason="timeout"), ctx)
                     console.print("\n[bold red]Error:[/] Login request timed out.")
                     return False
 
@@ -118,7 +65,11 @@ def perform_login(console: Console):
                 try:
                     token_response = requests.post(
                         f"{__base_url__}/auth/device/token",
-                        json={"grant_type": "urn:ietf:params:oauth:grant-type:device_code", "device_code": device_code},
+                        json={
+                            "grant_type": "urn:ietf:params:oauth:grant-type:device_code",
+                            "device_code": device_code,
+                            "installation_id": ctx.installation_id,
+                        },
                     )
 
                     # Check for 202 Accepted - Authorization Pending
@@ -129,6 +80,7 @@ def perform_login(console: Console):
                             continue  # Continue polling
                         else:
                             # Unexpected 202 response format
+                            send_event(AuthFailedEvent(reason="unexpected_response"), ctx)
                             console.print(
                                 f"\n[bold red]Error:[/] Received unexpected response from authentication server: {token_data}"
                             )
@@ -142,12 +94,15 @@ def perform_login(console: Console):
                             live_status.update(f"Waiting... (slowing down polling to {interval}s)")
                             continue
                         elif error_code == "expired_token":
+                            send_event(AuthFailedEvent(reason="expired"), ctx)
                             console.print("\n[bold red]Error:[/] Login request expired.")
                             return False
                         elif error_code == "access_denied":
+                            send_event(AuthFailedEvent(reason="denied"), ctx)
                             console.print("\n[bold red]Error:[/] Authorization denied by user.")
                             return False
                         else:  # invalid_grant, etc.
+                            send_event(AuthFailedEvent(reason=error_code), ctx)
                             error_desc = token_data.get("error_description", "Unknown authentication error occurred.")
                             console.print(f"\n[bold red]Error:[/] {error_desc} ({error_code})")
                             return False
@@ -159,10 +114,12 @@ def perform_login(console: Console):
                     if "access_token" in token_data:
                         api_key = token_data["access_token"]
                         save_api_key(api_key)
+                        send_event(AuthCompletedEvent(), ctx)
                         console.print("\n[bold green]Login successful![/]")
                         return True
                     else:
                         # Unexpected successful response format
+                        send_event(AuthFailedEvent(reason="unexpected_response"), ctx)
                         console.print("\n[bold red]Error:[/] Received unexpected response from server during polling.")
                         print(token_data)
                         return False
@@ -174,12 +131,16 @@ def perform_login(console: Console):
     except requests.exceptions.HTTPError as e:
         from .api import handle_api_error  # Import here to avoid circular imports
 
+        send_event(AuthFailedEvent(reason="http_error"), ctx)
         handle_api_error(e, console)
+        return False
     except requests.exceptions.RequestException as e:
         # Catch other request errors
+        send_event(AuthFailedEvent(reason="network_error"), ctx)
         console.print(f"\n[bold red]Network Error:[/] {e}")
         return False
     except Exception as e:
+        send_event(AuthFailedEvent(reason="error"), ctx)
         console.print(f"\n[bold red]An unexpected error occurred during login:[/] {e}")
         return False
 
