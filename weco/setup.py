@@ -69,6 +69,12 @@ CLAUDE_SKILLS_DIR = CLAUDE_DIR / "skills"
 WECO_SKILL_DIR = CLAUDE_SKILLS_DIR / "weco"
 WECO_CLAUDE_SNIPPET_PATH = WECO_SKILL_DIR / "snippets" / "claude.md"
 WECO_CLAUDE_MD_PATH = WECO_SKILL_DIR / "CLAUDE.md"
+CLAUDE_MD_PATH = CLAUDE_DIR / "CLAUDE.md"
+WECO_CLAUDE_GLOBAL_SNIPPET_PATH = WECO_SKILL_DIR / "snippets" / "claude-global.md"
+
+# Section markers for the global ~/.claude/CLAUDE.md
+WECO_SECTION_START = "<!-- WECO_START -->"
+WECO_SECTION_END = "<!-- WECO_END -->"
 
 # Cursor paths
 CURSOR_DIR = pathlib.Path.home() / ".cursor"
@@ -177,6 +183,43 @@ alwaysApply: true
 ---
 {snippet_content}
 """
+
+
+def generate_weco_claude_section(snippet_content: str) -> str:
+    """Generate the Weco section for the global ~/.claude/CLAUDE.md with marker tags."""
+    return f"""{WECO_SECTION_START}
+{snippet_content}
+{WECO_SECTION_END}"""
+
+
+def extract_weco_section(content: str) -> str | None:
+    """Extract the Weco section from file content, or None if not present."""
+    if WECO_SECTION_START not in content or WECO_SECTION_END not in content:
+        return None
+    start = content.index(WECO_SECTION_START)
+    end = content.index(WECO_SECTION_END) + len(WECO_SECTION_END)
+    return content[start:end]
+
+
+def upsert_weco_section(file_path: pathlib.Path, section: str) -> None:
+    """
+    Insert or replace the Weco section in a file.
+
+    - If the file has existing WECO_START/WECO_END markers, replace that region.
+    - If the file exists but has no markers, append the section.
+    - If the file doesn't exist, create it with the section.
+    """
+    if file_path.exists():
+        content = read_from_path(file_path)
+        existing = extract_weco_section(content)
+        if existing is not None:
+            content = content.replace(existing, section)
+        else:
+            content = content.rstrip() + "\n\n" + section + "\n"
+    else:
+        content = section + "\n"
+
+    write_to_path(file_path, content, mkdir=True)
 
 
 def validate_local_skill_repo(local_path: pathlib.Path) -> None:
@@ -363,22 +406,46 @@ def setup_claude_code(console: Console, local_path: pathlib.Path | None = None) 
     """Set up Weco skill for Claude Code."""
     console.print("[bold blue]Setting up Weco for Claude Code...[/]\n")
 
-    # Claude Code setup is intentionally "skill-centric":
-    # - Install the skill into Claude's skills directory.
-    # - `CLAUDE.md` lives *inside* that installed skill folder, so configuration is just
-    #   copying a file within the skill directory.
-    # - There is no separate global config file to reconcile or prompt before overwriting.
+    # Install the skill into Claude's skills directory.
     install_skill(WECO_SKILL_DIR, console, local_path)
 
-    # Copy snippets/claude.md to CLAUDE.md (skip for local - user manages their own)
-    if not local_path:
-        copy_file(WECO_CLAUDE_SNIPPET_PATH, WECO_CLAUDE_MD_PATH)
-        console.print("[green]CLAUDE.md installed to skill directory.[/]")
+    # Copy snippets/claude.md to CLAUDE.md in the skill directory
+    copy_file(WECO_CLAUDE_SNIPPET_PATH, WECO_CLAUDE_MD_PATH)
+    console.print("[green]CLAUDE.md installed to skill directory.[/]")
+
+    # Update global ~/.claude/CLAUDE.md with a Weco section.
+    # The global file is user-managed and may contain other content, so we use
+    # section markers (WECO_START/WECO_END) to insert or replace only our section.
+    snippet_content = read_from_path(WECO_CLAUDE_GLOBAL_SNIPPET_PATH)
+    section = generate_weco_claude_section(snippet_content.strip())
+
+    existing_content = None
+    if CLAUDE_MD_PATH.exists():
+        try:
+            existing_content = read_from_path(CLAUDE_MD_PATH)
+        except Exception:
+            pass
+
+    existing_section = extract_weco_section(existing_content) if existing_content else None
+
+    if existing_section is not None and existing_section.strip() == section.strip():
+        console.print("[dim]~/.claude/CLAUDE.md already contains the latest Weco section.[/]")
+    else:
+        action = "updated" if existing_section is not None else "added"
+        console.print("\n[bold yellow]~/.claude/CLAUDE.md Update (Recommended)[/]")
+        console.print("Adding a Weco section to ~/.claude/CLAUDE.md makes Weco invocation more reliable.")
+        if Confirm.ask("Would you like to update ~/.claude/CLAUDE.md?", default=True):
+            upsert_weco_section(CLAUDE_MD_PATH, section)
+            console.print(f"[green]Weco section {action} in ~/.claude/CLAUDE.md.[/]")
+        else:
+            console.print("[yellow]Skipping ~/.claude/CLAUDE.md update.[/]")
+            console.print(f"[dim]You can manually add the Weco section to {CLAUDE_MD_PATH}[/]")
 
     console.print("\n[bold green]Setup complete![/]")
     if local_path:
         console.print(f"[dim]Skill copied from: {local_path}[/]")
     console.print(f"[dim]Skill installed at: {WECO_SKILL_DIR}[/]")
+    console.print(f"[dim]Global CLAUDE.md at: {CLAUDE_MD_PATH}[/]")
 
 
 def setup_cursor(console: Console, local_path: pathlib.Path | None = None) -> None:
