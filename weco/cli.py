@@ -182,6 +182,12 @@ def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
         help="Amount of credits to purchase (minimum 2, defaults to 10)",
     )
 
+    # Credits cost command
+    cost_parser = credits_subparsers.add_parser("cost", help="Check credit spend for a run")
+    cost_parser.add_argument(
+        "run_id", type=str, help="The run ID to check credit spend for (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
+    )
+
     # Credits autotopup command
     autotopup_parser = credits_subparsers.add_parser("autotopup", help="Configure automatic top-up")
     autotopup_parser.add_argument("--enable", action="store_true", help="Enable automatic top-up")

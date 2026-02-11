@@ -26,6 +26,8 @@ def handle_credits_command(args, console: Console) -> None:
 
     if args.credits_command == "balance" or args.credits_command is None:
         check_balance(console, auth_headers)
+    elif args.credits_command == "cost":
+        check_run_cost(console, auth_headers, args.run_id)
     elif args.credits_command == "topup":
         topup_credits(console, auth_headers, args.amount)
     elif args.credits_command == "autotopup":
@@ -61,6 +63,45 @@ def check_balance(console: Console, auth_headers: dict) -> None:
             console.print("[bold red]Authentication failed. Please log in again with 'weco'.[/]")
         else:
             console.print(f"[bold red]Error checking balance: {e}[/]")
+    except Exception as e:
+        console.print(f"[bold red]Unexpected error: {e}[/]")
+
+
+def check_run_cost(console: Console, auth_headers: dict, run_id: str) -> None:
+    """Check and display credit spend for a specific run."""
+    try:
+        response = requests.get(f"{__base_url__}/billing/run/{run_id}/cost", headers=auth_headers, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+
+        total = data.get("credits_spent_total", 0)
+        steps = data.get("steps", [])
+
+        table = Table(title=f"Credit Spend for Run {run_id}", show_header=True, header_style="bold cyan")
+        table.add_column("Step", style="dim", justify="right")
+        table.add_column("Node ID", style="dim")
+        table.add_column("Cost", style="green", justify="right")
+
+        for step in steps:
+            step_num = str(step.get("step", "-"))
+            node_id = step.get("node_id", "-") or "-"
+            credits = step.get("credits_spent", 0)
+            table.add_row(step_num, node_id, f"${credits:.2f}")
+
+        table.add_section()
+        table.add_row("", "[bold]Total[/]", f"[bold]${total:.2f}[/]")
+
+        console.print(table)
+
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 401:
+            console.print("[bold red]Authentication failed. Please log in again with 'weco login'.[/]")
+        elif e.response.status_code == 403:
+            console.print("[bold red]Permission denied. You do not own this run.[/]")
+        elif e.response.status_code == 404:
+            console.print(f"[bold red]Run not found: {run_id}[/]")
+        else:
+            console.print(f"[bold red]Error checking run cost: {e}[/]")
     except Exception as e:
         console.print(f"[bold red]Unexpected error: {e}[/]")
 
