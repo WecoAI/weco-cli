@@ -14,7 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
 from rich.console import Console
-from rich.prompt import Confirm
+from rich.prompt import Confirm, Prompt
 
 from .events import (
     send_event,
@@ -512,56 +512,82 @@ def setup_cursor(console: Console, local_path: pathlib.Path | None = None) -> No
 SETUP_HANDLERS = {"claude-code": setup_claude_code, "cursor": setup_cursor}
 
 
+def prompt_tool_selection(console: Console) -> list[str]:
+    """Prompt the user to select which tool(s) to set up.
+
+    Returns:
+        List of tool names to set up.
+    """
+    tool_names = list(SETUP_HANDLERS.keys())
+    all_option = len(tool_names) + 1
+
+    console.print("\n[bold cyan]Available tools to set up:[/]\n")
+    for i, name in enumerate(tool_names, 1):
+        console.print(f"  {i}. {name}")
+    console.print(f"  {all_option}. All of the above")
+
+    valid_choices = [str(i) for i in range(1, all_option + 1)]
+    choice = Prompt.ask(
+        "\n[bold]Select an option[/]",
+        choices=valid_choices,
+        show_choices=True,
+    )
+
+    idx = int(choice)
+    if idx == all_option:
+        return tool_names
+    return [tool_names[idx - 1]]
+
+
+def _run_setup_for_tool(tool: str, console: Console, local_path: pathlib.Path | None, ctx) -> None:
+    """Run setup for a single tool with event tracking and error handling."""
+    source = "local" if local_path else "download"
+
+    send_event(SkillInstallStartedEvent(tool=tool, source=source), ctx)
+
+    start_time = time.time()
+
+    try:
+        handler = SETUP_HANDLERS[tool]
+        handler(console, local_path=local_path)
+
+        duration_ms = int((time.time() - start_time) * 1000)
+        send_event(SkillInstallCompletedEvent(tool=tool, source=source, duration_ms=duration_ms), ctx)
+
+    except DownloadError as e:
+        send_event(SkillInstallFailedEvent(tool=tool, source=source, error_type="download_error", stage="download"), ctx)
+        console.print(f"[bold red]Error:[/] {e}")
+        sys.exit(1)
+    except SafetyError as e:
+        send_event(SkillInstallFailedEvent(tool=tool, source=source, error_type="safety_error", stage="setup"), ctx)
+        console.print(f"[bold red]Safety Error:[/] {e}")
+        sys.exit(1)
+    except (SetupError, FileNotFoundError, OSError, ValueError) as e:
+        error_type = type(e).__name__
+        send_event(SkillInstallFailedEvent(tool=tool, source=source, error_type=error_type, stage="setup"), ctx)
+        console.print(f"[bold red]Error:[/] {e}")
+        sys.exit(1)
+
+
 def handle_setup_command(args, console: Console) -> None:
     """Handle the setup command with its subcommands."""
-    available_tools = ", ".join(SETUP_HANDLERS)
     ctx = create_event_context()
 
     if args.tool is None:
-        console.print("[bold red]Error:[/] Please specify a tool to set up.")
-        console.print(f"Available tools: {available_tools}")
-        console.print("\nUsage: weco setup <tool>")
-        sys.exit(1)
-
-    handler = SETUP_HANDLERS.get(args.tool)
-    if handler is None:
-        console.print(f"[bold red]Error:[/] Unknown tool: {args.tool}")
-        console.print(f"Available tools: {available_tools}")
-        sys.exit(1)
+        selected_tools = prompt_tool_selection(console)
+    else:
+        handler = SETUP_HANDLERS.get(args.tool)
+        if handler is None:
+            available_tools = ", ".join(SETUP_HANDLERS)
+            console.print(f"[bold red]Error:[/] Unknown tool: {args.tool}")
+            console.print(f"Available tools: {available_tools}")
+            sys.exit(1)
+        selected_tools = [args.tool]
 
     # Extract local path if provided
     local_path = None
     if hasattr(args, "local") and args.local:
         local_path = pathlib.Path(args.local).expanduser().resolve()
 
-    # Determine source type for event reporting
-    source = "local" if local_path else "download"
-
-    # Send skill install started event
-    send_event(SkillInstallStartedEvent(tool=args.tool, source=source), ctx)
-
-    start_time = time.time()
-
-    try:
-        handler(console, local_path=local_path)
-
-        # Send successful completion event
-        duration_ms = int((time.time() - start_time) * 1000)
-        send_event(SkillInstallCompletedEvent(tool=args.tool, source=source, duration_ms=duration_ms), ctx)
-
-    except DownloadError as e:
-        # Send failure event
-        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="download_error", stage="download"), ctx)
-        console.print(f"[bold red]Error:[/] {e}")
-        sys.exit(1)
-    except SafetyError as e:
-        # Send failure event
-        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type="safety_error", stage="setup"), ctx)
-        console.print(f"[bold red]Safety Error:[/] {e}")
-        sys.exit(1)
-    except (SetupError, FileNotFoundError, OSError, ValueError) as e:
-        # Send failure event
-        error_type = type(e).__name__
-        send_event(SkillInstallFailedEvent(tool=args.tool, source=source, error_type=error_type, stage="setup"), ctx)
-        console.print(f"[bold red]Error:[/] {e}")
-        sys.exit(1)
+    for tool in selected_tools:
+        _run_setup_for_tool(tool, console, local_path, ctx)
