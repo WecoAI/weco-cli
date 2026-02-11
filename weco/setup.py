@@ -527,11 +527,7 @@ def prompt_tool_selection(console: Console) -> list[str]:
     console.print(f"  {all_option}. All of the above")
 
     valid_choices = [str(i) for i in range(1, all_option + 1)]
-    choice = Prompt.ask(
-        "\n[bold]Select an option[/]",
-        choices=valid_choices,
-        show_choices=True,
-    )
+    choice = Prompt.ask("\n[bold]Select an option[/]", choices=valid_choices, show_choices=True)
 
     idx = int(choice)
     if idx == all_option:
