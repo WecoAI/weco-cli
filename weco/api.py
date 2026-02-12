@@ -450,3 +450,33 @@ def submit_execution_result(
         return None
     except Exception:
         return None
+
+
+# --- Share API Functions ---
+
+
+def create_share_link(
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
+) -> Optional[str]:
+    """Create a public share link for a run.
+
+    Args:
+        console: Rich console for output.
+        run_id: The run ID to share.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+
+    Returns:
+        The share ID if successful, or None on failure.
+    """
+    try:
+        response = requests.post(f"{__base_url__}/runs/{run_id}/share", headers=auth_headers, timeout=timeout)
+        response.raise_for_status()
+        result = response.json()
+        return result.get("share_id")
+    except requests.exceptions.HTTPError as e:
+        handle_api_error(e, console)
+        return None
+    except Exception as e:
+        console.print(f"[bold red]Error creating share link: {e}[/]")
+        return None
