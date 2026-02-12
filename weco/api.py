@@ -456,10 +456,7 @@ def submit_execution_result(
 
 
 def create_share_link(
-    console: Console,
-    run_id: str,
-    auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (5, 30),
+    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[str]:
     """Create a public share link for a run.
 
@@ -473,11 +470,7 @@ def create_share_link(
         The share ID if successful, or None on failure.
     """
     try:
-        response = requests.post(
-            f"{__base_url__}/runs/{run_id}/share",
-            headers=auth_headers,
-            timeout=timeout,
-        )
+        response = requests.post(f"{__base_url__}/runs/{run_id}/share", headers=auth_headers, timeout=timeout)
         response.raise_for_status()
         result = response.json()
         return result.get("share_id")

@@ -395,9 +395,7 @@ def _main() -> None:
 
     # --- Share Command Parser Setup ---
     share_parser = subparsers.add_parser(
-        "share",
-        help="Create a public share link for a run",
-        formatter_class=argparse.RawTextHelpFormatter,
+        "share", help="Create a public share link for a run", formatter_class=argparse.RawTextHelpFormatter
     )
     share_parser.add_argument(
         "run_id", type=str, help="The UUID of the run to share (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"

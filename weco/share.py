@@ -25,11 +25,7 @@ def handle_share_command(run_id: str, output_mode: str, console: Console) -> Non
         sys.exit(1)
 
     # Attempt to create the share link
-    share_id = create_share_link(
-        console=console,
-        run_id=run_id,
-        auth_headers=auth_headers,
-    )
+    share_id = create_share_link(console=console, run_id=run_id, auth_headers=auth_headers)
 
     if share_id is None:
         # Error message was already printed by create_share_link / handle_api_error
@@ -41,7 +37,7 @@ def handle_share_command(run_id: str, output_mode: str, console: Console) -> Non
         console.print(share_url)
     else:
         console.print()
-        console.print(f"[bold green]Share link created![/]")
+        console.print("[bold green]Share link created![/]")
         console.print(f"[bold]{share_url}[/]")
         console.print()
         console.print("[dim]Anyone with this link can view the run's optimization progress and results.[/]")
