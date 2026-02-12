@@ -393,6 +393,23 @@ def _main() -> None:
     )
     configure_resume_parser(resume_parser)
 
+    # --- Share Command Parser Setup ---
+    share_parser = subparsers.add_parser(
+        "share",
+        help="Create a public share link for a run",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    share_parser.add_argument(
+        "run_id", type=str, help="The UUID of the run to share (e.g., '0002e071-1b67-411f-a514-36947f0c4b31')"
+    )
+    share_parser.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
+    )
+
     # --- Setup Command Parser Setup ---
     setup_parser = subparsers.add_parser("setup", help="Set up Weco for use with AI tools")
     configure_setup_parser(setup_parser)
@@ -432,6 +449,11 @@ def _main() -> None:
         sys.exit(0)
     elif args.command == "resume":
         execute_resume_command(args)
+    elif args.command == "share":
+        from .share import handle_share_command
+
+        handle_share_command(run_id=args.run_id, output_mode=args.output, console=console)
+        sys.exit(0)
     elif args.command == "setup":
         from .setup import handle_setup_command
 
