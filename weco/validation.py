@@ -54,6 +54,70 @@ def validate_source_file(source: str) -> None:
         raise ValidationError(f"Cannot read '{source}': {e}")
 
 
+# Multi-file safeguard limits (must match meta-agent API limits)
+MAX_SCOPED_FILES = 10
+MAX_PER_FILE_BYTES = 200 * 1024  # 200 KB
+MAX_TOTAL_BYTES = 500 * 1024  # 500 KB
+
+
+def validate_source_files(sources: list[str]) -> None:
+    """
+    Validate a list of source files for multi-file optimization.
+
+    Args:
+        sources: List of paths to source files.
+
+    Raises:
+        ValidationError: If any file is invalid, there are duplicates,
+            or size/count limits are exceeded.
+    """
+    if not sources:
+        raise ValidationError("No source files provided.")
+
+    if len(sources) > MAX_SCOPED_FILES:
+        raise ValidationError(
+            f"Too many files: {len(sources)} provided, maximum is {MAX_SCOPED_FILES}.",
+            suggestion=f"Reduce to at most {MAX_SCOPED_FILES} files.",
+        )
+
+    # Check for duplicate paths
+    resolved = [pathlib.Path(s).resolve() for s in sources]
+    seen = set()
+    for p in resolved:
+        if p in seen:
+            raise ValidationError(f"Duplicate file path: '{p}'.")
+        seen.add(p)
+
+    # Validate each file individually
+    for source in sources:
+        validate_source_file(source)
+
+    # Check per-file and total size limits
+    total_size = 0
+    for source in sources:
+        path = pathlib.Path(source)
+        size = path.stat().st_size
+        if size > MAX_PER_FILE_BYTES:
+            raise ValidationError(
+                f"File '{source}' ({size // 1024}KB) exceeds the {MAX_PER_FILE_BYTES // 1024}KB per-file size limit."
+            )
+        total_size += size
+
+    if total_size > MAX_TOTAL_BYTES:
+        raise ValidationError(
+            f"Total source size ({total_size // 1024}KB) exceeds the {MAX_TOTAL_BYTES // 1024}KB limit.",
+            suggestion=f"Reduce total file size to under {MAX_TOTAL_BYTES // 1024}KB.",
+        )
+
+
+def validate_sources(source: str | list[str]) -> None:
+    """Validate source input for both single-file and multi-file modes."""
+    if isinstance(source, list):
+        validate_source_files(source)
+    else:
+        validate_source_file(source)
+
+
 def validate_log_directory(log_dir: str) -> None:
     """
     Validate that the log directory is writable.
