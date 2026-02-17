@@ -220,6 +220,40 @@ def run_evaluation_with_file_swap(
         write_to_path(fp=file_path, content=original_content)
 
 
+def run_evaluation_with_files_swap(
+    file_map: dict[str, str], originals: dict[str, str], eval_command: str, timeout: int | None = None
+) -> str:
+    """
+    Temporarily write multiple files, run evaluation, then restore all originals.
+
+    File paths in ``file_map`` and ``originals`` are relative to the current
+    working directory (project root). Parent directories are created as needed.
+
+    Args:
+        file_map: Dict mapping relative file paths to their new content.
+        originals: Dict mapping relative file paths to their original content.
+        eval_command: The shell command to run for evaluation.
+        timeout: Optional timeout for the evaluation command.
+
+    Returns:
+        The output from running the evaluation command.
+    """
+    # Write all new files
+    for rel_path, content in file_map.items():
+        fp = pathlib.Path(rel_path)
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        write_to_path(fp=fp, content=content)
+
+    try:
+        output = run_evaluation(eval_command=eval_command, timeout=timeout)
+        return output
+    finally:
+        # Always restore all originals
+        for rel_path, content in originals.items():
+            fp = pathlib.Path(rel_path)
+            write_to_path(fp=fp, content=content)
+
+
 def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
     """Run the evaluation command on the code and return the output."""
     process = subprocess.Popen(

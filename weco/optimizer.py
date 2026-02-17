@@ -1,4 +1,3 @@
-import json
 import math
 import pathlib
 import sys
@@ -6,7 +5,6 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from datetime import datetime
 from typing import Optional
 
 from rich.console import Console
@@ -23,11 +21,12 @@ from .api import (
     start_optimization_run,
     submit_execution_result,
 )
+from .artifacts import RunArtifacts
 from .auth import handle_authentication
 from .events import get_event_context
 from .browser import open_browser
 from .ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
-from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_file_swap
+from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_files_swap
 
 
 @dataclass
@@ -39,36 +38,6 @@ class OptimizationResult:
     status: str  # "completed", "terminated", "error"
     reason: str  # e.g. "completed_successfully", "user_terminated_sigint"
     details: Optional[str] = None
-
-
-def save_execution_output(runs_dir: pathlib.Path, step: int, output: str) -> None:
-    """
-    Save execution output using hybrid approach:
-    1. Per-step raw files under outputs/step_<n>.out.txt
-    2. Centralized JSONL index in exec_output.jsonl
-
-    Args:
-        runs_dir: Path to the run directory (.runs/<run_id>)
-        step: Current step number
-        output: The execution output to save
-    """
-    timestamp = datetime.now().isoformat()
-
-    # Create outputs directory if it doesn't exist
-    outputs_dir = runs_dir / "outputs"
-    outputs_dir.mkdir(parents=True, exist_ok=True)
-
-    # Save per-step raw output file
-    step_file = outputs_dir / f"step_{step}.out.txt"
-    with open(step_file, "w", encoding="utf-8") as f:
-        f.write(output)
-
-    # Append to centralized JSONL index
-    jsonl_file = runs_dir / "exec_output.jsonl"
-    output_file_path = step_file.relative_to(runs_dir).as_posix()
-    entry = {"step": step, "timestamp": timestamp, "output_file": output_file_path, "output_length": len(output)}
-    with open(jsonl_file, "a", encoding="utf-8") as f:
-        f.write(json.dumps(entry) + "\n")
 
 
 # --- Heartbeat Sender Class ---
@@ -84,31 +53,30 @@ class HeartbeatSender(threading.Thread):
         try:
             while not self.stop_event.is_set():
                 if not send_heartbeat(self.run_id, self.auth_headers):
-                    # send_heartbeat itself prints errors to stderr if it returns False
-                    # No explicit HeartbeatSender log needed here unless more detail is desired for a False return
+                    # send_heartbeat logs to stderr when it returns False.
                     pass
 
-                if self.stop_event.is_set():  # Check before waiting for responsiveness
+                if self.stop_event.is_set():
+                    # Check once more before waiting for faster shutdown.
                     break
 
-                self.stop_event.wait(self.interval)  # Wait for interval or stop signal
+                # Wait for the next interval, or exit early on stop signal.
+                self.stop_event.wait(self.interval)
 
         except Exception as e:
-            # Catch any unexpected error in the loop to prevent silent thread death
+            # Avoid silent heartbeat thread failures during long runs.
             print(f"[ERROR HeartbeatSender] Unexpected error in heartbeat thread for run {self.run_id}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
-            # The loop will break due to the exception, and thread will terminate via finally.
 
 
 def _run_optimization_loop(
     ui: OptimizationUI,
     run_id: str,
     auth_headers: dict,
-    source_fp: pathlib.Path,
-    source_code: str,
+    source_code: dict[str, str],
     eval_command: str,
     eval_timeout: Optional[int],
-    runs_dir: pathlib.Path,
+    artifacts: RunArtifacts,
     save_logs: bool,
     start_step: int = 0,
     poll_interval: float = 2.0,
@@ -126,11 +94,10 @@ def _run_optimization_loop(
         ui: UI handler for displaying progress and events.
         run_id: The optimization run ID.
         auth_headers: Authentication headers.
-        source_fp: Path to the source file.
-        source_code: Original source code content.
+        source_code: Original source code content keyed by file path.
         eval_command: Evaluation command to run.
         eval_timeout: Timeout for evaluation in seconds.
-        runs_dir: Directory for logs.
+        artifacts: RunArtifacts instance for writing step/output artifacts.
         save_logs: Whether to save execution logs.
         start_step: Initial step number (0 for new runs, current_step for resume).
         poll_interval: Seconds between polling attempts.
@@ -210,20 +177,22 @@ def _run_optimization_loop(
             ui.on_executing(step)
             ui.on_task_claimed(task_id, plan)
 
-            # Save code to log
-            write_to_path(fp=runs_dir / f"step_{step}{source_fp.suffix}", content=code)
+            # Normalize server response to a file map
+            if isinstance(code, dict):
+                file_map = code
+            else:
+                if len(source_code) != 1:
+                    raise ValueError("Received single-file code for a multi-file run. Unable to map code to a file path.")
+                only_path = next(iter(source_code.keys()))
+                file_map = {only_path: code}
 
-            # Execute locally
-            term_out = run_evaluation_with_file_swap(
-                file_path=source_fp,
-                new_content=code,
-                original_content=source_code,
-                eval_command=eval_command,
-                timeout=eval_timeout,
+            artifacts.save_step_code(step, file_map)
+            term_out = run_evaluation_with_files_swap(
+                file_map=file_map, originals=source_code, eval_command=eval_command, timeout=eval_timeout
             )
 
             if save_logs:
-                save_execution_output(runs_dir, step=step, output=term_out)
+                artifacts.save_execution_output(step=step, output=term_out)
 
             ui.on_output(term_out)
 
@@ -266,21 +235,19 @@ def _run_optimization_loop(
 def _offer_apply_best_solution(
     console: Console,
     run_id: str,
-    source_fp: pathlib.Path,
-    source_code: str,
-    runs_dir: pathlib.Path,
+    source_code: dict[str, str],
+    artifacts: RunArtifacts,
     auth_headers: dict,
     apply_change: bool = False,
 ) -> None:
     """
-    Fetch the best solution from the backend and offer to apply it to the source file.
+    Fetch the best solution from the backend and offer to apply it.
 
     Args:
         console: Rich console for output.
         run_id: The optimization run ID.
-        source_fp: Path to the source file.
-        source_code: Original source code content.
-        runs_dir: Directory for run logs.
+        source_code: Original source code content keyed by file path.
+        artifacts: RunArtifacts instance for saving best solution.
         auth_headers: Authentication headers.
         apply_change: If True, apply automatically without prompting.
     """
@@ -296,29 +263,45 @@ def _offer_apply_best_solution(
         best_code = best_result.get("code")
         best_metric = best_result.get("metric_value")
 
-        if not best_code or best_code == source_code:
+        if isinstance(best_code, dict):
+            best_file_map = best_code
+        else:
+            if not best_code:
+                console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
+                return
+            if len(source_code) != 1:
+                raise ValueError("Received single-file code for a multi-file run. Unable to map code to a file path.")
+            only_path = next(iter(source_code.keys()))
+            best_file_map = {only_path: best_code}
+
+        if best_file_map == source_code:
             console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
             return
 
         # Save best solution to logs
-        write_to_path(fp=runs_dir / f"best{source_fp.suffix}", content=best_code)
+        best_dir = artifacts.save_best_code(best_file_map)
 
         # Show summary
         console.print("\n[bold green]Optimization complete![/]")
         if best_metric is not None:
             console.print(f"[green]Best metric value: {best_metric}[/]")
 
+        console.print(f"[dim]Files modified: {', '.join(sorted(best_file_map.keys()))}[/]")
+
         # Ask user or auto-apply
         if apply_change:
             should_apply = True
         else:
-            should_apply = Confirm.ask("Would you like to apply the best solution to your source file?", default=True)
+            should_apply = Confirm.ask("Would you like to apply the best solution to your source files?", default=True)
 
         if should_apply:
-            write_to_path(fp=source_fp, content=best_code)
-            console.print(f"[green]Best solution applied to {source_fp}[/]\n")
+            for rel_path, content in best_file_map.items():
+                fp = pathlib.Path(rel_path)
+                fp.parent.mkdir(parents=True, exist_ok=True)
+                write_to_path(fp=fp, content=content)
+            console.print(f"[green]Best solution applied to {len(best_file_map)} files[/]\n")
         else:
-            console.print(f"[dim]Best solution saved to {runs_dir / f'best{source_fp.suffix}'}[/]\n")
+            console.print(f"[dim]Best solution saved to {best_dir}[/]\n")
 
     except Exception as e:
         console.print(f"[yellow]Could not fetch best solution: {e}[/]")
@@ -395,7 +378,7 @@ def resume_optimization(
     console.print(f"  Last Updated: {status.get('updated_at', 'N/A')}")
 
     unchanged = Confirm.ask(
-        "Have you kept the source file and evaluation command unchanged since the original run?", default=True
+        "Have you kept the source files and evaluation command unchanged since the original run?", default=True
     )
     if not unchanged:
         console.print("[yellow]Resume cancelled. Please start a new run if the environment changed.[/]")
@@ -411,10 +394,26 @@ def resume_optimization(
     save_logs = bool(resume_resp.get("save_logs", False))
     eval_timeout = resume_resp.get("eval_timeout")
 
-    # Read the original source code
-    source_fp = pathlib.Path(source_path)
-    source_fp.parent.mkdir(parents=True, exist_ok=True)
-    source_code = read_from_path(fp=source_fp, is_json=False) if source_fp.exists() else ""
+    # Read original source code and normalize to a file map.
+    resume_source_code = resume_resp.get("source_code")
+    scoped_files = resume_resp.get("scoped_files") or []
+    source_code: dict[str, str] = {}
+    if isinstance(resume_source_code, dict):
+        for rel_path, fallback_content in resume_source_code.items():
+            fp = pathlib.Path(rel_path)
+            source_code[rel_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else fallback_content
+    elif source_path:
+        fp = pathlib.Path(source_path)
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        source_code[source_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else (resume_source_code or "")
+    elif isinstance(resume_source_code, str) and len(scoped_files) == 1:
+        only_path = scoped_files[0]
+        fp = pathlib.Path(only_path)
+        fp.parent.mkdir(parents=True, exist_ok=True)
+        source_code[only_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else resume_source_code
+    else:
+        console.print("[bold red]Cannot resume run: missing source path for single-file source_code.[/]")
+        return False
 
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
@@ -422,9 +421,8 @@ def resume_optimization(
     # Open dashboard in the user's browser
     open_browser(dashboard_url)
 
-    # Setup logging directory
-    runs_dir = pathlib.Path(log_dir) / run_id
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    # Setup artifacts manager
+    artifacts = RunArtifacts(log_dir=log_dir, run_id=run_id)
 
     # Start heartbeat thread
     stop_heartbeat_event = threading.Event()
@@ -456,11 +454,10 @@ def resume_optimization(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
-                source_fp=source_fp,
                 source_code=source_code,
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
-                runs_dir=runs_dir,
+                artifacts=artifacts,
                 save_logs=save_logs,
                 start_step=current_step,
                 poll_interval=poll_interval,
@@ -482,9 +479,8 @@ def resume_optimization(
         _offer_apply_best_solution(
             console=console,
             run_id=run_id,
-            source_fp=source_fp,
             source_code=source_code,
-            runs_dir=runs_dir,
+            artifacts=artifacts,
             auth_headers=auth_headers,
             apply_change=apply_change,
         )
@@ -510,7 +506,7 @@ def resume_optimization(
 
 
 def optimize(
-    source: str,
+    source: "str | list[str]",
     eval_command: str,
     metric: str,
     goal: str = "maximize",
@@ -533,7 +529,7 @@ def optimize(
     Uses the new execution queue flow instead of the legacy direct flow.
 
     Args:
-        source: Path to the source file to optimize.
+        source: Path to a single source file (str) or list of file paths.
         eval_command: Command to run for evaluation.
         metric: Name of the metric to optimize.
         goal: "maximize" or "minimize".
@@ -561,8 +557,15 @@ def optimize(
 
     # Process parameters
     maximize = goal.lower() in ["maximize", "max"]
-    source_fp = pathlib.Path(source)
-    source_code = read_from_path(fp=source_fp, is_json=False)
+
+    source_paths = source if isinstance(source, list) else [source]
+    source_code: dict[str, str] = {}
+    for s in source_paths:
+        fp = pathlib.Path(s)
+        source_code[str(fp)] = read_from_path(fp=fp, is_json=False)
+
+    # Always send as multi-file payload, even for a single source file.
+    source_path_for_api: Optional[str] = None
 
     code_generator_config = {"model": model}
     evaluator_config = {"model": model, "include_analysis": True}
@@ -580,7 +583,7 @@ def optimize(
     run_response = start_optimization_run(
         console=console,
         source_code=source_code,
-        source_path=str(source_fp),
+        source_path=source_path_for_api,
         evaluation_command=eval_command,
         metric_name=metric,
         maximize=maximize,
@@ -610,9 +613,8 @@ def optimize(
     # Open dashboard in the user's browser
     open_browser(dashboard_url)
 
-    # Setup logging directory
-    runs_dir = pathlib.Path(log_dir) / run_id
-    runs_dir.mkdir(parents=True, exist_ok=True)
+    # Setup artifacts manager
+    artifacts = RunArtifacts(log_dir=log_dir, run_id=run_id)
 
     # Start heartbeat thread
     stop_heartbeat_event = threading.Event()
@@ -632,11 +634,10 @@ def optimize(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
-                source_fp=source_fp,
                 source_code=source_code,
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
-                runs_dir=runs_dir,
+                artifacts=artifacts,
                 save_logs=save_logs,
                 start_step=0,
                 poll_interval=poll_interval,
@@ -658,9 +659,8 @@ def optimize(
         _offer_apply_best_solution(
             console=console,
             run_id=run_id,
-            source_fp=source_fp,
             source_code=source_code,
-            runs_dir=runs_dir,
+            artifacts=artifacts,
             auth_headers=auth_headers,
             apply_change=apply_change,
         )
