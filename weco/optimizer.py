@@ -177,14 +177,7 @@ def _run_optimization_loop(
             ui.on_executing(step)
             ui.on_task_claimed(task_id, plan)
 
-            # Normalize server response to a file map
-            if isinstance(code, dict):
-                file_map = code
-            else:
-                if len(source_code) != 1:
-                    raise ValueError("Received single-file code for a multi-file run. Unable to map code to a file path.")
-                only_path = next(iter(source_code.keys()))
-                file_map = {only_path: code}
+            file_map = code
 
             artifacts.save_step_code(step, file_map)
             term_out = run_evaluation_with_files_swap(
@@ -263,16 +256,10 @@ def _offer_apply_best_solution(
         best_code = best_result.get("code")
         best_metric = best_result.get("metric_value")
 
-        if isinstance(best_code, dict):
-            best_file_map = best_code
-        else:
-            if not best_code:
-                console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
-                return
-            if len(source_code) != 1:
-                raise ValueError("Received single-file code for a multi-file run. Unable to map code to a file path.")
-            only_path = next(iter(source_code.keys()))
-            best_file_map = {only_path: best_code}
+        if not best_code:
+            console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
+            return
+        best_file_map = best_code
 
         if best_file_map == source_code:
             console.print("\n[green]Best solution is the same as original. No changes to apply.[/]\n")
@@ -396,24 +383,13 @@ def resume_optimization(
 
     # Read original source code and normalize to a file map.
     resume_source_code = resume_resp.get("source_code")
-    scoped_files = resume_resp.get("scoped_files") or []
-    source_code: dict[str, str] = {}
-    if isinstance(resume_source_code, dict):
-        for rel_path, fallback_content in resume_source_code.items():
-            fp = pathlib.Path(rel_path)
-            source_code[rel_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else fallback_content
-    elif source_path:
-        fp = pathlib.Path(source_path)
-        fp.parent.mkdir(parents=True, exist_ok=True)
-        source_code[source_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else (resume_source_code or "")
-    elif isinstance(resume_source_code, str) and len(scoped_files) == 1:
-        only_path = scoped_files[0]
-        fp = pathlib.Path(only_path)
-        fp.parent.mkdir(parents=True, exist_ok=True)
-        source_code[only_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else resume_source_code
-    else:
-        console.print("[bold red]Cannot resume run: missing source path for single-file source_code.[/]")
+    if not isinstance(resume_source_code, dict):
+        console.print("[bold red]Cannot resume run: source_code is not in the expected dict format.[/]")
         return False
+    source_code: dict[str, str] = {}
+    for rel_path, fallback_content in resume_source_code.items():
+        fp = pathlib.Path(rel_path)
+        source_code[rel_path] = read_from_path(fp=fp, is_json=False) if fp.exists() else fallback_content
 
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
