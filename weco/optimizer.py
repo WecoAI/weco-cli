@@ -376,7 +376,6 @@ def resume_optimization(
     if resume_resp is None:
         return False
 
-    source_path = resume_resp.get("source_path")
     log_dir = resume_resp.get("log_dir", ".runs")
     save_logs = bool(resume_resp.get("save_logs", False))
     eval_timeout = resume_resp.get("eval_timeout")
