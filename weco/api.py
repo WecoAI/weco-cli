@@ -113,8 +113,8 @@ def _recover_suggest_after_transport_error(
 
 def start_optimization_run(
     console: Console,
-    source_code: str,
-    source_path: str,
+    source_code: dict[str, str],
+    source_path: str | None,
     evaluation_command: str,
     metric_name: str,
     maximize: bool,

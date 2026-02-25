@@ -15,7 +15,7 @@ from .events import (
     RunStartAttemptedEvent,
 )
 from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
-from .validation import validate_source_file, validate_log_directory, ValidationError, print_validation_error
+from .validation import validate_sources, validate_log_directory, ValidationError, print_validation_error
 
 
 install(show_locals=True)
@@ -55,12 +55,15 @@ def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
 # Function to define and return the run_parser (or configure it on a passed subparser object)
 # This helps keep main() cleaner and centralizes run command arg definitions.
 def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
-    run_parser.add_argument(
-        "-s",
-        "--source",
+    source_group = run_parser.add_mutually_exclusive_group(required=True)
+    source_group.add_argument(
+        "-s", "--source", type=str, help="Path to a single source code file to be optimized (e.g., `optimize.py`)"
+    )
+    source_group.add_argument(
+        "--sources",
+        nargs="+",
         type=str,
-        required=True,
-        help="Path to the source code file that will be optimized (e.g., `optimize.py`)",
+        help="Paths to multiple source code files to be optimized together (e.g., `model.py utils.py config.py`)",
     )
     run_parser.add_argument(
         "-c",
@@ -111,7 +114,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
     run_parser.add_argument(
         "--save-logs",
         action="store_true",
-        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt with JSONL index",
+        help="Save execution output to .runs/<run-id>/outputs/step_<n>.out.txt with JSONL index. Code snapshots are written to .runs/<run-id>/steps/<step>/files and .runs/<run-id>/best/files.",
     )
     run_parser.add_argument(
         "--apply-change",
@@ -263,9 +266,12 @@ def execute_run_command(args: argparse.Namespace) -> None:
 
     ctx = get_event_context()
 
+    # Normalize source input so --source follows the same internal path as --sources
+    source_arg = args.sources if args.sources is not None else [args.source]
+
     # Early validation — fail fast with helpful errors
     try:
-        validate_source_file(args.source)
+        validate_sources(source_arg)
         validate_log_directory(args.log_dir)
     except ValidationError as e:
         print_validation_error(e, console)
@@ -301,7 +307,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
     )
 
     success = optimize(
-        source=args.source,
+        source=source_arg,
         eval_command=args.eval_command,
         metric=args.metric,
         goal=args.goal,

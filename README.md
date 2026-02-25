@@ -65,6 +65,18 @@ weco run --source module.py \
 
 **Note:** If you have an NVIDIA GPU, change the device in the `--eval-command` to `cuda`. If you are running this on Apple Silicon, set it to `mps`.
 
+**Multi-file optimization:** If your code spans multiple files, use `--sources` to optimize them together:
+
+```bash
+weco run --sources model.py utils.py config.py \
+     --eval-command "python evaluate.py" \
+     --metric accuracy \
+     --goal maximize \
+     --steps 10
+```
+
+Weco will optimize all specified files simultaneously, allowing changes across file boundaries.
+
 For more advanced examples, including [Triton](/examples/triton/README.md), [CUDA kernel optimization](/examples/cuda/README.md), [ML model optimization](/examples/spaceship-titanic/README.md), and [prompt engineering for math problems](examples/prompt/README.md), please see the `README.md` files within the corresponding subdirectories under the [`examples/`](examples/) folder.
 
 > Note: When recommend removing any backticks from your code if any are present. We currently don't support backticks but will support this in the future.
@@ -77,7 +89,8 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 
 | Argument            | Description                                                                                                                                                                                  | Example               |
 | :------------------ | :------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | :-------------------- |
-| `-s, --source`      | Path to the source code file that will be optimized.                                                                                                                   | `-s model.py`      |
+| `-s, --source`      | Path to a single source code file to be optimized. Mutually exclusive with `--sources`.                                                                                | `-s model.py`      |
+| `--sources`          | Paths to multiple source code files to be optimized together. Mutually exclusive with `-s, --source`.                                                                  | `--sources model.py utils.py config.py` |
 | `-c, --eval-command`| Command to run for evaluating the code in `--source`. This command should print the target `--metric` and its value to the terminal (stdout/stderr). See note below.                        | `-c "python eval.py"` |
 | `-m, --metric`      | The name of the metric you want to optimize (e.g., 'accuracy', 'speedup', 'loss'). This metric name does not need to match what's printed by your `--eval-command` exactly (e.g., its okay to use "speedup" instead of "Speedup:").                                    | `-m speedup`          |
 | `-g, --goal`        | `maximize`/`max` to maximize the `--metric` or `minimize`/`min` to minimize it.                                                                                                              | `-g maximize`         |
@@ -232,7 +245,7 @@ This is particularly useful for:
 
 ### Important Note on Evaluation
 
-The command specified by `--eval-command` is crucial. It's responsible for executing the potentially modified code from `--source` and assessing its performance. **This command MUST print the metric you specified with `--metric` along with its numerical value to the terminal (standard output or standard error).** Weco reads this output to understand how well each code version performs and guide the optimization process.
+The command specified by `--eval-command` is crucial. It's responsible for executing the potentially modified code from `--source` (or `--sources`) and assessing its performance. **This command MUST print the metric you specified with `--metric` along with its numerical value to the terminal (standard output or standard error).** Weco reads this output to understand how well each code version performs and guide the optimization process.
 
 For example, if you set `--metric speedup`, your evaluation script (`eval.py` in the examples) should output a line like:
 
