@@ -3,11 +3,80 @@
 import webbrowser
 import requests
 from rich.console import Console
+from rich.prompt import Confirm
 from rich.table import Table
 from . import __base_url__
 from .api import handle_api_error
 from .auth import handle_authentication
 from .config import load_weco_api_key
+
+
+def check_promotional_credits(model: str, api_keys: dict[str, str] | None, console: Console) -> str:
+    """Check for promotional credits and prompt user to use them if applicable.
+
+    Returns the (possibly modified) model string with provider prefix.
+    """
+    # Skip if user is using their own API keys (BYOK — not billed)
+    if api_keys:
+        return model
+
+    # If model already has provider prefix, inform user about matching credits
+    if "/" in model:
+        provider = model.split("/", 1)[0]
+        try:
+            weco_api_key = load_weco_api_key()
+            if not weco_api_key:
+                return model
+            resp = requests.get(
+                f"{__base_url__}/billing/balance", headers={"Authorization": f"Bearer {weco_api_key}"}, timeout=5
+            )
+            if resp.ok:
+                promo_credits = resp.json().get("promotional_credits", [])
+                matching = [g for g in promo_credits if g.get("provider") == provider]
+                if matching:
+                    total = sum(g.get("remaining_credits", 0) for g in matching)
+                    expires = matching[0].get("expires_at", "")[:10]
+                    console.print(
+                        f"[green]✅ Using {provider.capitalize()} promotional credits "
+                        f"(${total:.2f} remaining, expires {expires})[/]"
+                    )
+        except Exception:
+            pass  # Non-critical; don't block the run
+        return model
+
+    # Bare model name — check for promotional credits
+    try:
+        weco_api_key = load_weco_api_key()
+        if not weco_api_key:
+            return model
+        resp = requests.get(f"{__base_url__}/billing/balance", headers={"Authorization": f"Bearer {weco_api_key}"}, timeout=5)
+        if not resp.ok:
+            return model
+
+        promo_credits = resp.json().get("promotional_credits", [])
+        if not promo_credits:
+            return model
+
+        # Check if any grant provider could serve this model
+        for grant in promo_credits:
+            grant_provider = grant.get("provider", "")
+            remaining = grant.get("remaining_credits", 0)
+            expires = grant.get("expires_at", "")[:10]
+
+            # Suggest using the grant's provider
+            prefixed_model = f"{grant_provider}/{model}"
+            console.print(
+                f"\n[yellow]💡 You have ${remaining:.2f} in {grant_provider.capitalize()} credits (expires {expires}).[/]"
+            )
+            use_credits = Confirm.ask(f"   Use [bold]{prefixed_model}[/] to apply them?", default=True)
+            if use_credits:
+                console.print(f"[green]✅ Using {grant_provider.capitalize()} promotional credits[/]\n")
+                return prefixed_model
+
+    except Exception:
+        pass  # Non-critical; don't block the run
+
+    return model
 
 
 def handle_credits_command(args, console: Console) -> None:
@@ -55,8 +124,15 @@ def check_balance(console: Console, auth_headers: dict) -> None:
 
         console.print(table)
 
-        if balance < 10:
-            console.print("\n[yellow]💡 Tip: You're running low on credits. Run 'weco credits topup' to add more.[/]")
+        # Show promotional credits if any
+        promo_credits = data.get("promotional_credits", [])
+        if promo_credits:
+            console.print("\n[bold cyan]Promotional Credits:[/]")
+            for grant in promo_credits:
+                provider = grant.get("provider", "Unknown")
+                remaining = grant.get("remaining_credits", 0)
+                expires_at = grant.get("expires_at", "")[:10]  # Date portion only
+                console.print(f"  {provider.capitalize()} models: [green]${remaining:.2f}[/] (expires {expires_at})")
 
     except requests.exceptions.HTTPError as e:
         if e.response.status_code == 401:

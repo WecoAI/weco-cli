@@ -294,6 +294,11 @@ def execute_run_command(args: argparse.Namespace) -> None:
         if api_keys:
             console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
 
+    # Check for promotional credits and prompt user if applicable
+    from .credits import check_promotional_credits
+
+    model = check_promotional_credits(model, api_keys, console)
+
     # Send run attempt event before starting (helps measure dropoff before server)
     send_event(
         RunStartAttemptedEvent(
