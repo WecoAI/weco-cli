@@ -10,6 +10,7 @@ Explore runnable examples that show how to use Weco to optimize ML models, promp
   - [Examples at a glance](#examples-at-a-glance)
 - [Quick starts](#quick-starts)
   - [🧭 Hello World](#-hello-world)
+  - [📋 LangSmith ZephHR QA](#-langsmith-zephhr-qa)
   - [⚡ Triton Optimization](#-triton-optimization)
   - [🚀 CUDA Optimization](#-cuda-optimization)
   - [🧠 Prompt Engineering](#-prompt-engineering)
@@ -28,6 +29,7 @@ pip install weco
 | Example | Focus | Dependencies | Docs |
 | :-- | :-- | :-- | :-- |
 | 🧭 Hello World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-world/README.md) • [Colab](hello-world/colab_notebook_walkthrough.ipynb) |
+| 📋 LangSmith ZephHR QA | LLM-judge prompt optimization on HR policy QA | `openai`, `langsmith`, OpenAI + LangSmith API keys | [README](langsmith-zephhr-qa/README.md) |
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
 | 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
@@ -55,6 +57,25 @@ weco run --source module.py \
      --additional-instructions "Fuse operations in the forward method while ensuring the max float deviation remains small. Maintain the same format of the code."
 ```
 - **Tip**: Use `--device cuda` (NVIDIA GPU) or `--device mps` (Apple Silicon).
+
+### 📋 LangSmith ZephHR QA
+
+- **Requirements**: OpenAI + LangSmith API keys
+- **Setup**: Configure `helpfulness` (1–5) and `correctness` (binary) online evaluators in LangSmith dashboard
+- **Run**:
+```bash
+cd examples/langsmith-zephhr-qa
+python setup_dataset.py
+weco run --source agent.py \
+  --eval-backend langsmith \
+  --langsmith-dataset zephhr-qa-opt \
+  --langsmith-target agent:answer_hr_question \
+  --langsmith-evaluators evaluators:json_schema_validity evaluators:conciseness \
+  --langsmith-dashboard-evaluators helpfulness correctness \
+  --langsmith-metric-function evaluators:qa_score \
+  --additional-instructions optimizer_exemplars.md \
+  --metric qa_score --goal maximize --steps 30
+```
 
 ### ⚡ Triton Optimization
 
@@ -143,6 +164,6 @@ weco run --source train.py \
 
 ---
 
-If you're new to Weco, start with **Hello World**, then explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, or try **Spaceship Titanic** for model development.
+If you're new to Weco, start with **Hello World**, then try **LangSmith ZephHR QA** for a realistic LangSmith optimization workflow, explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, or **Spaceship Titanic** for model development.
 
 

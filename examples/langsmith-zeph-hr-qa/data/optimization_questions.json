@@ -1,0 +1,77 @@
+[
+  {
+    "id": "opt-001",
+    "question": "An employee was rehired 10 months after leaving. Do they need to redo full onboarding?",
+    "expected_answer": "No. Employees rehired within 12 months of their termination date may use a streamlined re-hire flow that preserves their previous tax elections. Since 10 months is within the 12-month window, they qualify for the streamlined process."
+  },
+  {
+    "id": "opt-002",
+    "question": "Our company is on the Starter plan. Can we set up SSO?",
+    "expected_answer": "SSO/SAML is not available on the Starter plan. It is available on the Professional plan as an add-on at $2 per user per month, and it is included with the Enterprise plan."
+  },
+  {
+    "id": "opt-003",
+    "question": "I'm a manager. Can I see how much my direct report makes?",
+    "expected_answer": "No. Managers cannot view or edit compensation details for their reports. Only HR admins have access to compensation information."
+  },
+  {
+    "id": "opt-004",
+    "question": "We need to issue a bonus to an employee. What's the process?",
+    "expected_answer": "Bonuses are processed as off-cycle payments. An HR admin must request the off-cycle payment, and it requires VP-level approval. Once approved, the off-cycle run is processed within 3 business days."
+  },
+  {
+    "id": "opt-005",
+    "question": "When does a new full-time employee become eligible for medical benefits?",
+    "expected_answer": "Full-time employees (30+ hours/week) become eligible for benefits on the first day of the month following 60 days of employment."
+  },
+  {
+    "id": "opt-006",
+    "question": "What is the SLA for a broken SSO integration?",
+    "expected_answer": "SSO failures are classified as P2 \u2013 High priority. The response time SLA is 4 hours with a resolution target of 1 business day."
+  },
+  {
+    "id": "opt-007",
+    "question": "Can an HR admin change their own salary in the system?",
+    "expected_answer": "No. HR admins cannot modify their own compensation or benefits elections. Another HR admin must make the change. All permission changes are recorded in the audit log."
+  },
+  {
+    "id": "opt-008",
+    "question": "An hourly employee forgot to submit their timesheet by Monday 5 PM. When will they get paid?",
+    "expected_answer": "Timesheet submissions for hourly employees must be approved by the direct manager by 5:00 PM local time on Monday of the pay week. Late submissions are processed in the next pay cycle with no exceptions."
+  },
+  {
+    "id": "opt-009",
+    "question": "We're on the Professional plan. What's our API rate limit?",
+    "expected_answer": "On the Professional plan, the API rate limit is 100 requests per minute."
+  },
+  {
+    "id": "opt-010",
+    "question": "An employee who worked 32 hours/week just dropped to 28 hours/week for 2 months. Do they lose medical?",
+    "expected_answer": "Not yet. Employees who drop below 30 hours/week lose medical benefits only after 3 consecutive months below the threshold. After 2 months, they still retain medical benefits. If they remain below 30 hours for a third consecutive month, they will be reclassified as part-time and lose medical benefits at the end of the third month, but they will retain dental and vision."
+  },
+  {
+    "id": "opt-011",
+    "question": "Can a department block PTO for 6 weeks during a product launch?",
+    "expected_answer": "No. Departments may declare blackout periods of a maximum of 4 weeks per year. A 6-week blackout would exceed the maximum allowed duration. Blackout periods must also be announced at least 30 days in advance."
+  },
+  {
+    "id": "opt-012",
+    "question": "Does ZephHR handle payroll taxes for our employees in the UK?",
+    "expected_answer": "ZephHR automatically calculates payroll taxes only for US and Canadian employees. For employees in other jurisdictions like the UK, payroll tax calculations must be configured manually by an HR admin with the Payroll Configuration permission."
+  },
+  {
+    "id": "opt-013",
+    "question": "How long is COBRA coverage and who manages it?",
+    "expected_answer": "COBRA coverage extends for up to 18 months. COBRA administration is handled by the third-party vendor HealthBridge, not directly through ZephHR. COBRA continuation is offered within 14 days of the employee's termination date."
+  },
+  {
+    "id": "opt-014",
+    "question": "I want to request 5 days of PTO starting next week. What approvals do I need?",
+    "expected_answer": "Requests of 4 or more days require approval from both your direct manager and the department head. Additionally, planned absences must be submitted at least 5 business days in advance."
+  },
+  {
+    "id": "opt-015",
+    "question": "We want to downgrade from Professional to Starter mid-contract. Will we get a refund?",
+    "expected_answer": "Downgrading from Professional to Starter mid-contract forfeits access to Professional features immediately with no prorated refund."
+  }
+]

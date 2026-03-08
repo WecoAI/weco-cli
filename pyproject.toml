@@ -10,15 +10,14 @@ description = "Documentation for `weco`, a CLI for using Weco AI's code optimize
 readme = "README.md"
 version = "0.3.16"
 license = { file = "LICENSE" }
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 dependencies = [
     "requests",
     "rich",
     "packaging",
     "gitingest",
-    "fastapi",
-    "slowapi",
-    "psutil"
+    "psutil",
+    "langsmith>=0.3.0"
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [
@@ -36,8 +35,11 @@ Homepage = "https://github.com/WecoAI/weco-cli"
 [project.optional-dependencies]
 dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0"]
 
-[tool.setuptools]
-packages = ["weco"]
+[tool.setuptools.packages.find]
+include = ["weco*"]
+
+[tool.setuptools.package-data]
+"weco.integrations.langsmith.wizard" = ["*.html"]
 
 [tool.setuptools_scm]
 
