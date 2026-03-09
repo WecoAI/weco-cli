@@ -2,12 +2,7 @@
 
 Optimize a QA agent that answers HR policy questions over fictional ZephHR documentation.
 
-## Why this benchmark works
-
-- **Policy-heavy knowledge base** with specific numbers, cutoffs, role boundaries, and exception clauses — LLMs must ground answers precisely, not paraphrase vaguely.
-- **Edge-case questions** test whether the agent handles thresholds (e.g., "2 months below 30 hours — do they lose medical?") and permission boundaries correctly.
-- **Exemplar-guided optimization**: few-shot Q&A examples in `optimizer_exemplars.md` steer the optimizer via `--additional-instructions`.
-- **Gated metric**: a custom `qa_score` function multiplies binary correctness by normalized helpfulness (1–5), so incorrect answers always score 0 — the optimizer can't game helpfulness without getting facts right.
+This example accompanies the [LangSmith integration tutorial](https://docs.weco.ai/integrations/langsmith). See the tutorial for a full walkthrough of connecting Weco to LangSmith datasets, evaluators, and dashboard metrics.
 
 ## Prerequisites
 
