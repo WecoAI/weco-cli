@@ -83,6 +83,13 @@ def register_args(parser: argparse.ArgumentParser) -> None:
         "of {evaluator_name: aggregated_score} and returns a single float.",
     )
     parser.add_argument(
+        "--langsmith-splits",
+        nargs="+",
+        type=str,
+        default=None,
+        help="Evaluate only examples in these dataset splits (e.g. 'opt', 'holdout').",
+    )
+    parser.add_argument(
         "--langsmith-dashboard-evaluator-timeout",
         type=int,
         default=900,
@@ -143,6 +150,9 @@ def build_eval_command(args: argparse.Namespace) -> str:
         parts.extend(["--max-examples", str(args.langsmith_max_examples)])
     if args.langsmith_target_adapter != "raw":
         parts.extend(["--target-adapter", args.langsmith_target_adapter])
+    if args.langsmith_splits:
+        parts.append("--splits")
+        parts.extend(args.langsmith_splits)
     if args.langsmith_metric_function:
         parts.extend(["--metric-function", args.langsmith_metric_function])
     if args.langsmith_dashboard_evaluators:

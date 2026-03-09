@@ -1,8 +1,8 @@
-"""Create ZephHR QA datasets in LangSmith (idempotent).
+"""Create ZephHR QA dataset with splits in LangSmith (idempotent).
 
-Reads the JSON data splits and creates/updates:
-- zephhr-qa-opt        (optimization split)
-- zephhr-qa-holdout    (held-out validation split)
+Reads the JSON data files and creates/updates a single dataset with two splits:
+- opt        (optimization split — 15 questions)
+- holdout    (held-out validation split — 10 questions)
 """
 
 import json
@@ -13,17 +13,12 @@ from langsmith import Client
 
 DATA_DIR = Path(__file__).with_name("data")
 
-DATASETS = {
-    "opt": {
-        "name": "zephhr-qa-opt",
-        "description": "ZephHR QA optimization split",
-        "file": "optimization_questions.json",
-    },
-    "holdout": {
-        "name": "zephhr-qa-holdout",
-        "description": "ZephHR QA held-out validation split",
-        "file": "holdout_questions.json",
-    },
+DATASET_NAME = "zephhr-qa"
+DATASET_DESCRIPTION = "ZephHR QA benchmark"
+
+SPLITS = {
+    "opt": "optimization_questions.json",
+    "holdout": "holdout_questions.json",
 }
 
 
@@ -58,13 +53,12 @@ def _populate(client: Client, dataset, split: str, records: list) -> Tuple[int, 
             skipped += 1
             continue
 
-        outputs = {"expected_answer": record["expected_answer"]}
-
         client.create_example(
             inputs={"question": record["question"]},
-            outputs=outputs,
+            outputs={"expected_answer": record["expected_answer"]},
             dataset_id=dataset.id,
             metadata={"case_id": case_id, "split": split},
+            split=split,
         )
         added += 1
 
@@ -73,17 +67,18 @@ def _populate(client: Client, dataset, split: str, records: list) -> Tuple[int, 
 
 def main():
     client = Client()
+    dataset = _get_or_create_dataset(client, DATASET_NAME, DATASET_DESCRIPTION)
 
-    for split, cfg in DATASETS.items():
-        records = json.loads((DATA_DIR / cfg["file"]).read_text())
-        dataset = _get_or_create_dataset(client, cfg["name"], cfg["description"])
+    for split, filename in SPLITS.items():
+        records = json.loads((DATA_DIR / filename).read_text())
         added, skipped = _populate(client, dataset, split, records)
-        print(f"  {cfg['name']}: added={added}, skipped_existing={skipped}, total_target={len(records)}")
+        print(f"  {DATASET_NAME} [{split}]: added={added}, skipped_existing={skipped}, total_target={len(records)}")
 
     print("\n--- Run optimization ---")
     print("weco run --source agent.py \\")
     print("  --eval-backend langsmith \\")
-    print("  --langsmith-dataset zephhr-qa-opt \\")
+    print(f"  --langsmith-dataset {DATASET_NAME} \\")
+    print("  --langsmith-splits opt \\")
     print("  --langsmith-target agent:answer_hr_question \\")
     print("  --langsmith-evaluators evaluators:json_schema_validity evaluators:conciseness \\")
     print("  --langsmith-dashboard-evaluators helpfulness correctness \\")
@@ -94,7 +89,8 @@ def main():
     print("\n--- Run holdout validation ---")
     print("weco run --source agent.py \\")
     print("  --eval-backend langsmith \\")
-    print("  --langsmith-dataset zephhr-qa-holdout \\")
+    print(f"  --langsmith-dataset {DATASET_NAME} \\")
+    print("  --langsmith-splits holdout \\")
     print("  --langsmith-target agent:answer_hr_question \\")
     print("  --langsmith-evaluators evaluators:json_schema_validity evaluators:conciseness \\")
     print("  --langsmith-dashboard-evaluators helpfulness correctness \\")

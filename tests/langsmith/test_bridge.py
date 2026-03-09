@@ -301,6 +301,32 @@ class TestRunLangsmithEval:
 
         assert metrics == {}
 
+    @patch("weco.integrations.langsmith.bridge.resolve_evaluators")
+    def test_splits_filters_examples(self, mock_resolve):
+        """When splits are provided, list_examples is called with splits parameter."""
+        mock_resolve.return_value = [lambda r, e: {"score": 1}]
+
+        mock_results = self._make_mock_results([{"accuracy": 1.0}])
+
+        mock_client_cls = MagicMock()
+        mock_client = mock_client_cls.return_value
+        mock_client.list_examples.return_value = ["example1"]
+        mock_client.evaluate.return_value = mock_results
+
+        with patch.dict("sys.modules", {"langsmith": MagicMock(Client=mock_client_cls)}):
+            run_langsmith_eval(
+                dataset_name="test-data",
+                target=lambda x: x,
+                evaluator_names=["accuracy"],
+                metric_name="accuracy",
+                splits=["train"],
+            )
+
+        mock_client.list_examples.assert_called_once_with(dataset_name="test-data", splits=["train"])
+        # data should be the filtered examples, not the dataset name
+        call_kwargs = mock_client.evaluate.call_args
+        assert call_kwargs[1]["data"] == ["example1"]
+
 
 # ---------------------------------------------------------------------------
 # main() — output format

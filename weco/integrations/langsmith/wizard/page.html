@@ -368,6 +368,7 @@
     </div>
     <input type="text" class="search-input" placeholder="Search datasets..." oninput="filterDatasets(this.value)" id="dataset-search">
     <div id="dataset-list"><div class="loading-center"><div class="spinner"></div></div></div>
+    <div id="splits-picker" style="display:none;margin-top:16px;"></div>
     <div class="btn-row">
       <button class="btn btn-secondary" onclick="goTo(0)">Back</button>
       <div class="right">
@@ -690,6 +691,8 @@ const state = {
   // Dataset
   datasets: [],
   selectedDataset: null,
+  availableSplits: [],
+  selectedSplits: [],
   examples: [],
   inputKeys: [],
   // Target
@@ -868,11 +871,51 @@ function renderDatasets(datasets) {
   }).join('');
 }
 
-function selectDataset(idx) {
+async function selectDataset(idx) {
   state.selectedDataset = state.datasets[idx];
   state.examples = [];
+  state.availableSplits = [];
+  state.selectedSplits = [];
   renderDatasets(state.datasets);
   document.getElementById('dataset-next').disabled = false;
+
+  // Fetch available splits for the selected dataset
+  try {
+    const name = encodeURIComponent(state.selectedDataset.name);
+    const res = await fetchJSON('/api/datasets/' + name + '/splits');
+    state.availableSplits = res.splits || [];
+  } catch (e) {
+    state.availableSplits = [];
+  }
+  renderSplitsPicker();
+}
+
+function toggleSplit(split) {
+  const idx = state.selectedSplits.indexOf(split);
+  if (idx === -1) state.selectedSplits.push(split);
+  else state.selectedSplits.splice(idx, 1);
+  renderSplitsPicker();
+}
+
+function renderSplitsPicker() {
+  const container = document.getElementById('splits-picker');
+  if (!state.availableSplits.length) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  container.innerHTML =
+    '<label class="field-label">Dataset Splits</label>' +
+    '<p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">' +
+    'Select split(s) to evaluate on, or leave empty to use the full dataset.</p>' +
+    '<div class="chip-container">' +
+    state.availableSplits.map(s => {
+      const active = state.selectedSplits.includes(s);
+      return '<span class="chip' + (active ? ' active' : '') +
+        '" onclick="toggleSplit(\'' + escapeHtml(s) + '\')" style="cursor:pointer">' +
+        escapeHtml(s) + '</span>';
+    }).join('') +
+    '</div>';
 }
 
 function filterDatasets(query) {
@@ -1208,6 +1251,7 @@ function renderReview() {
   const rows = [
     ['Source Files', state.sourceFiles.join(', ') || '(none)'],
     ['Dataset', state.selectedDataset ? state.selectedDataset.name : ''],
+    ['Splits', state.selectedSplits.length > 0 ? state.selectedSplits.join(', ') : '(all)'],
     ['Target', state.target],
     ['Adapter', state.adapter],
     ['Evaluators', displayEvaluators],
@@ -1238,6 +1282,7 @@ function renderReview() {
   else if (state.sourceFiles.length > 1) parts.push('--sources ' + state.sourceFiles.join(' '));
   parts.push('--eval-backend langsmith');
   parts.push('--langsmith-dataset "' + (state.selectedDataset ? state.selectedDataset.name : '') + '"');
+  if (state.selectedSplits.length > 0) parts.push('--langsmith-splits ' + state.selectedSplits.join(' '));
   parts.push('--langsmith-target ' + state.target);
   if (state.codeEvaluators.length > 0) parts.push('--langsmith-evaluators ' + state.codeEvaluators.join(' '));
   if (state.dashboardEvaluators.length > 0) parts.push('--langsmith-dashboard-evaluators ' + state.dashboardEvaluators.join(' '));
@@ -1267,6 +1312,7 @@ async function submitConfig() {
 
   const config = {
     dataset: state.selectedDataset ? state.selectedDataset.name : '',
+    splits: state.selectedSplits.length > 0 ? state.selectedSplits : null,
     target: state.target,
     adapter: state.adapter,
     code_evaluators: state.codeEvaluators,

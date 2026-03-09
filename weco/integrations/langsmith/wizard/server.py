@@ -91,6 +91,7 @@ class WizardHandler(BaseHTTPRequestHandler):
         (re.compile(r"^/api/status$"), "handle_status"),
         (re.compile(r"^/api/datasets$"), "handle_list_datasets"),
         (re.compile(r"^/api/datasets/(?P<name>[^/]+)/examples$"), "handle_list_examples"),
+        (re.compile(r"^/api/datasets/(?P<name>[^/]+)/splits$"), "handle_list_splits"),
         (re.compile(r"^/api/discover$"), "handle_discover"),
         (re.compile(r"^/api/file-tree$"), "handle_file_tree"),
     ]
@@ -211,6 +212,13 @@ class WizardHandler(BaseHTTPRequestHandler):
             self.send_json({"examples": result})
         except Exception as e:
             self.send_error_json(f"Failed to fetch examples: {e}", 500)
+
+    def handle_list_splits(self, name: str):
+        try:
+            splits = self.server.client.list_dataset_splits(dataset_name=name)
+            self.send_json({"splits": splits})
+        except Exception as e:
+            self.send_error_json(f"Failed to fetch splits: {e}", 500)
 
     def handle_discover(self):
         source_files = self.server.resolve_source_files()

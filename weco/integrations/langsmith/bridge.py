@@ -200,6 +200,7 @@ def run_langsmith_eval(
     summary_mode: str = "mean",
     max_concurrency: int = None,
     max_examples: int = None,
+    splits: list = None,
     dashboard_evaluators: list = None,
     dashboard_evaluator_timeout: int = 0,
     metric_function: Callable = None,
@@ -215,6 +216,7 @@ def run_langsmith_eval(
         summary_mode: How to aggregate per-example scores (mean/median/min/max).
         max_concurrency: Number of parallel evaluation threads.
         max_examples: Limit evaluation to N examples from the dataset.
+        splits: Filter to specific dataset splits (e.g. ['train', 'test']).
         dashboard_evaluators: Names of expected dashboard-bound evaluators.
             When set, enables polling with a default timeout of 900s.
         dashboard_evaluator_timeout: Seconds to poll for dashboard-bound evaluator scores
@@ -235,9 +237,15 @@ def run_langsmith_eval(
     client = Client()
     evaluators = resolve_evaluators(evaluator_names)
 
+    # When splits are specified, filter examples by split
+    if splits:
+        data = client.list_examples(dataset_name=dataset_name, splits=splits)
+    else:
+        data = dataset_name
+
     # target is positional-only in Client.evaluate(), so pass it separately
     eval_kwargs = {
-        "data": dataset_name,
+        "data": data,
         "evaluators": evaluators,
         "experiment_prefix": experiment_prefix or f"weco-{dataset_name}",
     }
@@ -354,6 +362,12 @@ def main():
         "Only used when --dashboard-evaluators is set. Polls every 10s.",
     )
     parser.add_argument(
+        "--splits",
+        nargs="+",
+        default=None,
+        help="Evaluate only examples in these dataset splits (e.g. 'train', 'test').",
+    )
+    parser.add_argument(
         "--metric-function",
         default=None,
         help="Custom aggregation function as module:function. Receives dict of "
@@ -400,6 +414,7 @@ def main():
             summary_mode=args.summary,
             max_concurrency=args.max_concurrency,
             max_examples=args.max_examples,
+            splits=args.splits,
             dashboard_evaluators=args.dashboard_evaluators,
             dashboard_evaluator_timeout=args.dashboard_evaluator_timeout or 0,
             metric_function=metric_fn,

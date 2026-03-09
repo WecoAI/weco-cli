@@ -37,14 +37,15 @@ cd examples/langsmith-zeph-hr-qa
 python setup_dataset.py
 ```
 
-This creates two datasets: `zephhr-qa-opt` and `zephhr-qa-holdout`.
+This creates a single dataset `zephhr-qa` with two splits: `opt` (optimization) and `holdout` (validation).
 
 ## Optimize
 
 ```bash
 weco run --source agent.py \
   --eval-backend langsmith \
-  --langsmith-dataset zephhr-qa-opt \
+  --langsmith-dataset zephhr-qa \
+  --langsmith-splits opt \
   --langsmith-target agent:answer_hr_question \
   --langsmith-evaluators evaluators:json_schema_validity evaluators:conciseness \
   --langsmith-dashboard-evaluators helpfulness correctness \
@@ -58,7 +59,8 @@ weco run --source agent.py \
 ```bash
 weco run --source agent.py \
   --eval-backend langsmith \
-  --langsmith-dataset zephhr-qa-holdout \
+  --langsmith-dataset zephhr-qa \
+  --langsmith-splits holdout \
   --langsmith-target agent:answer_hr_question \
   --langsmith-evaluators evaluators:json_schema_validity evaluators:conciseness \
   --langsmith-dashboard-evaluators helpfulness correctness \

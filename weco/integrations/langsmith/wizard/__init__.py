@@ -47,6 +47,7 @@ def run_wizard(args: argparse.Namespace) -> None:
         "langsmith_max_examples": getattr(args, "langsmith_max_examples", None),
         "langsmith_max_concurrency": getattr(args, "langsmith_max_concurrency", None),
         "langsmith_dashboard_evaluator_timeout": getattr(args, "langsmith_dashboard_evaluator_timeout", 900),
+        "langsmith_splits": getattr(args, "langsmith_splits", None),
     }
 
     html_path = Path(__file__).parent / "page.html"
@@ -152,6 +153,8 @@ def run_wizard(args: argparse.Namespace) -> None:
         args.langsmith_max_concurrency = config_result["langsmith_max_concurrency"]
     if config_result.get("langsmith_dashboard_evaluator_timeout") is not None:
         args.langsmith_dashboard_evaluator_timeout = config_result["langsmith_dashboard_evaluator_timeout"]
+    if config_result.get("splits"):
+        args.langsmith_splits = config_result["splits"]
     if config_result.get("metric_function"):
         args.langsmith_metric_function = config_result["metric_function"]
 

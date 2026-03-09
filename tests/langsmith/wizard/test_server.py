@@ -250,6 +250,19 @@ class TestWizardServer:
         assert data["examples"] == [{"inputs": {"q": "hi"}, "outputs": {"a": "hello"}}, {"inputs": {}, "outputs": {}}]
         mock_client.list_examples.assert_called_once_with(dataset_name="my-dataset", limit=5)
 
+    @patch.object(WizardServer, "client", new_callable=PropertyMock)
+    def test_list_splits(self, mock_client_prop, wizard_server):
+        """GET /api/datasets/<name>/splits returns available splits."""
+        mock_client = MagicMock()
+        mock_client.list_dataset_splits.return_value = ["train", "test"]
+        mock_client_prop.return_value = mock_client
+
+        conn, _, _ = wizard_server
+        resp, data = get_json(conn, "/api/datasets/my-dataset/splits")
+        assert resp.status == 200
+        assert data["splits"] == ["train", "test"]
+        mock_client.list_dataset_splits.assert_called_once_with(dataset_name="my-dataset")
+
     def test_file_tree_lists_cwd(self, wizard_server, tmp_path, monkeypatch):
         """GET /api/file-tree returns directory entries."""
         (tmp_path / "agent.py").write_text("pass")

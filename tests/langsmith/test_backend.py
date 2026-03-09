@@ -43,6 +43,7 @@ class TestRegisterArgs:
         assert hasattr(args, "langsmith_metric_function")
         assert hasattr(args, "langsmith_dashboard_evaluators")
         assert hasattr(args, "langsmith_dashboard_evaluator_timeout")
+        assert hasattr(args, "langsmith_splits")
 
     def test_defaults_are_none_or_expected(self):
         """Default values are None for optional args, 'mean' for summary, 'raw' for adapter."""
@@ -57,6 +58,7 @@ class TestRegisterArgs:
         assert args.langsmith_metric_function is None
         assert args.langsmith_dashboard_evaluators is None
         assert args.langsmith_dashboard_evaluator_timeout == 900
+        assert args.langsmith_splits is None
 
     def test_parses_all_flags(self):
         """All flags can be parsed from command line."""
@@ -86,6 +88,9 @@ class TestRegisterArgs:
                 "Conciseness",
                 "--langsmith-dashboard-evaluator-timeout",
                 "60",
+                "--langsmith-splits",
+                "train",
+                "test",
             ]
         )
 
@@ -100,6 +105,7 @@ class TestRegisterArgs:
         assert args.langsmith_metric_function == "scoring:combine"
         assert args.langsmith_dashboard_evaluators == ["Conciseness"]
         assert args.langsmith_dashboard_evaluator_timeout == 60
+        assert args.langsmith_splits == ["train", "test"]
 
 
 # ---------------------------------------------------------------------------
@@ -313,6 +319,28 @@ class TestBuildEvalCommand:
         validate_args(args)
         cmd = build_eval_command(args)
         assert "--evaluators" not in cmd
+
+    def test_splits_in_command(self):
+        """--langsmith-splits appears in command when set."""
+        parser = _make_parser()
+        args = parser.parse_args(
+            ["--metric", "acc", "--langsmith-dataset", "data", "--langsmith-target", "m:f",
+             "--langsmith-evaluators", "acc", "--langsmith-splits", "train", "test"]
+        )
+        validate_args(args)
+        cmd = build_eval_command(args)
+        assert "--splits train test" in cmd
+
+    def test_splits_omitted_when_none(self):
+        """--splits is not in command when no splits specified."""
+        parser = _make_parser()
+        args = parser.parse_args(
+            ["--metric", "acc", "--langsmith-dataset", "data", "--langsmith-target", "m:f",
+             "--langsmith-evaluators", "acc"]
+        )
+        validate_args(args)
+        cmd = build_eval_command(args)
+        assert "--splits" not in cmd
 
 
 # ---------------------------------------------------------------------------
