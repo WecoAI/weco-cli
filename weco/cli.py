@@ -1,4 +1,5 @@
 import argparse
+import importlib
 import sys
 from rich.console import Console
 from rich.traceback import install
@@ -20,6 +21,16 @@ from .validation import validate_sources, validate_log_directory, ValidationErro
 
 install(show_locals=True)
 console = Console()
+
+# Eval backend registry. Each entry maps a backend name to its module path.
+# To add a new backend, create weco/integrations/<name>/backend.py with
+# register_args(), validate_args(), and build_eval_command(), then add it here.
+_EVAL_BACKENDS = {"langsmith": "weco.integrations.langsmith.backend"}
+
+
+def _load_backend(name: str):
+    """Lazily import an eval backend module by name."""
+    return importlib.import_module(_EVAL_BACKENDS[name])
 
 
 def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
@@ -55,7 +66,7 @@ def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
 # Function to define and return the run_parser (or configure it on a passed subparser object)
 # This helps keep main() cleaner and centralizes run command arg definitions.
 def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
-    source_group = run_parser.add_mutually_exclusive_group(required=True)
+    source_group = run_parser.add_mutually_exclusive_group()
     source_group.add_argument(
         "-s", "--source", type=str, help="Path to a single source code file to be optimized (e.g., `optimize.py`)"
     )
@@ -69,14 +80,15 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "-c",
         "--eval-command",
         type=str,
-        required=True,
-        help="Command to run for evaluation (e.g. 'python eval.py --arg1=val1').",
+        default=None,
+        help="Command to run for evaluation (e.g. 'python eval.py --arg1=val1'). "
+        "Required unless --eval-backend langsmith is used.",
     )
     run_parser.add_argument(
         "-m",
         "--metric",
         type=str,
-        required=True,
+        default=None,
         help="Metric to optimize (e.g. 'accuracy', 'loss', 'f1_score') that is printed to the terminal by the eval command.",
     )
     run_parser.add_argument(
@@ -84,7 +96,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--goal",
         type=str,
         choices=["maximize", "max", "minimize", "min"],
-        required=True,
+        default=None,
         help="Specify 'maximize'/'max' to maximize the metric or 'minimize'/'min' to minimize it.",
     )
     run_parser.add_argument("-n", "--steps", type=int, default=100, help="Number of steps to run. Defaults to 100.")
@@ -156,6 +168,17 @@ Default models for providers:
         default="rich",
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
+
+    # --- Eval backend integration ---
+    run_parser.add_argument(
+        "--eval-backend",
+        type=str,
+        choices=["shell"] + list(_EVAL_BACKENDS),
+        default="shell",
+        help="Evaluation backend. 'shell' (default) runs --eval-command directly.",
+    )
+    for backend_name in _EVAL_BACKENDS:
+        _load_backend(backend_name).register_args(run_parser)
 
 
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
@@ -265,6 +288,28 @@ def execute_run_command(args: argparse.Namespace) -> None:
     from .optimizer import optimize
 
     ctx = get_event_context()
+
+    # Resolve eval_command: dispatch to the selected backend or use --eval-command directly
+    backend_name = getattr(args, "eval_backend", "shell")
+    if backend_name != "shell":
+        backend = _load_backend(backend_name)
+        backend.validate_args(args)
+        args.eval_command = backend.build_eval_command(args)
+    elif not args.eval_command:
+        console.print("[bold red]Error: --eval-command is required (or use --eval-backend <backend>)[/]")
+        sys.exit(1)
+
+    # Validate required args (may have been filled by a wizard/backend)
+    missing = []
+    if not args.source and not args.sources:
+        missing.append("--source / --sources")
+    if not args.metric:
+        missing.append("--metric")
+    if not args.goal:
+        missing.append("--goal")
+    if missing:
+        console.print(f"[bold red]Error: missing required arguments: {', '.join(missing)}[/]")
+        sys.exit(1)
 
     # Normalize source input so --source follows the same internal path as --sources
     source_arg = args.sources if args.sources is not None else [args.source]

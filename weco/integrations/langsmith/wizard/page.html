@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Weco &mdash; LangSmith Setup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --primary: #ff3c82;
+    --primary-dark: #e6356f;
+    --primary-light: #fff1f5;
+    --bg: #F5F5F5;
+    --card: #FFFFFF;
+    --text: #0A0A0A;
+    --text-muted: #737373;
+    --text-light: #A3A3A3;
+    --border: #E5E5E5;
+    --border-focus: #ff3c82;
+    --error: #EF4444;
+    --error-light: #FEE2E2;
+    --success: #22C55E;
+    --success-light: #DCFCE7;
+    --warning: #F59E0B;
+    --radius: 8px;
+    --radius-sm: 6px;
+    --shadow: 0 1px 2px 0 rgba(0,0,0,0.05);
+    --shadow-lg: 0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -2px rgba(0,0,0,0.1);
+    --mono: 'SF Mono', 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* -- Layout -- */
+  .container {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+
+  header { text-align: center; margin-bottom: 40px; }
+  header .logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 4px; }
+  header .logo svg { width: 28px; height: 28px; flex-shrink: 0; }
+  header h1 { font-size: 24px; font-weight: 600; color: var(--text); }
+  header p { color: var(--text-muted); font-size: 14px; }
+
+  /* -- Progress -- */
+  .progress { display: flex; justify-content: center; gap: 8px; margin-bottom: 36px; }
+  .progress-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--border); transition: background 0.3s, transform 0.3s;
+  }
+  .progress-dot.active { background: var(--primary); transform: scale(1.2); }
+  .progress-dot.done { background: var(--success); }
+
+  /* -- Steps -- */
+  .step { display: none; }
+  .step.visible { display: block; animation: fadeIn 0.3s ease; }
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .step-header { margin-bottom: 24px; }
+  .step-header h2 { font-size: 20px; font-weight: 600; margin-bottom: 6px; }
+  .step-header p { color: var(--text-muted); font-size: 14px; }
+
+  /* -- Cards -- */
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 20px; box-shadow: var(--shadow); margin-bottom: 16px;
+  }
+  .card.selectable { cursor: pointer; transition: border-color 0.2s, box-shadow 0.2s; }
+  .card.selectable:hover { border-color: var(--primary); box-shadow: var(--shadow-lg); }
+  .card.selected { border-color: var(--primary); background: var(--primary-light); }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; }
+
+  /* -- Forms -- */
+  .form-group { margin-bottom: 20px; }
+  .form-group label {
+    display: block; font-size: 13px; font-weight: 500; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  input[type="text"], input[type="password"], input[type="number"] {
+    width: 100%; height: 40px; padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card); color: var(--text); transition: border-color 0.2s, box-shadow 0.2s; outline: none;
+  }
+  input:focus-visible { border-color: var(--border-focus); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+  select {
+    width: 100%; height: 40px; padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card); color: var(--text); outline: none; transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  select:focus-visible { border-color: var(--border-focus); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+  textarea {
+    width: 100%; padding: 8px 12px; font-size: 14px; font-family: var(--sans);
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--card); color: var(--text); outline: none; resize: vertical;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  textarea:focus-visible { border-color: var(--border-focus); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+  .input-hint { font-size: 12px; color: var(--text-light); margin-top: 4px; }
+  .form-row { display: flex; gap: 16px; }
+  .form-row .form-group { flex: 1; }
+
+  /* -- Buttons -- */
+  .btn {
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+    height: 40px; padding: 8px 16px; font-size: 14px; font-weight: 500;
+    border: none; border-radius: var(--radius-sm);
+    cursor: pointer; transition: background 0.2s, transform 0.1s;
+  }
+  .btn:active { transform: scale(0.97); }
+  .btn:focus-visible { outline: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-dark); }
+  .btn-primary:disabled { background: var(--primary); opacity: 0.5; cursor: not-allowed; }
+  .btn-secondary { background: var(--bg); color: var(--text-muted); border: 1px solid var(--border); }
+  .btn-secondary:hover { background: var(--border); }
+  .btn-row { display: flex; justify-content: space-between; margin-top: 28px; }
+  .btn-row .right { margin-left: auto; display: flex; gap: 8px; }
+
+  /* -- Badges -- */
+  .badge { display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 600; border-radius: 999px; }
+  .badge-success { background: var(--success-light); color: #166534; }
+  .badge-error { background: var(--error-light); color: #991B1B; }
+  .badge-muted { background: #F5F5F5; color: var(--text-muted); }
+
+  /* -- Status messages -- */
+  .msg { padding: 12px 16px; border-radius: var(--radius-sm); font-size: 14px; margin-bottom: 16px; }
+  .msg-error { background: var(--error-light); color: #991B1B; }
+  .msg-success { background: var(--success-light); color: #166534; }
+
+  /* -- Dataset list -- */
+  .search-input {
+    width: 100%; height: 40px; padding: 8px 12px; font-size: 14px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    margin-bottom: 16px; outline: none; background: var(--card);
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .search-input:focus-visible { border-color: var(--border-focus); box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--primary); }
+  .dataset-card { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+  .dataset-info h3 { font-size: 15px; font-weight: 600; margin-bottom: 2px; }
+  .dataset-info p { font-size: 13px; color: var(--text-muted); }
+  .dataset-meta { text-align: right; flex-shrink: 0; }
+  .dataset-meta .count { font-size: 14px; font-weight: 700; color: var(--primary); }
+  .dataset-meta .date { font-size: 11px; color: var(--text-light); }
+
+  /* -- Code blocks -- */
+  pre {
+    background: #171717; color: #E5E5E5; padding: 14px 16px;
+    border-radius: var(--radius-sm); font-family: var(--mono); font-size: 13px;
+    overflow-x: auto; line-height: 1.5;
+  }
+  .json-block {
+    background: #FAFAFA; color: var(--text); padding: 12px 14px;
+    border-radius: var(--radius-sm); font-family: var(--mono); font-size: 12px;
+    overflow-x: auto; white-space: pre-wrap; word-break: break-word;
+    margin-bottom: 8px; border: 1px solid var(--border);
+  }
+
+  /* -- Example preview -- */
+  .example-row { margin-bottom: 16px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+  .example-row:last-child { border-bottom: none; margin-bottom: 0; padding-bottom: 0; }
+  .example-label {
+    font-size: 11px; font-weight: 600; text-transform: uppercase;
+    letter-spacing: 0.5px; color: var(--text-light); margin-bottom: 4px;
+  }
+
+  /* -- Adapter cards -- */
+  .adapter-grid { display: flex; flex-direction: column; gap: 12px; }
+  .adapter-card { display: flex; gap: 14px; align-items: flex-start; }
+  .adapter-card .radio {
+    width: 20px; height: 20px; border-radius: 50%; border: 2px solid var(--border);
+    flex-shrink: 0; margin-top: 2px; transition: border-color 0.2s;
+  }
+  .card.selected .radio {
+    border-color: var(--primary); background: var(--primary);
+    box-shadow: inset 0 0 0 3px white;
+  }
+  .adapter-card h3 { font-size: 14px; font-weight: 600; margin-bottom: 2px; }
+  .adapter-card p { font-size: 13px; color: var(--text-muted); }
+  .adapter-card code {
+    font-family: var(--mono); font-size: 12px; background: #F5F5F5; padding: 1px 5px; border-radius: 4px;
+  }
+
+  /* -- Review summary -- */
+  .summary-table { width: 100%; border-collapse: collapse; }
+  .summary-table td { padding: 10px 0; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: top; }
+  .summary-table td:first-child { font-weight: 600; color: var(--text-muted); width: 160px; }
+  .summary-table td:last-child { font-family: var(--mono); font-size: 13px; }
+  .cli-command { position: relative; margin-top: 20px; }
+  .cli-command pre { padding-right: 60px; }
+  .copy-btn {
+    position: absolute; top: 8px; right: 8px; padding: 4px 10px; font-size: 12px;
+    background: rgba(255,255,255,0.15); color: #A3A3A3;
+    border: 1px solid rgba(255,255,255,0.2); border-radius: 4px;
+    cursor: pointer; transition: background 0.2s;
+  }
+  .copy-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* -- Toggle switch -- */
+  .toggle-row { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+  .toggle { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0; background: var(--border);
+    border: 2px solid transparent; border-radius: 999px;
+    cursor: pointer; transition: background 0.2s; box-shadow: var(--shadow);
+  }
+  .toggle-slider::before {
+    content: ''; position: absolute; width: 14px; height: 14px;
+    left: 1px; top: 1px; background: white; border-radius: 50%;
+    transition: transform 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .toggle input:checked + .toggle-slider { background: var(--primary); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+  .toggle-label { font-size: 14px; color: var(--text); }
+
+  /* -- Suggestion chips -- */
+  .suggestions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .suggestions-label {
+    font-size: 12px; font-weight: 600; color: var(--text-light);
+    text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; margin-top: 12px;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px; font-size: 13px; font-family: var(--mono);
+    background: #FAFAFA; border: 1px solid var(--border); border-radius: 999px;
+    cursor: pointer; transition: background 0.2s, border-color 0.2s; max-width: 100%;
+  }
+  .chip:hover { border-color: var(--primary); background: var(--primary-light); }
+  .chip.active { border-color: var(--primary); background: var(--primary-light); color: var(--primary-dark); }
+  .chip .chip-name { font-weight: 600; }
+  .chip .chip-doc {
+    font-family: var(--sans); font-size: 12px; color: var(--text-muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 260px;
+  }
+
+  /* -- Dashboard evaluator checkboxes -- */
+  .checkbox-list { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .checkbox-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; background: #FAFAFA;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    cursor: pointer; transition: border-color 0.2s, background 0.2s;
+  }
+  .checkbox-item:hover { border-color: var(--primary); }
+  .checkbox-item.checked { border-color: var(--primary); background: var(--primary-light); }
+  .checkbox-item input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+  .checkbox-item .cb-label { font-size: 14px; font-weight: 600; font-family: var(--mono); }
+  .checkbox-item .cb-type { font-size: 12px; color: var(--text-muted); margin-left: auto; }
+
+  /* -- File tree -- */
+  .file-tree { max-height: 340px; overflow-y: auto; font-family: var(--mono); font-size: 13px; }
+  .tree-item {
+    display: flex; align-items: center; gap: 6px; padding: 5px 4px;
+    cursor: pointer; border-radius: 4px; transition: background 0.15s;
+  }
+  .tree-item:hover { background: var(--bg); }
+  .tree-children { margin-left: 20px; }
+  .tree-icon { width: 16px; text-align: center; flex-shrink: 0; font-size: 12px; color: var(--text-muted); }
+  .tree-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .tree-size { font-size: 11px; color: var(--text-light); flex-shrink: 0; }
+  .tree-checkbox { width: 16px; height: 16px; accent-color: var(--primary); cursor: pointer; flex-shrink: 0; }
+  .selected-files { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; min-height: 28px; }
+  .selected-file-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; font-size: 12px; font-family: var(--mono);
+    background: var(--primary-light); border: 1px solid var(--primary);
+    border-radius: 999px; color: var(--primary-dark);
+  }
+  .selected-file-chip .remove {
+    cursor: pointer; font-weight: bold; margin-left: 2px; font-size: 14px;
+    line-height: 1; opacity: 0.7; transition: opacity 0.2s;
+  }
+  .selected-file-chip .remove:hover { opacity: 1; }
+
+  /* -- Empty state -- */
+  .empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+  .empty-state p { margin-bottom: 12px; }
+  .empty-state a { color: var(--primary); text-decoration: none; font-weight: 600; }
+  .empty-state a:hover { text-decoration: underline; }
+
+  /* -- Loading spinner -- */
+  .spinner {
+    display: inline-block; width: 20px; height: 20px;
+    border: 2px solid var(--border); border-top-color: var(--primary);
+    border-radius: 50%; animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .loading-center { display: flex; justify-content: center; padding: 40px; }
+
+  /* -- Link -- */
+  a { color: var(--primary); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* -- Done overlay -- */
+  .done-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(245,245,245,0.95);
+    z-index: 100; justify-content: center; align-items: center;
+  }
+  .done-overlay.visible { display: flex; }
+  .done-content { text-align: center; animation: fadeIn 0.4s ease; }
+  .done-check {
+    width: 64px; height: 64px; border-radius: 50%; background: var(--success-light);
+    display: flex; align-items: center; justify-content: center; margin: 0 auto 20px; font-size: 32px;
+  }
+  .done-content h2 { font-size: 22px; margin-bottom: 8px; }
+  .done-content p { color: var(--text-muted); font-size: 15px; }
+</style>
+</head>
+<body>
+
+<div class="container">
+  <header>
+    <div class="logo">
+      <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><linearGradient id="a"><stop offset="0" stop-color="#f99d24"/><stop offset=".4676" stop-color="#ff3c82"/><stop offset=".6899" stop-color="#c74ab6"/><stop offset=".8967" stop-color="#9955e1"/><stop offset="1" stop-color="#8759f2"/></linearGradient><linearGradient id="b" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="771.5532" x2="1088.3308" xlink:href="#a" y1="2195.1611" y2="2195.1611"/><linearGradient id="c" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="825.233" x2="1025.0513" y1="2267.7332" y2="2267.7332"><stop offset="0" stop-color="#ff3c82"/><stop offset=".007632017" stop-color="#fe3c83"/><stop offset=".4786" stop-color="#be4cbf"/><stop offset=".8221" stop-color="#9655e4"/><stop offset="1" stop-color="#8759f2"/></linearGradient><linearGradient id="d" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="897.9124" x2="1275.8401" xlink:href="#a" y1="2250.5322" y2="2250.5322"/><linearGradient id="e" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="1187.0166" x2="1187.0166" xlink:href="#a" y1="2297.3921" y2="2071.0452"/><linearGradient id="f" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="1055.7302" x2="1055.7302" y1="2267.3867" y2="1888.1299"><stop offset="0" stop-color="#8759f2"/><stop offset=".1033" stop-color="#9955e1"/><stop offset=".3101" stop-color="#c74ab6"/><stop offset=".5324" stop-color="#ff3c82"/><stop offset="1" stop-color="#f99d24"/></linearGradient><linearGradient id="g" gradientTransform="matrix(.7071 .7071 -.7071 .7071 1072.4222 -2008.4933)" gradientUnits="userSpaceOnUse" x1="893.7233" x2="1044.0734" xlink:href="#a" y1="2089.3816" y2="1939.0315"/><g clip-rule="evenodd" fill-rule="evenodd"><path d="m394.43 208.63c-20.07 18.49-45.48 33.8-75.86 45.8-8.38-10.57-17.76-21.04-28.08-31.36s-20.77-19.69-31.35-28.07l-.01-.01-.01.01c-25.58-20.32-51.54-34.66-77.59-42.78l.01-.01c-2.43-.76-4.85-1.46-7.26-2.12-3.46-.93-6.92-1.54-10.37-1.87-.09-.01-.17-.02-.26-.03-74.56-10.8-139.2 34-152.02 102.4-6.79-25.3-7.06-52.35-.07-78.41 21.61-80.69 104.83-128.73 185.51-107.11 10 2.66 19.97 5.97 29.89 9.88 26.6 10.46 52.66 25.24 77.98 44.2 16.28 12.21 32.27 26.13 47.81 41.67s29.46 31.52 41.68 47.81z" fill="url(#b)"/><path d="m149.49 364.08c-10.54-1.58-20.84-3.71-30.82-6.38-25.68-6.88-49.13-20.41-67.85-39.13-19.09-19.09-32.4-42.66-39.19-67.98 12.82-68.4 77.46-113.2 152.03-102.39-30.18-2.77-58.95 16.52-67.05 46.76-5.85 21.83.46 45.33 16.47 61.34 7.8 7.8 17.61 13.45 28.37 16.34 2.42.65 4.87 1.25 7.34 1.81-3.77 31.43-3.55 61.35.7 89.63z" fill="url(#c)"/><path d="m386.82 481.42c-13.7 9.21-29 16.19-45.43 20.61-52.12 13.95-108.21-1.09-146.4-39.27-18.72-18.72-32.24-42.17-39.13-67.85-2.67-9.99-4.79-20.27-6.38-30.8 0 0-.01-.01 0-.02-4.25-28.28-4.47-58.2-.7-89.63 2.42-20.22 6.49-41.02 12.17-62.24 5.69-21.21 12.55-41.26 20.58-59.98 26.05 8.13 52.01 22.47 77.59 42.78l.01.01c-4.96 12.52-9.34 25.86-13.11 39.97-3.78 14.1-6.67 27.86-8.65 41.2.01.01.02 0 .02 0-4.79 32.31-4.25 61.95 1.72 88.58l.01.01c.55 2.48 1.15 4.91 1.8 7.33 6.98 65.92 83.97 131.58 145.9 109.3z" fill="url(#d)"/><path d="m386.82 481.42c-61.94 22.29-138.93-43.38-145.89-109.3 2.88 10.76 8.53 20.57 16.34 28.37 16.01 16.01 39.52 22.33 61.34 16.47 16.37-4.38 30.05-14.86 38.51-29.55 8.48-14.66 10.73-31.76 6.35-48.13-.66-2.41-1.36-4.83-2.11-7.25 29.11-12.46 54.92-27.62 77.27-45.41 3.91 9.92 7.21 19.89 9.87 29.88 10.48 39.07 5.11 79.89-15.12 114.94-11.73 20.31-27.64 37.26-46.56 49.98z" fill="url(#e)"/><path d="m438.61 286.59.02.02c-22.35 17.8-48.16 32.95-77.27 45.41l-.01.01c-18.73 8.01-38.76 14.88-59.99 20.57-21.22 5.68-42.02 9.75-62.24 12.17-5.97-26.64-6.52-56.28-1.72-88.58 13.33-1.98 27.08-4.86 41.18-8.64 14.09-3.79 27.45-8.15 39.97-13.11l.01-.01c30.38-12 55.79-27.31 75.86-45.8 1.85-1.72 3.68-3.47 5.44-5.23 2.76-2.76 5.2-5.7 7.34-8.78 62.75-75.77 24.13-151.14-29.88-185.83 31.05 4.56 60.95 18.79 84.8 42.65 59.06 59.06 59.07 155.16 0 214.23-7.3 7.3-15.15 14.3-23.51 20.92z" fill="url(#f)"/><path d="m407.21 194.62c17.09-24.71 14.63-58.94-7.34-80.92-24.74-24.74-64.97-24.73-89.7 0-1.77 1.77-3.51 3.59-5.22 5.45-25.32-18.97-51.38-33.75-77.98-44.2 6.64-8.33 13.63-16.2 20.94-23.51 35.22-35.2 83.57-49.42 129.41-42.66l.01.01c54.01 34.69 92.64 110.06 29.88 185.83z" fill="url(#g)"/></g></svg>
+      <h1>Weco &mdash; LangSmith Setup</h1>
+    </div>
+    <p>Configure your evaluation backend</p>
+  </header>
+
+  <div class="progress" id="progress"></div>
+
+  <!-- Step 0: Connect -->
+  <div class="step" id="step-connect">
+    <div class="step-header">
+      <h2>Connect to LangSmith</h2>
+      <p>We need your API key to access your datasets and evaluators.</p>
+    </div>
+    <div id="connect-status"></div>
+    <div id="connect-form" style="display:none">
+      <div class="card">
+        <div class="form-group" style="margin-bottom:12px">
+          <label>LangChain API Key</label>
+          <input type="password" id="api-key-input" placeholder="lsv2_pt_...">
+          <div class="input-hint">
+            Get your key at <a href="https://smith.langchain.com/settings" target="_blank" rel="noopener">smith.langchain.com/settings</a>
+          </div>
+        </div>
+        <button class="btn btn-primary" id="connect-btn" onclick="handleSetKey()">Connect</button>
+      </div>
+    </div>
+    <div class="btn-row">
+      <div class="right">
+        <button class="btn btn-primary" id="connect-next" onclick="goTo(1)" style="display:none">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 1: Dataset -->
+  <div class="step" id="step-dataset">
+    <div class="step-header">
+      <h2>Select a Dataset</h2>
+      <p>Choose the dataset to evaluate your target function against.</p>
+    </div>
+    <input type="text" class="search-input" placeholder="Search datasets..." oninput="filterDatasets(this.value)" id="dataset-search">
+    <div id="dataset-list"><div class="loading-center"><div class="spinner"></div></div></div>
+    <div id="splits-picker" style="display:none;margin-top:16px;"></div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(0)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" id="dataset-next" onclick="goTo(2)" disabled>Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Preview -->
+  <div class="step" id="step-preview">
+    <div class="step-header">
+      <h2>Dataset Preview</h2>
+      <p id="preview-subtitle">Sample rows from your dataset.</p>
+    </div>
+    <div class="card" id="preview-content">
+      <div class="loading-center"><div class="spinner"></div></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(1)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" onclick="goTo(3)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 3: Source & Target -->
+  <div class="step" id="step-source-target">
+    <div class="step-header">
+      <h2>Source Files &amp; Target</h2>
+      <p>Select the files Weco will optimize, then choose the target function.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:0">Source Files</div>
+        <button class="btn btn-secondary" style="height:32px; padding:4px 12px; font-size:12px" onclick="refreshFileTree()" title="Refresh file tree">&#8635; Refresh</button>
+      </div>
+      <div class="input-hint" style="margin-bottom:8px">
+        Select the Python files that Weco will modify during optimization.
+      </div>
+      <div id="selected-sources" class="selected-files"></div>
+      <div id="file-tree" class="file-tree">
+        <div class="loading-center"><div class="spinner"></div></div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Target Function</div>
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Function (module:function)</label>
+        <input type="text" id="target-input" placeholder="agent:run_chain">
+        <div class="input-hint">e.g. <code>agent:run_chain</code> imports <code>run_chain</code> from <code>agent.py</code></div>
+      </div>
+      <div id="target-suggestions"></div>
+      <div id="target-schema-hint" style="margin-top:12px"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(2)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" onclick="validateAndAdvanceSourceTarget()">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 4: Adapter -->
+  <div class="step" id="step-adapter">
+    <div class="step-header">
+      <h2>Target Adapter</h2>
+      <p>How does your target function accept inputs?</p>
+    </div>
+    <div class="adapter-grid">
+      <div class="card selectable selected" onclick="selectAdapter('raw')" id="adapter-raw">
+        <div class="adapter-card">
+          <div class="radio"></div>
+          <div>
+            <h3>Raw <span class="badge badge-muted">default</span></h3>
+            <p>Pass the full inputs dict directly.</p>
+            <p style="margin-top:4px"><code>def target(inputs: dict) -> dict</code></p>
+          </div>
+        </div>
+      </div>
+      <div class="card selectable" onclick="selectAdapter('langchain')" id="adapter-langchain">
+        <div class="adapter-card">
+          <div class="radio"></div>
+          <div>
+            <h3>LangChain</h3>
+            <p>Your target is a LangChain Runnable. We call <code>.invoke(inputs)</code>.</p>
+          </div>
+        </div>
+      </div>
+      <div class="card selectable" onclick="selectAdapter('single-input')" id="adapter-single-input">
+        <div class="adapter-card">
+          <div class="radio"></div>
+          <div>
+            <h3>Single Input</h3>
+            <p>Extracts a single string from common keys (<code>input</code>, <code>question</code>, <code>text</code>, <code>query</code>).</p>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(3)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" onclick="goTo(5)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 5: Evaluators -->
+  <div class="step" id="step-evaluators">
+    <div class="step-header">
+      <h2>Evaluators</h2>
+      <p>Evaluators score your target function's outputs on each dataset example.</p>
+    </div>
+    <div class="card">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px">
+        <div class="card-title" style="margin-bottom:0">Evaluator Files</div>
+        <button class="btn btn-secondary" style="height:32px; padding:4px 12px; font-size:12px" onclick="refreshEvalFileTree()" title="Refresh file tree">&#8635; Refresh</button>
+      </div>
+      <div class="input-hint" style="margin-bottom:8px">
+        Select Python files containing your evaluator functions.
+      </div>
+      <div id="eval-selected-sources" class="selected-files"></div>
+      <div id="eval-file-tree" class="file-tree">
+        <div class="loading-center"><div class="spinner"></div></div>
+      </div>
+      <hr style="border:none; border-top:1px solid var(--border); margin:20px 0">
+      <div class="form-group" style="margin-bottom:12px">
+        <label>Code Evaluators</label>
+        <input type="text" id="evaluators-input" placeholder="evaluators:correctness evaluators:relevance">
+        <div class="input-hint">
+          Space-separated. Use <code>module:function</code> for custom evaluators, or built-in names like <code>exact_match</code>.
+          Leave empty to default to your metric name (<span id="eval-metric-hint"></span>).
+        </div>
+      </div>
+      <div id="evaluator-suggestions"></div>
+    </div>
+    <div class="card">
+      <div class="card-title">Dashboard Evaluators</div>
+      <div class="input-hint" style="margin-top:0; margin-bottom:8px">
+        Dashboard evaluators run asynchronously on the LangSmith server.
+        Enter the <strong>Feedback Key</strong> of each evaluator as configured in your
+        <a href="https://smith.langchain.com" target="_blank" rel="noopener">LangSmith dashboard</a>.
+      </div>
+      <input type="text" id="dashboard-evaluators-input" placeholder="Feedback keys (space-separated)">
+    </div>
+    <div class="card">
+      <div class="form-group">
+        <label>Metric Function <span style="color:var(--text-muted); font-weight:400">(optional)</span></label>
+        <input type="text" id="metric-function-input" placeholder="module:function">
+        <div class="input-hint">
+          A custom function that receives all aggregated evaluator scores as a dict and returns a single float.
+          Use this to combine multiple evaluators into one composite metric (e.g. a weighted average).
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(4)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" onclick="goTo(6)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 6: Settings -->
+  <div class="step" id="step-settings">
+    <div class="step-header">
+      <h2>Run Settings</h2>
+      <p>Configure optimization parameters. All fields have sensible defaults.</p>
+    </div>
+    <div class="card">
+      <div class="card-title">Optimization</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Metric</label>
+          <input type="text" id="settings-metric">
+          <div class="input-hint">The metric name your evaluator outputs</div>
+        </div>
+        <div class="form-group">
+          <label>Goal</label>
+          <select id="settings-goal">
+            <option value="maximize">Maximize</option>
+            <option value="minimize">Minimize</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Steps</label>
+          <input type="number" id="settings-steps" min="1" max="10000">
+          <div class="input-hint">Optimization iterations (default: 100)</div>
+        </div>
+        <div class="form-group">
+          <label>Model</label>
+          <input type="text" id="settings-model" placeholder="auto-detected">
+          <div class="input-hint">LLM model. Leave blank for auto.</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Additional Instructions</label>
+        <textarea id="settings-instructions" rows="3" placeholder="Optional instructions for the optimizer..."></textarea>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">LangSmith</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Summary Aggregation</label>
+          <select id="settings-summary">
+            <option value="mean">Mean (default)</option>
+            <option value="median">Median</option>
+            <option value="min">Min</option>
+            <option value="max">Max</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Experiment Prefix</label>
+          <input type="text" id="settings-experiment-prefix" placeholder="(auto-generated)">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Max Examples</label>
+          <input type="number" id="settings-max-examples" min="1" placeholder="All">
+          <div class="input-hint">Limit examples per eval</div>
+        </div>
+        <div class="form-group">
+          <label>Max Concurrency</label>
+          <input type="number" id="settings-max-concurrency" min="1" placeholder="Default">
+          <div class="input-hint">Parallel eval threads</div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Dashboard Evaluator Timeout</label>
+        <input type="number" id="settings-dashboard-timeout" min="0">
+        <div class="input-hint">Seconds to poll for async scores (default: 900)</div>
+      </div>
+    </div>
+    <div class="card">
+      <div class="card-title">Execution</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Eval Timeout</label>
+          <input type="number" id="settings-eval-timeout" min="1" placeholder="No timeout">
+          <div class="input-hint">Seconds per evaluation</div>
+        </div>
+        <div class="form-group">
+          <label>Log Directory</label>
+          <input type="text" id="settings-log-dir">
+        </div>
+      </div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="settings-save-logs"><span class="toggle-slider"></span></label>
+        <span class="toggle-label">Save execution logs and code snapshots</span>
+      </div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="settings-apply-change"><span class="toggle-slider"></span></label>
+        <span class="toggle-label">Auto-apply best solution</span>
+      </div>
+      <div class="toggle-row">
+        <label class="toggle"><input type="checkbox" id="settings-require-review"><span class="toggle-slider"></span></label>
+        <span class="toggle-label">Require manual review of each change</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(5)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" onclick="collectSettings(); goTo(7)">Continue</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 7: Review -->
+  <div class="step" id="step-review">
+    <div class="step-header">
+      <h2>Review &amp; Start</h2>
+      <p>Confirm your configuration and begin optimization.</p>
+    </div>
+    <div class="card">
+      <table class="summary-table" id="summary-table"></table>
+    </div>
+    <div class="cli-command">
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:8px">Next time, skip the wizard with:</p>
+      <pre id="cli-command-pre"></pre>
+      <button class="copy-btn" onclick="copyCommand()">Copy</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="goTo(6)">Back</button>
+      <div class="right">
+        <button class="btn btn-primary" id="start-btn" onclick="submitConfig()">Start Optimization</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Done overlay -->
+<div class="done-overlay" id="done-overlay">
+  <div class="done-content">
+    <div class="done-check">&#10003;</div>
+    <h2>Configuration Sent</h2>
+    <p>Return to your terminal &mdash; optimization is starting.</p>
+  </div>
+</div>
+
+<script>
+const STEPS = ['connect', 'dataset', 'preview', 'source-target', 'adapter', 'evaluators', 'settings', 'review'];
+const state = {
+  step: 0,
+  connected: false,
+  // Core params
+  metric: '',
+  goal: '',
+  sourceFiles: [],
+  steps: 100,
+  model: '',
+  logDir: '.runs',
+  additionalInstructions: '',
+  evalTimeout: null,
+  saveLogs: false,
+  applyChange: false,
+  requireReview: false,
+  // Dataset
+  datasets: [],
+  selectedDataset: null,
+  availableSplits: [],
+  selectedSplits: [],
+  examples: [],
+  inputKeys: [],
+  // Target
+  target: '',
+  adapter: 'raw',
+  // Evaluators
+  codeEvaluators: [],
+  dashboardEvaluators: [],
+  metricFunction: '',
+  discoveredTargets: [],
+  discoveredEvaluators: [],
+  evalSourceFiles: [],
+  evalExpandedDirs: new Set(),
+  evalFileTreeCache: {},
+  // LangSmith settings
+  langsmithSummary: 'mean',
+  langsmithExperimentPrefix: '',
+  langsmithMaxExamples: null,
+  langsmithMaxConcurrency: null,
+  langsmithDashboardEvaluatorTimeout: 900,
+  // File tree
+  expandedDirs: new Set(),
+  fileTreeCache: {},
+};
+
+// -- Init --
+async function init() {
+  renderProgress();
+  showStep(0);
+  try {
+    const s = await fetchJSON('/api/status');
+    state.metric = s.metric || '';
+    state.goal = s.goal || '';
+    state.sourceFiles = s.source_files || [];
+    state.steps = s.steps || 100;
+    state.model = s.model || '';
+    state.logDir = s.log_dir || '.runs';
+    state.additionalInstructions = s.additional_instructions || '';
+    state.evalTimeout = s.eval_timeout;
+    state.saveLogs = s.save_logs || false;
+    state.applyChange = s.apply_change || false;
+    state.requireReview = s.require_review || false;
+    state.langsmithSummary = s.langsmith_summary || 'mean';
+    state.langsmithExperimentPrefix = s.langsmith_experiment_prefix || '';
+    state.langsmithMaxExamples = s.langsmith_max_examples;
+    state.langsmithMaxConcurrency = s.langsmith_max_concurrency;
+    state.langsmithDashboardEvaluatorTimeout = s.langsmith_dashboard_evaluator_timeout || 900;
+
+    if (s.connected) {
+      state.connected = true;
+      showConnected();
+      loadDiscovery();
+    } else if (s.api_key_set) {
+      showConnectError('API key is set but connection failed. Check your key.');
+      document.getElementById('connect-form').style.display = 'block';
+      loadDiscovery();
+    } else {
+      document.getElementById('connect-form').style.display = 'block';
+      document.getElementById('connect-status').innerHTML = '';
+      loadDiscovery();
+    }
+  } catch (e) {
+    document.getElementById('connect-form').style.display = 'block';
+  }
+  document.getElementById('eval-metric-hint').textContent = state.metric || 'metric';
+}
+
+// -- Navigation --
+function renderProgress() {
+  const el = document.getElementById('progress');
+  el.innerHTML = STEPS.map((_, i) => {
+    let cls = 'progress-dot';
+    if (i < state.step) cls += ' done';
+    else if (i === state.step) cls += ' active';
+    return '<div class="' + cls + '"></div>';
+  }).join('');
+}
+
+function showStep(idx) {
+  state.step = idx;
+  STEPS.forEach((name, i) => {
+    const el = document.getElementById('step-' + name);
+    el.classList.toggle('visible', i === idx);
+  });
+  renderProgress();
+
+  if (idx === 1 && state.datasets.length === 0) loadDatasets();
+  if (idx === 2) loadExamples();
+  if (idx === 3) {
+    renderFileTree();
+    renderSelectedSources();
+    renderTargetHint();
+    renderTargetSuggestions();
+  }
+  if (idx === 5) {
+    document.getElementById('eval-metric-hint').textContent = state.metric || 'metric';
+    renderEvalFileTree();
+    renderEvalSelectedSources();
+    renderEvaluatorSuggestions();
+  }
+  if (idx === 6) populateSettings();
+  if (idx === 7) renderReview();
+}
+
+function goTo(idx) { showStep(idx); }
+
+// -- Step 0: Connect --
+async function handleSetKey() {
+  const key = document.getElementById('api-key-input').value.trim();
+  if (!key) return;
+  const btn = document.getElementById('connect-btn');
+  btn.disabled = true;
+  btn.textContent = 'Connecting...';
+  try {
+    const res = await fetchJSON('/api/set-key', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    if (res.connected) {
+      state.connected = true;
+      showConnected();
+    } else {
+      showConnectError(res.error || 'Connection failed. Check your API key.');
+      btn.disabled = false; btn.textContent = 'Connect';
+    }
+  } catch (e) {
+    showConnectError('Request failed: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Connect';
+  }
+}
+
+function showConnected() {
+  document.getElementById('connect-status').innerHTML =
+    '<div class="msg msg-success"><span class="badge badge-success">Connected</span> Successfully connected to LangSmith.</div>';
+  document.getElementById('connect-form').style.display = 'none';
+  document.getElementById('connect-next').style.display = '';
+}
+
+function showConnectError(msg) {
+  document.getElementById('connect-status').innerHTML =
+    '<div class="msg msg-error">' + escapeHtml(msg) + '</div>';
+}
+
+// -- Step 1: Dataset --
+async function loadDatasets() {
+  const container = document.getElementById('dataset-list');
+  container.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+  try {
+    const res = await fetchJSON('/api/datasets');
+    state.datasets = res.datasets || [];
+    renderDatasets(state.datasets);
+  } catch (e) {
+    container.innerHTML = '<div class="msg msg-error">Failed to load datasets.</div>';
+  }
+}
+
+function renderDatasets(datasets) {
+  const container = document.getElementById('dataset-list');
+  if (datasets.length === 0) {
+    container.innerHTML =
+      '<div class="empty-state"><p>No datasets found in your LangSmith account.</p>' +
+      '<a href="https://smith.langchain.com" target="_blank" rel="noopener">Create a dataset in LangSmith</a></div>';
+    return;
+  }
+  container.innerHTML = datasets.map((ds, i) => {
+    const isSelected = state.selectedDataset && state.selectedDataset.name === ds.name;
+    const date = ds.created_at ? new Date(ds.created_at).toLocaleDateString() : '';
+    return '<div class="card selectable' + (isSelected ? ' selected' : '') +
+      '" onclick="selectDataset(' + i + ')">' +
+      '<div class="dataset-card"><div class="dataset-info">' +
+      '<h3>' + escapeHtml(ds.name) + '</h3>' +
+      '<p>' + escapeHtml(ds.description || 'No description') + '</p>' +
+      '</div><div class="dataset-meta">' +
+      '<div class="count">' + ds.example_count + '</div>' +
+      '<div class="date">' + date + '</div></div></div></div>';
+  }).join('');
+}
+
+async function selectDataset(idx) {
+  state.selectedDataset = state.datasets[idx];
+  state.examples = [];
+  state.availableSplits = [];
+  state.selectedSplits = [];
+  renderDatasets(state.datasets);
+  document.getElementById('dataset-next').disabled = false;
+
+  // Fetch available splits for the selected dataset
+  try {
+    const name = encodeURIComponent(state.selectedDataset.name);
+    const res = await fetchJSON('/api/datasets/' + name + '/splits');
+    state.availableSplits = res.splits || [];
+  } catch (e) {
+    state.availableSplits = [];
+  }
+  renderSplitsPicker();
+}
+
+function toggleSplit(split) {
+  const idx = state.selectedSplits.indexOf(split);
+  if (idx === -1) state.selectedSplits.push(split);
+  else state.selectedSplits.splice(idx, 1);
+  renderSplitsPicker();
+}
+
+function renderSplitsPicker() {
+  const container = document.getElementById('splits-picker');
+  if (!state.availableSplits.length) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  container.innerHTML =
+    '<label class="field-label">Dataset Splits</label>' +
+    '<p style="color:var(--text-muted);font-size:13px;margin-bottom:8px;">' +
+    'Select split(s) to evaluate on, or leave empty to use the full dataset.</p>' +
+    '<div class="chip-container">' +
+    state.availableSplits.map(s => {
+      const active = state.selectedSplits.includes(s);
+      return '<span class="chip' + (active ? ' active' : '') +
+        '" onclick="toggleSplit(\'' + escapeHtml(s) + '\')" style="cursor:pointer">' +
+        escapeHtml(s) + '</span>';
+    }).join('') +
+    '</div>';
+}
+
+function filterDatasets(query) {
+  const q = query.toLowerCase();
+  const filtered = state.datasets.filter(d =>
+    d.name.toLowerCase().includes(q) || (d.description || '').toLowerCase().includes(q)
+  );
+  renderDatasets(filtered);
+}
+
+// -- Step 2: Preview --
+async function loadExamples() {
+  if (!state.selectedDataset) return;
+  const container = document.getElementById('preview-content');
+  container.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+  document.getElementById('preview-subtitle').textContent =
+    'Sample rows from "' + state.selectedDataset.name + '"';
+  try {
+    const name = encodeURIComponent(state.selectedDataset.name);
+    const res = await fetchJSON('/api/datasets/' + name + '/examples');
+    state.examples = res.examples || [];
+    if (state.examples.length > 0) {
+      state.inputKeys = Object.keys(state.examples[0].inputs || {});
+    }
+    if (state.examples.length === 0) {
+      container.innerHTML = '<div class="empty-state"><p>This dataset has no examples yet.</p></div>';
+      return;
+    }
+    container.innerHTML = state.examples.map((ex, i) =>
+      '<div class="example-row">' +
+      '<div class="example-label">Example ' + (i + 1) + ' &mdash; Inputs</div>' +
+      '<div class="json-block">' + escapeHtml(JSON.stringify(ex.inputs, null, 2)) + '</div>' +
+      '<div class="example-label">Outputs</div>' +
+      '<div class="json-block">' + escapeHtml(JSON.stringify(ex.outputs, null, 2)) + '</div></div>'
+    ).join('');
+  } catch (e) {
+    container.innerHTML = '<div class="msg msg-error">Failed to load examples.</div>';
+  }
+}
+
+// -- File tree widget factory --
+function createFileTree(cfg) {
+  // cfg: { stateKey, cacheKey, expandedKey, containerId, chipsId, idPrefix, toggleDirFn, toggleFileFn, removeFileFn, onChangeFiles }
+  const tree = {
+    async load(dirPath) {
+      if (state[cfg.cacheKey][dirPath]) return state[cfg.cacheKey][dirPath];
+      try {
+        const res = await fetchJSON('/api/file-tree?path=' + encodeURIComponent(dirPath));
+        state[cfg.cacheKey][dirPath] = res.entries || [];
+        return state[cfg.cacheKey][dirPath];
+      } catch (e) { return []; }
+    },
+    async refresh() {
+      state[cfg.cacheKey] = {};
+      state[cfg.expandedKey].clear();
+      await tree.render();
+      cfg.onChangeFiles();
+    },
+    async render() {
+      const container = document.getElementById(cfg.containerId);
+      container.innerHTML = '<div class="loading-center"><div class="spinner"></div></div>';
+      const entries = await tree.load('.');
+      container.innerHTML = tree.renderLevel(entries);
+    },
+    renderLevel(entries) {
+      if (!entries || entries.length === 0) return '<div style="padding:8px; color:var(--text-light); font-size:13px">No Python files found</div>';
+      return entries.map(entry => {
+        if (entry.is_dir) {
+          const isExpanded = state[cfg.expandedKey].has(entry.path);
+          const childId = cfg.idPrefix + '-' + entry.path.replace(/[^a-zA-Z0-9]/g, '-');
+          return '<div class="tree-item" onclick="' + cfg.toggleDirFn + '(\'' + escapeAttr(entry.path) + '\')">' +
+            '<span class="tree-icon">' + (isExpanded ? '&#9660;' : '&#9654;') + '</span>' +
+            '<span class="tree-name">' + escapeHtml(entry.name) + '/</span></div>' +
+            '<div class="tree-children" id="' + childId + '"' +
+            (isExpanded ? '' : ' style="display:none"') + '>' +
+            (isExpanded && state[cfg.cacheKey][entry.path] ? tree.renderLevel(state[cfg.cacheKey][entry.path]) : '') +
+            '</div>';
+        } else {
+          const isSelected = state[cfg.stateKey].includes(entry.path);
+          return '<div class="tree-item">' +
+            '<input type="checkbox" class="tree-checkbox"' + (isSelected ? ' checked' : '') +
+            ' onchange="' + cfg.toggleFileFn + '(\'' + escapeAttr(entry.path) + '\')" onclick="event.stopPropagation()">' +
+            '<span class="tree-icon" style="color:var(--primary)">&#9782;</span>' +
+            '<span class="tree-name">' + escapeHtml(entry.name) + '</span>' +
+            '<span class="tree-size">' + formatSize(entry.size) + '</span></div>';
+        }
+      }).join('');
+    },
+    async toggleDir(path) {
+      if (state[cfg.expandedKey].has(path)) { state[cfg.expandedKey].delete(path); }
+      else { state[cfg.expandedKey].add(path); await tree.load(path); }
+      tree.render();
+    },
+    toggleFile(path) {
+      const files = state[cfg.stateKey];
+      const idx = files.indexOf(path);
+      if (idx >= 0) files.splice(idx, 1); else files.push(path);
+      tree.renderChips();
+      tree.render();
+      cfg.onChangeFiles();
+    },
+    removeFile(path) {
+      state[cfg.stateKey] = state[cfg.stateKey].filter(f => f !== path);
+      tree.renderChips();
+      tree.render();
+      cfg.onChangeFiles();
+    },
+    renderChips() {
+      const container = document.getElementById(cfg.chipsId);
+      if (state[cfg.stateKey].length === 0) {
+        container.innerHTML = '<span style="color:var(--text-light); font-size:13px">No files selected &mdash; check files in the tree below</span>';
+        return;
+      }
+      container.innerHTML = state[cfg.stateKey].map(f =>
+        '<span class="selected-file-chip">' + escapeHtml(f) +
+        ' <span class="remove" onclick="' + cfg.removeFileFn + '(\'' + escapeAttr(f) + '\')">&times;</span></span>'
+      ).join('');
+    },
+  };
+  return tree;
+}
+
+// -- Step 3: Source & Target --
+
+const sourceTree = createFileTree({
+  stateKey: 'sourceFiles', cacheKey: 'fileTreeCache', expandedKey: 'expandedDirs',
+  containerId: 'file-tree', chipsId: 'selected-sources', idPrefix: 'tree',
+  toggleDirFn: 'toggleDir', toggleFileFn: 'toggleSourceFile', removeFileFn: 'removeSourceFile',
+  onChangeFiles: () => reDiscover(),
+});
+
+// Global functions for HTML onclick handlers
+function refreshFileTree() { sourceTree.refresh(); }
+function renderFileTree() { return sourceTree.render(); }
+function renderSelectedSources() { sourceTree.renderChips(); }
+function toggleDir(path) { sourceTree.toggleDir(path); }
+function toggleSourceFile(path) { sourceTree.toggleFile(path); }
+function removeSourceFile(path) { sourceTree.removeFile(path); }
+
+async function reDiscover() {
+  if (state.sourceFiles.length === 0) {
+    state.discoveredTargets = [];
+    state.discoveredEvaluators = [];
+    renderTargetSuggestions();
+    return;
+  }
+  try {
+    const res = await fetchJSON('/api/discover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_files: state.sourceFiles }),
+    });
+    state.discoveredTargets = res.targets || [];
+    state.discoveredEvaluators = res.evaluators || [];
+    renderTargetSuggestions();
+  } catch (e) { /* non-critical */ }
+}
+
+// Target hints & suggestions
+function renderTargetHint() {
+  const hint = document.getElementById('target-schema-hint');
+  if (state.inputKeys.length === 0) { hint.innerHTML = ''; return; }
+  const keys = state.inputKeys.map(k => '"' + k + '"').join(', ');
+  hint.innerHTML =
+    '<div style="font-size:13px; color:var(--text-muted); margin-bottom:8px">' +
+    'Your function will receive these input keys: <code>' + escapeHtml(keys) + '</code></div>' +
+    '<pre>def my_function(inputs: dict) -> dict:\n' +
+    state.inputKeys.map(k => '    ' + k + ' = inputs["' + k + '"]').join('\n') + '\n' +
+    '    # ... your logic ...\n    return {"output": result}</pre>';
+}
+
+function validateAndAdvanceSourceTarget() {
+  if (state.sourceFiles.length === 0) {
+    alert('Please select at least one source file.');
+    return;
+  }
+  const val = document.getElementById('target-input').value.trim();
+  if (!val.includes(':') || val.startsWith(':') || val.endsWith(':')) {
+    alert('Target must be in module:function format (e.g. agent:run_chain)');
+    return;
+  }
+  state.target = val;
+  goTo(4);
+}
+
+// -- Step 4: Adapter --
+function selectAdapter(name) {
+  state.adapter = name;
+  ['raw', 'langchain', 'single-input'].forEach(a => {
+    document.getElementById('adapter-' + a).classList.toggle('selected', a === name);
+  });
+}
+
+// -- Discovery & Feedback Configs --
+async function loadDiscovery() {
+  try {
+    const res = await fetchJSON('/api/discover');
+    state.discoveredTargets = res.targets || [];
+    state.discoveredEvaluators = res.evaluators || [];
+  } catch (e) { /* non-critical */ }
+}
+
+function renderTargetSuggestions() {
+  const container = document.getElementById('target-suggestions');
+  if (state.discoveredTargets.length === 0) { container.innerHTML = ''; return; }
+  const current = document.getElementById('target-input').value.trim();
+  container.innerHTML =
+    '<div class="suggestions-label">Detected in your source files</div>' +
+    '<div class="suggestions">' +
+    state.discoveredTargets.map(t =>
+      '<div class="chip' + (current === t.spec ? ' active' : '') +
+      '" onclick="selectTargetSuggestion(\'' + escapeAttr(t.spec) + '\')">' +
+      '<span class="chip-name">' + escapeHtml(t.spec) + '</span>' +
+      (t.doc ? '<span class="chip-doc">' + escapeHtml(t.doc) + '</span>' : '') +
+      '</div>'
+    ).join('') + '</div>';
+}
+
+function selectTargetSuggestion(spec) {
+  document.getElementById('target-input').value = spec;
+  state.target = spec;
+  renderTargetSuggestions();
+}
+
+function renderEvaluatorSuggestions() {
+  const container = document.getElementById('evaluator-suggestions');
+  if (state.discoveredEvaluators.length === 0) { container.innerHTML = ''; return; }
+  const currentVals = document.getElementById('evaluators-input').value.trim().split(/\s+/).filter(Boolean);
+  container.innerHTML =
+    '<div class="suggestions-label">Detected evaluator functions</div>' +
+    '<div class="suggestions">' +
+    state.discoveredEvaluators.map(ev =>
+      '<div class="chip' + (currentVals.includes(ev.spec) ? ' active' : '') +
+      '" onclick="toggleEvaluatorSuggestion(\'' + escapeAttr(ev.spec) + '\')">' +
+      '<span class="chip-name">' + escapeHtml(ev.spec) + '</span>' +
+      (ev.doc ? '<span class="chip-doc">' + escapeHtml(ev.doc) + '</span>' : '') +
+      '</div>'
+    ).join('') + '</div>';
+}
+
+function toggleEvaluatorSuggestion(spec) {
+  const input = document.getElementById('evaluators-input');
+  const vals = input.value.trim().split(/\s+/).filter(Boolean);
+  const idx = vals.indexOf(spec);
+  if (idx >= 0) vals.splice(idx, 1); else vals.push(spec);
+  input.value = vals.join(' ');
+  renderEvaluatorSuggestions();
+}
+
+// -- Evaluator file tree --
+const evalTree = createFileTree({
+  stateKey: 'evalSourceFiles', cacheKey: 'evalFileTreeCache', expandedKey: 'evalExpandedDirs',
+  containerId: 'eval-file-tree', chipsId: 'eval-selected-sources', idPrefix: 'evtree',
+  toggleDirFn: 'toggleEvalDir', toggleFileFn: 'toggleEvalSourceFile', removeFileFn: 'removeEvalSourceFile',
+  onChangeFiles: () => reDiscoverEvaluators(),
+});
+
+// Global functions for HTML onclick handlers
+function refreshEvalFileTree() { evalTree.refresh(); }
+function renderEvalFileTree() { return evalTree.render(); }
+function renderEvalSelectedSources() { evalTree.renderChips(); }
+function toggleEvalDir(path) { evalTree.toggleDir(path); }
+function toggleEvalSourceFile(path) { evalTree.toggleFile(path); }
+function removeEvalSourceFile(path) { evalTree.removeFile(path); }
+
+async function reDiscoverEvaluators() {
+  if (state.evalSourceFiles.length === 0) {
+    state.discoveredEvaluators = [];
+    renderEvaluatorSuggestions();
+    return;
+  }
+  try {
+    const res = await fetchJSON('/api/discover', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ source_files: state.evalSourceFiles }),
+    });
+    state.discoveredEvaluators = res.evaluators || [];
+    renderEvaluatorSuggestions();
+  } catch (e) { /* non-critical */ }
+}
+
+// -- Step 6: Settings --
+function populateSettings() {
+  document.getElementById('settings-metric').value = state.metric || '';
+  document.getElementById('settings-goal').value = (state.goal || 'maximize').replace('max', 'maximize').replace('min', 'minimize');
+  document.getElementById('settings-steps').value = state.steps || 100;
+  document.getElementById('settings-model').value = state.model || '';
+  document.getElementById('settings-instructions').value = state.additionalInstructions || '';
+  document.getElementById('settings-summary').value = state.langsmithSummary || 'mean';
+  document.getElementById('settings-experiment-prefix').value = state.langsmithExperimentPrefix || '';
+  document.getElementById('settings-max-examples').value = state.langsmithMaxExamples || '';
+  document.getElementById('settings-max-concurrency').value = state.langsmithMaxConcurrency || '';
+  document.getElementById('settings-dashboard-timeout').value = state.langsmithDashboardEvaluatorTimeout || 900;
+  document.getElementById('settings-eval-timeout').value = state.evalTimeout || '';
+  document.getElementById('settings-log-dir').value = state.logDir || '.runs';
+  document.getElementById('settings-save-logs').checked = state.saveLogs;
+  document.getElementById('settings-apply-change').checked = state.applyChange;
+  document.getElementById('settings-require-review').checked = state.requireReview;
+}
+
+function collectSettings() {
+  state.metric = document.getElementById('settings-metric').value.trim() || state.metric;
+  state.goal = document.getElementById('settings-goal').value;
+  state.steps = parseInt(document.getElementById('settings-steps').value) || 100;
+  state.model = document.getElementById('settings-model').value.trim() || null;
+  state.additionalInstructions = document.getElementById('settings-instructions').value.trim() || null;
+  state.langsmithSummary = document.getElementById('settings-summary').value;
+  state.langsmithExperimentPrefix = document.getElementById('settings-experiment-prefix').value.trim() || null;
+  const maxEx = document.getElementById('settings-max-examples').value;
+  state.langsmithMaxExamples = maxEx ? parseInt(maxEx) : null;
+  const maxConc = document.getElementById('settings-max-concurrency').value;
+  state.langsmithMaxConcurrency = maxConc ? parseInt(maxConc) : null;
+  state.langsmithDashboardEvaluatorTimeout = parseInt(document.getElementById('settings-dashboard-timeout').value) || 900;
+  const evalTo = document.getElementById('settings-eval-timeout').value;
+  state.evalTimeout = evalTo ? parseInt(evalTo) : null;
+  state.logDir = document.getElementById('settings-log-dir').value.trim() || '.runs';
+  state.saveLogs = document.getElementById('settings-save-logs').checked;
+  state.applyChange = document.getElementById('settings-apply-change').checked;
+  state.requireReview = document.getElementById('settings-require-review').checked;
+}
+
+// -- Step 7: Review --
+function renderReview() {
+  state.target = document.getElementById('target-input').value.trim() || state.target;
+  const evalInput = document.getElementById('evaluators-input').value.trim();
+  state.codeEvaluators = evalInput ? evalInput.split(/\s+/) : [];
+  const dashInput = document.getElementById('dashboard-evaluators-input').value.trim();
+  state.dashboardEvaluators = dashInput ? dashInput.split(/\s+/) : [];
+  state.metricFunction = document.getElementById('metric-function-input').value.trim();
+
+  const displayEvaluators = state.codeEvaluators.length > 0
+    ? state.codeEvaluators.join(' ') : '(default: ' + state.metric + ')';
+
+  const rows = [
+    ['Source Files', state.sourceFiles.join(', ') || '(none)'],
+    ['Dataset', state.selectedDataset ? state.selectedDataset.name : ''],
+    ['Splits', state.selectedSplits.length > 0 ? state.selectedSplits.join(', ') : '(all)'],
+    ['Target', state.target],
+    ['Adapter', state.adapter],
+    ['Evaluators', displayEvaluators],
+    ['Metric', state.metric],
+    ['Goal', state.goal],
+    ['Steps', String(state.steps)],
+  ];
+  if (state.metricFunction) rows.push(['Metric Function', state.metricFunction]);
+  if (state.dashboardEvaluators.length > 0) rows.push(['Dashboard Evals', state.dashboardEvaluators.join(' ')]);
+  if (state.model) rows.push(['Model', state.model]);
+  if (state.langsmithSummary !== 'mean') rows.push(['Summary', state.langsmithSummary]);
+  if (state.langsmithExperimentPrefix) rows.push(['Experiment Prefix', state.langsmithExperimentPrefix]);
+  if (state.langsmithMaxExamples) rows.push(['Max Examples', String(state.langsmithMaxExamples)]);
+  if (state.langsmithMaxConcurrency) rows.push(['Max Concurrency', String(state.langsmithMaxConcurrency)]);
+  if (state.evalTimeout) rows.push(['Eval Timeout', state.evalTimeout + 's']);
+  if (state.logDir !== '.runs') rows.push(['Log Dir', state.logDir]);
+  if (state.saveLogs) rows.push(['Save Logs', 'Yes']);
+  if (state.applyChange) rows.push(['Auto-Apply', 'Yes']);
+  if (state.requireReview) rows.push(['Require Review', 'Yes']);
+
+  document.getElementById('summary-table').innerHTML = rows.map(([k, v]) =>
+    '<tr><td>' + k + '</td><td>' + escapeHtml(v) + '</td></tr>'
+  ).join('');
+
+  // CLI command
+  const parts = ['weco run'];
+  if (state.sourceFiles.length === 1) parts.push('--source ' + state.sourceFiles[0]);
+  else if (state.sourceFiles.length > 1) parts.push('--sources ' + state.sourceFiles.join(' '));
+  parts.push('--eval-backend langsmith');
+  parts.push('--langsmith-dataset "' + (state.selectedDataset ? state.selectedDataset.name : '') + '"');
+  if (state.selectedSplits.length > 0) parts.push('--langsmith-splits ' + state.selectedSplits.join(' '));
+  parts.push('--langsmith-target ' + state.target);
+  if (state.codeEvaluators.length > 0) parts.push('--langsmith-evaluators ' + state.codeEvaluators.join(' '));
+  if (state.dashboardEvaluators.length > 0) parts.push('--langsmith-dashboard-evaluators ' + state.dashboardEvaluators.join(' '));
+  if (state.metricFunction) parts.push('--langsmith-metric-function ' + state.metricFunction);
+  parts.push('--metric ' + state.metric);
+  parts.push('--goal ' + state.goal);
+  if (state.steps !== 100) parts.push('--steps ' + state.steps);
+  if (state.model) parts.push('--model ' + state.model);
+  if (state.langsmithSummary !== 'mean') parts.push('--langsmith-summary ' + state.langsmithSummary);
+  if (state.langsmithExperimentPrefix) parts.push('--langsmith-experiment-prefix ' + state.langsmithExperimentPrefix);
+  if (state.langsmithMaxExamples) parts.push('--langsmith-max-examples ' + state.langsmithMaxExamples);
+  if (state.langsmithMaxConcurrency) parts.push('--langsmith-max-concurrency ' + state.langsmithMaxConcurrency);
+  if (state.evalTimeout) parts.push('--eval-timeout ' + state.evalTimeout);
+  if (state.logDir !== '.runs') parts.push('--log-dir ' + state.logDir);
+  if (state.saveLogs) parts.push('--save-logs');
+  if (state.applyChange) parts.push('--apply-change');
+  if (state.requireReview) parts.push('--require-review');
+  if (state.additionalInstructions) parts.push('--additional-instructions "' + state.additionalInstructions.replace(/"/g, '\\"') + '"');
+
+  document.getElementById('cli-command-pre').textContent = parts.join(' \\\n  ');
+}
+
+async function submitConfig() {
+  const btn = document.getElementById('start-btn');
+  btn.disabled = true;
+  btn.textContent = 'Submitting...';
+
+  const config = {
+    dataset: state.selectedDataset ? state.selectedDataset.name : '',
+    splits: state.selectedSplits.length > 0 ? state.selectedSplits : null,
+    target: state.target,
+    adapter: state.adapter,
+    code_evaluators: state.codeEvaluators,
+    dashboard_evaluators: state.dashboardEvaluators,
+    metric_function: state.metricFunction || null,
+    source_files: state.sourceFiles,
+    metric: state.metric,
+    goal: state.goal,
+    steps: state.steps,
+    model: state.model,
+    log_dir: state.logDir,
+    additional_instructions: state.additionalInstructions,
+    eval_timeout: state.evalTimeout,
+    save_logs: state.saveLogs,
+    apply_change: state.applyChange,
+    require_review: state.requireReview,
+    langsmith_summary: state.langsmithSummary,
+    langsmith_experiment_prefix: state.langsmithExperimentPrefix,
+    langsmith_max_examples: state.langsmithMaxExamples,
+    langsmith_max_concurrency: state.langsmithMaxConcurrency,
+    langsmith_dashboard_evaluator_timeout: state.langsmithDashboardEvaluatorTimeout,
+  };
+
+  try {
+    const res = await fetchJSON('/api/configure', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    if (res.ok) {
+      document.getElementById('done-overlay').classList.add('visible');
+    } else {
+      alert('Error: ' + (res.error || 'Unknown error'));
+      btn.disabled = false; btn.textContent = 'Start Optimization';
+    }
+  } catch (e) {
+    alert('Request failed: ' + e.message);
+    btn.disabled = false; btn.textContent = 'Start Optimization';
+  }
+}
+
+// -- Helpers --
+async function fetchJSON(url, options) {
+  const res = await fetch(url, options || {});
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || 'Request failed (' + res.status + ')');
+  return data;
+}
+
+function escapeHtml(str) {
+  if (str == null) return '';
+  const div = document.createElement('div');
+  div.textContent = str;
+  return div.innerHTML;
+}
+
+function escapeAttr(str) {
+  return str.replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+}
+
+function formatSize(bytes) {
+  if (!bytes) return '';
+  if (bytes < 1024) return bytes + ' B';
+  return (bytes / 1024).toFixed(1) + ' KB';
+}
+
+function copyCommand() {
+  const text = document.getElementById('cli-command-pre').textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => { btn.textContent = 'Copy'; }, 1500);
+  });
+}
+
+// Boot
+init();
+</script>
+</body>
+</html>
