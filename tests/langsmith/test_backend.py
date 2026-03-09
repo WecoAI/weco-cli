@@ -324,8 +324,19 @@ class TestBuildEvalCommand:
         """--langsmith-splits appears in command when set."""
         parser = _make_parser()
         args = parser.parse_args(
-            ["--metric", "acc", "--langsmith-dataset", "data", "--langsmith-target", "m:f",
-             "--langsmith-evaluators", "acc", "--langsmith-splits", "train", "test"]
+            [
+                "--metric",
+                "acc",
+                "--langsmith-dataset",
+                "data",
+                "--langsmith-target",
+                "m:f",
+                "--langsmith-evaluators",
+                "acc",
+                "--langsmith-splits",
+                "train",
+                "test",
+            ]
         )
         validate_args(args)
         cmd = build_eval_command(args)
@@ -335,8 +346,7 @@ class TestBuildEvalCommand:
         """--splits is not in command when no splits specified."""
         parser = _make_parser()
         args = parser.parse_args(
-            ["--metric", "acc", "--langsmith-dataset", "data", "--langsmith-target", "m:f",
-             "--langsmith-evaluators", "acc"]
+            ["--metric", "acc", "--langsmith-dataset", "data", "--langsmith-target", "m:f", "--langsmith-evaluators", "acc"]
         )
         validate_args(args)
         cmd = build_eval_command(args)

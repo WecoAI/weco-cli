@@ -206,7 +206,7 @@ class TestWizardServer:
         resp, data = post_json(conn, "/api/set-key", {"key": "bad-key"})
         assert resp.status == 200
         assert data["connected"] is False
-        assert "bad key" in data["error"]
+        assert data["error"] == "Connection failed. Check that your API key is valid."
         mock_os.environ.pop.assert_called_once_with("LANGCHAIN_API_KEY", None)
 
     @patch.object(WizardServer, "client", new_callable=PropertyMock)

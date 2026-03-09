@@ -148,8 +148,5 @@ class TestWizardArgsMapping:
     def test_splits_mapped(self):
         """Selected splits are mapped from wizard config to args."""
         args = self._make_args()
-        self._run_wizard_with_config(args, {
-            "dataset": "d", "target": "m:f",
-            "splits": ["opt", "holdout"],
-        })
+        self._run_wizard_with_config(args, {"dataset": "d", "target": "m:f", "splits": ["opt", "holdout"]})
         assert args.langsmith_splits == ["opt", "holdout"]

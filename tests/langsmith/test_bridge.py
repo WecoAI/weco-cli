@@ -130,6 +130,7 @@ class TestAggregate:
 class TestAdaptTarget:
     def test_raw_passthrough(self):
         """Raw adapter returns the function unchanged."""
+
         def fn(x):
             return x
 
@@ -154,6 +155,7 @@ class TestAdaptTarget:
 
     def test_single_input_adapter(self):
         """Single-input adapter extracts text from common input keys."""
+
         def fn(text):
             return f"response to {text}"
 
@@ -170,6 +172,7 @@ class TestAdaptTarget:
 
     def test_single_input_adapter_dict_return(self):
         """Single-input adapter passes through dict returns."""
+
         def fn(text):
             return {"answer": text}
 

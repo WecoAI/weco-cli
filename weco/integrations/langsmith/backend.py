@@ -7,6 +7,7 @@ Provides the three functions required by the eval backend interface:
 """
 
 import argparse
+import shlex
 import sys
 
 from rich.console import Console
@@ -132,32 +133,37 @@ def validate_args(args: argparse.Namespace) -> None:
 
 
 def build_eval_command(args: argparse.Namespace) -> str:
-    """Build the eval command string for LangSmith backend."""
+    """Build the eval command string for LangSmith backend.
+
+    All user-provided values are shell-quoted to prevent injection, since the
+    resulting string is executed via ``shell=True`` in ``run_evaluation()``.
+    """
+    q = shlex.quote
     parts = ["python", "-m", "weco.integrations.langsmith"]
-    parts.extend(["--dataset", args.langsmith_dataset])
-    parts.extend(["--target", args.langsmith_target])
+    parts.extend(["--dataset", q(args.langsmith_dataset)])
+    parts.extend(["--target", q(args.langsmith_target)])
     if args.langsmith_evaluators:
         parts.append("--evaluators")
-        parts.extend(args.langsmith_evaluators)
-    parts.extend(["--metric", args.metric])
+        parts.extend(q(e) for e in args.langsmith_evaluators)
+    parts.extend(["--metric", q(args.metric)])
     if args.langsmith_summary != "mean":
-        parts.extend(["--summary", args.langsmith_summary])
+        parts.extend(["--summary", q(args.langsmith_summary)])
     if args.langsmith_experiment_prefix:
-        parts.extend(["--experiment-prefix", args.langsmith_experiment_prefix])
+        parts.extend(["--experiment-prefix", q(args.langsmith_experiment_prefix)])
     if args.langsmith_max_concurrency:
-        parts.extend(["--max-concurrency", str(args.langsmith_max_concurrency)])
+        parts.extend(["--max-concurrency", str(int(args.langsmith_max_concurrency))])
     if args.langsmith_max_examples:
-        parts.extend(["--max-examples", str(args.langsmith_max_examples)])
+        parts.extend(["--max-examples", str(int(args.langsmith_max_examples))])
     if args.langsmith_target_adapter != "raw":
-        parts.extend(["--target-adapter", args.langsmith_target_adapter])
+        parts.extend(["--target-adapter", q(args.langsmith_target_adapter)])
     if args.langsmith_splits:
         parts.append("--splits")
-        parts.extend(args.langsmith_splits)
+        parts.extend(q(s) for s in args.langsmith_splits)
     if args.langsmith_metric_function:
-        parts.extend(["--metric-function", args.langsmith_metric_function])
+        parts.extend(["--metric-function", q(args.langsmith_metric_function)])
     if args.langsmith_dashboard_evaluators:
         parts.append("--dashboard-evaluators")
-        parts.extend(args.langsmith_dashboard_evaluators)
+        parts.extend(q(e) for e in args.langsmith_dashboard_evaluators)
         if args.langsmith_dashboard_evaluator_timeout and args.langsmith_dashboard_evaluator_timeout > 0:
-            parts.extend(["--dashboard-evaluator-timeout", str(args.langsmith_dashboard_evaluator_timeout)])
+            parts.extend(["--dashboard-evaluator-timeout", str(int(args.langsmith_dashboard_evaluator_timeout))])
     return " ".join(parts)

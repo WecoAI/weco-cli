@@ -40,10 +40,7 @@ def answer_hr_question(inputs: dict) -> dict:
         model="gpt-4o-mini",
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": USER_TEMPLATE.format(docs=DOCS, question=question),
-            },
+            {"role": "user", "content": USER_TEMPLATE.format(docs=DOCS, question=question)},
         ],
         temperature=0.0,
         response_format={"type": "json_object"},
@@ -62,8 +59,4 @@ def answer_hr_question(inputs: dict) -> dict:
     if not isinstance(relevant_sections, list):
         relevant_sections = []
 
-    return {
-        "answer": parsed.get("answer", ""),
-        "confidence": confidence,
-        "relevant_sections": relevant_sections,
-    }
+    return {"answer": parsed.get("answer", ""), "confidence": confidence, "relevant_sections": relevant_sections}

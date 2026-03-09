@@ -22,9 +22,15 @@ The bridge:
 import argparse
 import importlib
 import os
+import re
 import sys
 import time
 from typing import Callable
+
+
+def _sanitize_error(msg: str) -> str:
+    """Remove potential API keys or tokens from error messages."""
+    return re.sub(r"(ls[a-z]*-[A-Za-z0-9_-]{20,})", "***", str(msg))
 
 
 def import_target(spec: str) -> Callable:
@@ -244,11 +250,7 @@ def run_langsmith_eval(
         data = dataset_name
 
     # target is positional-only in Client.evaluate(), so pass it separately
-    eval_kwargs = {
-        "data": data,
-        "evaluators": evaluators,
-        "experiment_prefix": experiment_prefix or f"weco-{dataset_name}",
-    }
+    eval_kwargs = {"data": data, "evaluators": evaluators, "experiment_prefix": experiment_prefix or f"weco-{dataset_name}"}
     if max_concurrency is not None:
         eval_kwargs["max_concurrency"] = max_concurrency
 
@@ -362,10 +364,7 @@ def main():
         "Only used when --dashboard-evaluators is set. Polls every 10s.",
     )
     parser.add_argument(
-        "--splits",
-        nargs="+",
-        default=None,
-        help="Evaluate only examples in these dataset splits (e.g. 'train', 'test').",
+        "--splits", nargs="+", default=None, help="Evaluate only examples in these dataset splits (e.g. 'train', 'test')."
     )
     parser.add_argument(
         "--metric-function",
@@ -387,7 +386,7 @@ def main():
     try:
         target = import_target(args.target)
     except (ImportError, SyntaxError, AttributeError) as e:
-        print(f"Import error: {e}")
+        print(f"Import error: {_sanitize_error(e)}")
         print("The generated code variant has issues preventing evaluation.")
         sys.exit(1)
 
@@ -400,7 +399,7 @@ def main():
         try:
             metric_fn = import_target(args.metric_function)
         except (ImportError, SyntaxError, AttributeError) as e:
-            print(f"Metric function import error: {e}")
+            print(f"Metric function import error: {_sanitize_error(e)}")
             sys.exit(1)
 
     # Run evaluation
@@ -420,7 +419,7 @@ def main():
             metric_function=metric_fn,
         )
     except Exception as e:
-        print(f"LangSmith evaluation error: {e}")
+        print(f"LangSmith evaluation error: {_sanitize_error(e)}")
         sys.exit(1)
 
     if not metrics:

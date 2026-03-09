@@ -179,10 +179,10 @@ class WizardHandler(BaseHTTPRequestHandler):
         try:
             list(self.server.client.list_datasets(limit=1))
             self.send_json({"connected": True, "error": None})
-        except Exception as e:
+        except Exception:
             os.environ.pop("LANGCHAIN_API_KEY", None)
             self.server.reset_client()
-            self.send_json({"connected": False, "error": str(e)})
+            self.send_json({"connected": False, "error": "Connection failed. Check that your API key is valid."})
 
     def handle_list_datasets(self):
         try:

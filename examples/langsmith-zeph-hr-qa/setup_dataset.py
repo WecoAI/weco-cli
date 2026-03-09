@@ -16,10 +16,7 @@ DATA_DIR = Path(__file__).with_name("data")
 DATASET_NAME = "zephhr-qa"
 DATASET_DESCRIPTION = "ZephHR QA benchmark"
 
-SPLITS = {
-    "opt": "optimization_questions.json",
-    "holdout": "holdout_questions.json",
-}
+SPLITS = {"opt": "optimization_questions.json", "holdout": "holdout_questions.json"}
 
 
 def _get_or_create_dataset(client: Client, name: str, description: str):
