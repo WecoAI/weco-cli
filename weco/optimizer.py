@@ -372,7 +372,7 @@ def resume_optimization(
         return False
 
     # Call backend to prepare resume (this sets status to 'running')
-    resume_resp = resume_optimization_run(console=console, run_id=run_id, auth_headers=auth_headers)
+    resume_resp = resume_optimization_run(console=console, run_id=run_id, auth_headers=auth_headers, api_keys=api_keys)
     if resume_resp is None:
         return False
 
