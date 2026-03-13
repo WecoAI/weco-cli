@@ -182,12 +182,18 @@ def start_optimization_run(
 
 
 def resume_optimization_run(
-    console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)
+    console: Console,
+    run_id: str,
+    auth_headers: dict = {},
+    api_keys: Optional[Dict[str, str]] = None,
+    timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> Optional[Dict[str, Any]]:
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
         try:
             request_json = {"metadata": {"client_name": "cli", "client_version": __pkg_version__}}
+            if api_keys:
+                request_json["api_keys"] = api_keys
 
             response = requests.post(
                 f"{__base_url__}/runs/{run_id}/resume", json=request_json, headers=auth_headers, timeout=timeout
