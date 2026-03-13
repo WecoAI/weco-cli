@@ -137,6 +137,7 @@ class WizardHandler(BaseHTTPRequestHandler):
                 list(self.server.client.list_datasets(limit=1))
                 connected = True
             except Exception:
+                raise
                 pass
 
         state = self.server.initial_state
@@ -179,10 +180,21 @@ class WizardHandler(BaseHTTPRequestHandler):
         try:
             list(self.server.client.list_datasets(limit=1))
             self.send_json({"connected": True, "error": None})
-        except Exception:
+        except Exception as e:
             os.environ.pop("LANGCHAIN_API_KEY", None)
             self.server.reset_client()
-            self.send_json({"connected": False, "error": "Connection failed. Check that your API key is valid."})
+            # Show error type/status without leaking the full exception (which may contain the key)
+            error_type = type(e).__name__
+            detail = ""
+            if "401" in str(e) or "403" in str(e):
+                detail = "API key was rejected (check it's valid and for the correct workspace)."
+            elif "404" in str(e):
+                detail = "LangSmith API endpoint not found (check LANGCHAIN_ENDPOINT)."
+            elif "ConnectionError" in error_type or "timeout" in str(e).lower():
+                detail = "Could not reach LangSmith API (check your network connection)."
+            else:
+                detail = "Check that your API key is valid."
+            self.send_json({"connected": False, "error": f"Connection failed: {detail}"})
 
     def handle_list_datasets(self):
         try:

@@ -43,7 +43,17 @@ def save_api_key(api_key: str):
 
 
 def load_weco_api_key() -> str | None:
-    """Loads the Weco API key."""
+    """Loads the Weco API key.
+
+    Resolution order:
+      1. WECO_API_KEY environment variable
+      2. Credentials file (~/.config/weco/credentials.json)
+    """
+    # Environment variable takes precedence
+    env_key = os.environ.get("WECO_API_KEY")
+    if env_key:
+        return env_key
+
     if not CREDENTIALS_FILE.exists():
         return None
     try:

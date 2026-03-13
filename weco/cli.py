@@ -6,6 +6,7 @@ from rich.traceback import install
 
 from .auth import perform_login
 from .config import clear_api_key, load_weco_api_key
+from .observe.cli import configure_observe_parser, execute_observe_command
 from .constants import DEFAULT_MODELS
 from .events import (
     send_event,
@@ -468,6 +469,14 @@ def _main() -> None:
     setup_parser = subparsers.add_parser("setup", help="Set up Weco for use with AI tools")
     configure_setup_parser(setup_parser)
 
+    # --- Observe Command Parser Setup ---
+    observe_parser = subparsers.add_parser(
+        "observe",
+        help="Track external optimization runs (init, log, complete, fail)",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    configure_observe_parser(observe_parser)
+
     args = parser.parse_args()
 
     # Create event context with via_skill flag
@@ -512,6 +521,9 @@ def _main() -> None:
         from .setup import handle_setup_command
 
         handle_setup_command(args, console)
+        sys.exit(0)
+    elif args.command == "observe":
+        execute_observe_command(args)
         sys.exit(0)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,
