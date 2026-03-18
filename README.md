@@ -126,6 +126,27 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 | `weco credits topup [amount]` | Purchase additional credits | When you need more credits (default: 10) |
 | `weco credits autotopup` | Configure automatic top-up | Set up automatic credit replenishment |
 
+### Observe Commands
+
+Track experiments from your own optimization loop (LLM agents, custom scripts, manual experiments) in the Weco dashboard:
+
+| Command | Description |
+|---------|-------------|
+| `weco observe init` | Create a run and print the run ID |
+| `weco observe log` | Log a step with metrics and code |
+
+```bash
+# Initialize a run
+WECO_RUN_ID=$(weco observe init --name "my-experiment" --metric val_bpb --goal min --source train.py)
+
+# Log baseline (step 0) and experiments (step 1, 2, ...)
+weco observe log --run-id "$WECO_RUN_ID" --step 0 --description "baseline" --metrics '{"val_bpb": 2.36}' --source train.py
+weco observe log --run-id "$WECO_RUN_ID" --step 1 --description "increase batch size" --metrics '{"val_bpb": 2.26}' --source train.py
+weco observe log --run-id "$WECO_RUN_ID" --step 2 --status failed --description "OOM" --metrics '{"val_bpb": 0.0}'
+```
+
+All observe commands are fire-and-forget — they always exit 0, so they never crash an agent's loop. For branching, pass `--parent-step` explicitly. See `weco observe init --help` and `weco observe log --help` for all options.
+
 ### Setup Commands (Experimental)
 
 | Command | Description |
