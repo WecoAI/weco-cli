@@ -10,7 +10,9 @@ import sys
 import warnings
 
 from weco.auth import handle_authentication
+from weco.browser import open_browser
 from weco.observe import api
+from weco import __dashboard_url__
 
 
 def configure_observe_parser(observe_parser: argparse.ArgumentParser) -> None:
@@ -117,8 +119,12 @@ def _handle_init(args: argparse.Namespace, auth_headers: dict) -> None:
     )
 
     if result and result.get("run_id"):
+        run_id = result["run_id"]
         # Print only the run_id to stdout so it can be captured by $(...)
-        print(result["run_id"])
+        print(run_id)
+        # Open the dashboard in the user's browser
+        dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
+        open_browser(dashboard_url)
     else:
         print("weco observe: failed to create run", file=sys.stderr)
 
