@@ -17,7 +17,8 @@ dependencies = [
     "packaging",
     "gitingest",
     "psutil",
-    "langsmith>=0.3.0"
+    "langsmith>=0.3.0",
+    "jupyter>=1.1.1",
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [
@@ -33,6 +34,7 @@ weco = "weco.cli:main"
 Homepage = "https://github.com/WecoAI/weco-cli"
 
 [project.optional-dependencies]
+langfuse = ["langfuse>=2.0.0"]
 dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0"]
 
 [tool.setuptools.packages.find]
@@ -40,6 +42,7 @@ include = ["weco*"]
 
 [tool.setuptools.package-data]
 "weco.integrations.langsmith.wizard" = ["*.html"]
+"weco.integrations.langfuse.wizard" = ["*.html"]
 
 [tool.setuptools_scm]
 

@@ -113,6 +113,7 @@ class LiveOptimizationUI:
         dashboard_url: str,
         model: str = "",
         metric_name: str = "",
+        maximize: bool = True,
     ):
         self.console = console
         self.run_id = run_id
@@ -120,6 +121,7 @@ class LiveOptimizationUI:
         self.dashboard_url = dashboard_url
         self.model = model
         self.metric_name = metric_name
+        self.maximize = maximize
         self.state = UIState(total_steps=total_steps)
         self._live: Optional[Live] = None
 
@@ -202,7 +204,7 @@ class LiveOptimizationUI:
         if self.state.metrics:
             values = [m[1] for m in self.state.metrics]
             latest = self.state.metrics[-1][1]
-            best = max(values)
+            best = max(values) if self.maximize else min(values)
 
             # Current and best on separate lines
             grid.add_row("Current", f"[bold cyan]{latest:.6g}[/]")
@@ -325,7 +327,14 @@ class PlainOptimizationUI:
     """
 
     def __init__(
-        self, run_id: str, run_name: str, total_steps: int, dashboard_url: str, model: str = "", metric_name: str = ""
+        self,
+        run_id: str,
+        run_name: str,
+        total_steps: int,
+        dashboard_url: str,
+        model: str = "",
+        metric_name: str = "",
+        maximize: bool = True,
     ):
         self.run_id = run_id
         self.run_name = run_name
@@ -333,6 +342,7 @@ class PlainOptimizationUI:
         self.dashboard_url = dashboard_url
         self.model = model
         self.metric_name = metric_name
+        self.maximize = maximize
         self.current_step = 0
         self.metrics: List[tuple] = []  # (step, value)
         self._header_printed = False
@@ -393,7 +403,8 @@ class PlainOptimizationUI:
 
     def on_metric(self, step: int, value: float) -> None:
         self.metrics.append((step, value))
-        best = max(m[1] for m in self.metrics) if self.metrics else value
+        best_fn = max if self.maximize else min
+        best = best_fn(m[1] for m in self.metrics) if self.metrics else value
         self._print(f"[METRIC] Step {step}: {value:.6g} (best so far: {best:.6g})")
 
     def on_complete(self, total_steps: int) -> None:
@@ -403,7 +414,8 @@ class PlainOptimizationUI:
         self._print(f"Total steps completed: {total_steps}")
         if self.metrics:
             values = [m[1] for m in self.metrics]
-            self._print(f"Best metric value: {max(values):.6g}")
+            best_fn = max if self.maximize else min
+            self._print(f"Best metric value: {best_fn(values):.6g}")
         self._print("=" * 60)
 
     def on_stop_requested(self) -> None:
