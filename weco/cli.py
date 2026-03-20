@@ -26,7 +26,7 @@ console = Console()
 # Eval backend registry. Each entry maps a backend name to its module path.
 # To add a new backend, create weco/integrations/<name>/backend.py with
 # register_args(), validate_args(), and build_eval_command(), then add it here.
-_EVAL_BACKENDS = {"langsmith": "weco.integrations.langsmith.backend"}
+_EVAL_BACKENDS = {"langsmith": "weco.integrations.langsmith.backend", "langfuse": "weco.integrations.langfuse.backend"}
 
 
 def _load_backend(name: str):

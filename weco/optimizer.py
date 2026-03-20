@@ -413,11 +413,18 @@ def resume_optimization(
         # Select UI implementation based on output mode
         if output_mode == "plain":
             ui_instance = PlainOptimizationUI(
-                run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
+                run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name, maximize=maximize
             )
         else:
             ui_instance = LiveOptimizationUI(
-                console, run_id, run_name, total_steps, dashboard_url, model=model_name, metric_name=metric_name
+                console,
+                run_id,
+                run_name,
+                total_steps,
+                dashboard_url,
+                model=model_name,
+                metric_name=metric_name,
+                maximize=maximize,
             )
 
         with ui_instance as ui:
@@ -600,9 +607,13 @@ def optimize(
     try:
         # Select UI implementation based on output mode
         if output_mode == "plain":
-            ui_instance = PlainOptimizationUI(run_id, run_name, steps, dashboard_url, model=model, metric_name=metric)
+            ui_instance = PlainOptimizationUI(
+                run_id, run_name, steps, dashboard_url, model=model, metric_name=metric, maximize=maximize
+            )
         else:
-            ui_instance = LiveOptimizationUI(console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric)
+            ui_instance = LiveOptimizationUI(
+                console, run_id, run_name, steps, dashboard_url, model=model, metric_name=metric, maximize=maximize
+            )
 
         with ui_instance as ui:
             result = _run_optimization_loop(
