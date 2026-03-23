@@ -2,7 +2,7 @@
 
 <div align="center">
   <img src="assets/weco.svg" alt="Weco Logo" width="120" height="120" style="margin-bottom: 20px;">
-  <h1>Weco: The Code Optimization Agent</h1>
+  <h1>Weco: Production-Grade Autoresearch</h1>
 </div>
 
 [![Python](https://img.shields.io/badge/Python-3.8.0+-blue)](https://www.python.org)
@@ -13,6 +13,8 @@
 [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg?labelColor=ffffff&color=F17E01)](https://colab.research.google.com/github/WecoAI/weco-cli/blob/main/examples/hello-world/colab_notebook_walkthrough.ipynb)
 
 `pip install weco`
+
+[Docs](https://docs.weco.ai) &nbsp;•&nbsp; [Examples](https://weco.ai/examples) &nbsp;•&nbsp; [Dashboard](https://dashboard.weco.ai)
 
 </div>
 
@@ -34,11 +36,77 @@ Example applications include:
 
 The `weco` CLI leverages a tree search approach guided by LLMs to iteratively explore and refine your code. It automatically applies changes, runs your evaluation script, parses the results, and proposes further improvements based on the specified goal.
 
+## Skills (Claude Code & Cursor)
+
+Weco ships as a **skill** for AI coding assistants. A skill is a set of instructions that teaches your assistant how to use Weco end-to-end — from setting up optimizations to interpreting results. Once installed, just describe what you want to optimize in plain language and your assistant handles the rest.
+
+```bash
+weco setup claude-code   # installs skill into Claude Code
+weco setup cursor        # installs skill into Cursor
+```
+
+Then prompt naturally:
+
+```text
+Use Weco to make this function faster.
+```
+
+Your assistant will inspect your code, write the evaluation, configure `weco run`, monitor the iterations, and explain the results — no CLI flags needed.
+
+See the full [Skills guide](https://docs.weco.ai/skills) for details.
+
+## Observe (Track External Experiments)
+
+Running your own optimization loop with an LLM agent, a custom script, or a manual workflow? `weco observe` lets you track those experiments in the Weco dashboard with tree visualization, code diffs, and metric tracking — without handing off control of the optimization itself.
+
+```bash
+# Initialize a run
+WECO_RUN_ID=$(weco observe init --name "my-experiment" --metric val_bpb --goal min --source train.py)
+
+# Log experiments
+weco observe log --run-id "$WECO_RUN_ID" --step 0 --description "baseline" \
+  --metrics '{"val_bpb": 2.36}' --source train.py
+weco observe log --run-id "$WECO_RUN_ID" --step 1 --description "increase batch size" \
+  --metrics '{"val_bpb": 2.26}' --source train.py
+```
+
+All observe commands are fire-and-forget (always exit 0), so they never crash an agent loop. There is also a [Python SDK](https://docs.weco.ai/observe#python-sdk) for scripts with a Python loop.
+
+See the full [Observe guide](https://docs.weco.ai/observe) for branching, lifecycle, and more.
+
 
 ## Install the Package
 
+**macOS / Linux** (recommended):
+
+```bash
+curl -fsSL https://weco.ai/install.sh | sh
+```
+
+**Windows CMD:**
+
+```cmd
+powershell -ExecutionPolicy ByPass -c "irm https://weco.ai/install.ps1 | iex"
+```
+
+**Windows PowerShell:**
+
+```powershell
+irm https://weco.ai/install.ps1 | iex
+```
+
+**pip:**
+
 ```bash
 pip install weco
+```
+
+**From source:**
+
+```bash
+git clone https://github.com/wecoai/weco-cli.git
+cd weco-cli
+pip install -e .
 ```
 
 ## Getting Started
