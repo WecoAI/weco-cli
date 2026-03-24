@@ -5,18 +5,12 @@ from rich.console import Console
 from rich.traceback import install
 
 from .auth import perform_login
-from .config import clear_api_key, load_weco_api_key
-from .observe.cli import configure_observe_parser, execute_observe_command
+from .config import clear_api_key
 from .constants import DEFAULT_MODELS
-from .events import (
-    send_event,
-    create_event_context,
-    get_event_context,
-    set_event_context,
-    CLIInvokedEvent,
-    RunStartAttemptedEvent,
-)
-from .utils import check_for_cli_updates, get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
+from .env import WecoEnv
+from .events import send_event, get_event_context, CLIInvokedEvent, RunStartAttemptedEvent
+from .observe.cli import configure_observe_parser, execute_observe_command
+from .utils import get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
 from .validation import validate_sources, validate_log_directory, ValidationError, print_validation_error
 
 
@@ -407,8 +401,6 @@ def main() -> None:
 
 def _main() -> None:
     """Internal main function containing the CLI logic."""
-    check_for_cli_updates()
-
     parser = argparse.ArgumentParser(
         description="[bold cyan]Weco CLI[/]\nEnhance your code with AI-driven optimization.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -479,18 +471,22 @@ def _main() -> None:
 
     args = parser.parse_args()
 
-    # Create event context with via_skill flag
-    via_skill = getattr(args, "via_skill", False)
-    ctx = create_event_context(via_skill=via_skill)
-    set_event_context(ctx)
+    # Initialize environment
+    env = WecoEnv(via_skill=getattr(args, "via_skill", False))
+    if args.command != "setup":
+        env.check_for_updates()
 
     # Send CLI invocation event
-    send_event(CLIInvokedEvent(command=args.command or "help"), ctx)
+    send_event(
+        CLIInvokedEvent(
+            command=args.command or "help",
+            installed_skills=[{"tool": s.tool, "version": s.version} for s in env.installed_skills],
+        ),
+        env.event_context,
+    )
 
     if args.command == "login":
-        # Check if already logged in
-        existing_key = load_weco_api_key()
-        if existing_key:
+        if env.is_authenticated:
             console.print("[bold green]You are already logged in.[/]")
             console.print("[dim]Use 'weco logout' to log out first if you want to switch accounts.[/]")
             sys.exit(0)
