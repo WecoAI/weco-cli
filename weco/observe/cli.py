@@ -11,6 +11,7 @@ import warnings
 
 from weco.auth import handle_authentication
 from weco.browser import open_browser
+from weco.events import send_event, ObserveInitEvent, ObserveLogEvent
 from weco.observe import api
 from weco import __dashboard_url__
 
@@ -109,6 +110,10 @@ def _handle_init(args: argparse.Namespace, auth_headers: dict) -> None:
 
     maximize = args.goal in ("maximize", "max")
 
+    send_event(
+        ObserveInitEvent(metric=args.metric, goal="maximize" if maximize else "minimize", source_count=len(source_code))
+    )
+
     result = api.create_run(
         source_code=source_code,
         metric_name=args.metric,
@@ -145,6 +150,8 @@ def _handle_log(args: argparse.Namespace, auth_headers: dict) -> None:
     source_arg = args.sources if args.sources is not None else ([args.source] if args.source else None)
     if source_arg:
         code = _read_code_files(source_arg)
+
+    send_event(ObserveLogEvent(status=args.status))
 
     api.log_step(
         run_id=args.run_id,

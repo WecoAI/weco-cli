@@ -57,6 +57,7 @@ class CLIInvokedEvent(BaseEvent):
     """Tracked when the CLI is invoked."""
 
     command: str  # The command being run (run, login, setup, etc.)
+    installed_skills: list[dict[str, str]] = Field(default_factory=list)  # [{"tool": ..., "version": ...}]
 
     @property
     def event_name(self) -> str:
@@ -111,6 +112,28 @@ class RunStartAttemptedEvent(BaseEvent):
     @property
     def event_name(self) -> str:
         return "run.start.attempted"
+
+
+class ObserveInitEvent(BaseEvent):
+    """Tracked when an external run is initialized via observe."""
+
+    metric: str
+    goal: str  # "maximize" or "minimize"
+    source_count: int
+
+    @property
+    def event_name(self) -> str:
+        return "observe.init"
+
+
+class ObserveLogEvent(BaseEvent):
+    """Tracked when a step is logged to an external run via observe."""
+
+    status: str  # "completed" or "failed"
+
+    @property
+    def event_name(self) -> str:
+        return "observe.log"
 
 
 class AuthStartedEvent(BaseEvent):
