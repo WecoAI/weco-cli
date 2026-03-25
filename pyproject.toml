@@ -19,6 +19,7 @@ dependencies = [
     "psutil",
     "langsmith>=0.3.0",
     "jupyter>=1.1.1",
+    "jupyterlab>=4.5.6",
 ]
 keywords = ["AI", "Code Optimization", "Code Generation"]
 classifiers = [

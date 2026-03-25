@@ -486,3 +486,69 @@ def create_share_link(
     except Exception as e:
         console.print(f"[bold red]Error creating share link: {e}[/]")
         return None
+
+
+# --- Review Mode API Functions ---
+
+
+def create_node_revision(
+    node_id: str,
+    code: Dict[str, str],
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = (10, 60),
+) -> Optional[Dict[str, Any]]:
+    """Create a new revision on a node with updated code.
+
+    Args:
+        node_id: The node ID to create a revision for.
+        code: Dictionary mapping file paths to source code content.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+
+    Returns:
+        The revision data (id, node_id, code, plan, created_by, etc.), or None on failure.
+    """
+    try:
+        response = requests.post(
+            f"{__base_url__}/nodes/{node_id}/revisions",
+            json={"code": code},
+            headers=auth_headers,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError:
+        return None
+    except Exception:
+        return None
+
+
+def submit_node_for_evaluation(
+    node_id: str,
+    auth_headers: dict = {},
+    timeout: Union[int, Tuple[int, int]] = (5, 30),
+) -> Optional[Dict[str, Any]]:
+    """Submit a pending approval node for evaluation.
+
+    Only works when require_review=true and node is in pending_approval status.
+
+    Args:
+        node_id: The node ID to submit.
+        auth_headers: Authentication headers.
+        timeout: Request timeout.
+
+    Returns:
+        Response with task_id, status, and node_status, or None on failure.
+    """
+    try:
+        response = requests.post(
+            f"{__base_url__}/nodes/{node_id}/submit",
+            headers=auth_headers,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        return response.json()
+    except requests.exceptions.HTTPError:
+        return None
+    except Exception:
+        return None
