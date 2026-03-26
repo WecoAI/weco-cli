@@ -43,6 +43,14 @@ def _sort_nodes_by_metric(nodes: list[dict], maximize: bool) -> list[dict]:
     return scored
 
 
+def _get_node_id(node: dict) -> str:
+    """Extract the node ID from an API node dict.
+
+    The API returns the node ID as `solution_id` (legacy) or `id`.
+    """
+    return node.get("solution_id") or node.get("id", "")
+
+
 def _find_node_by_step(nodes: list[dict], step: int) -> Optional[dict]:
     """Find a node by step number."""
     for node in nodes:
@@ -111,7 +119,7 @@ def handle_status_command(run_id: str, console: Console) -> None:
 
     # Find pending approval nodes
     pending_nodes = [
-        {"node_id": n.get("solution_id", n.get("id")), "step": n.get("step"), "plan": n.get("plan", "")}
+        {"node_id": _get_node_id(n), "step": n.get("step"), "plan": n.get("plan", "")}
         for n in nodes
         if n.get("status") == "pending_approval"
     ]
@@ -162,7 +170,7 @@ def handle_results_command(
                 "step": n.get("step"),
                 "metric": n.get("metric_value"),
                 "plan": n.get("plan", ""),
-                "solution_id": n.get("solution_id", n.get("id")),
+                "node_id": _get_node_id(n),
             }
             if include_code:
                 entry["code"] = n.get("code", {})
@@ -182,13 +190,13 @@ def handle_results_command(
             print(f"{step:>6}  {metric_str:>12}  {plan}")
 
     elif format == "csv":
-        print(f"step,{metric_name},plan,solution_id")
+        print(f"step,{metric_name},plan,node_id")
         for n in sorted_nodes:
             step = n.get("step", "")
             metric = n.get("metric_value", "")
             plan = (n.get("plan") or "").replace('"', '""')
-            sid = n.get("solution_id", n.get("id", ""))
-            print(f'{step},{metric},"{plan}",{sid}')
+            nid = _get_node_id(n)
+            print(f'{step},{metric},"{plan}",{nid}')
 
     if plot:
         # Build trajectory in step order
@@ -223,7 +231,7 @@ def handle_show_command(run_id: str, step: str, console: Console) -> None:
     parent_step = None
     if parent_id:
         for n in nodes:
-            if n.get("solution_id", n.get("id")) == parent_id:
+            if _get_node_id(n) == parent_id:
                 parent_step = n.get("step")
                 break
 
@@ -233,7 +241,7 @@ def handle_show_command(run_id: str, step: str, console: Console) -> None:
         "plan": node.get("plan", ""),
         "code": node.get("code", {}),
         "parent_step": parent_step,
-        "solution_id": node.get("solution_id", node.get("id")),
+        "node_id": _get_node_id(node),
         "status": node.get("status"),
         "is_buggy": node.get("is_buggy"),
     }
@@ -267,7 +275,7 @@ def handle_diff_command(run_id: str, step: str, against: str, console: Console) 
             sys.exit(1)
         base_node = None
         for n in nodes:
-            if n.get("solution_id", n.get("id")) == parent_id:
+            if _get_node_id(n) == parent_id:
                 base_node = n
                 break
         if not base_node:
@@ -395,7 +403,7 @@ def handle_review_command(run_id: str, console: Console) -> None:
     for n in nodes:
         if n.get("status") == "pending_approval":
             pending.append({
-                "node_id": n.get("solution_id", n.get("id")),
+                "node_id": _get_node_id(n),
                 "step": n.get("step"),
                 "plan": n.get("plan", ""),
                 "code": n.get("code", {}),
@@ -431,7 +439,7 @@ def handle_revise_command(
         "revision_id": result.get("id"),
         "plan": result.get("plan", ""),
         "created_by": result.get("created_by"),
-        "message": f"Revision created. Submit with: weco submit {run_id} --node {node_id}",
+        "message": f"Revision created. Submit with: weco run submit {run_id} --node {node_id}",
     }
 
     print(json.dumps(output, indent=2))
