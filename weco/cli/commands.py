@@ -33,36 +33,34 @@ def _collect_source_paths(args: argparse.Namespace) -> list[str] | None:
     return None
 
 
+# ---------------------------------------------------------------------------
+# Top-level commands
+# ---------------------------------------------------------------------------
+
+
 def cmd_login(args: argparse.Namespace, *, console: Console) -> None:
-    from ..auth import perform_login
-    from ..config import load_weco_api_key
+    from ..commands.auth import handle_login
 
-    if load_weco_api_key():
-        console.print("[bold green]You are already logged in.[/]")
-        console.print("[dim]Use 'weco logout' to log out first if you want to switch accounts.[/]")
-        sys.exit(0)
-
-    sys.exit(0 if perform_login(console) else 1)
+    handle_login(console)
 
 
 def cmd_logout(args: argparse.Namespace, *, console: Console) -> None:
-    del args  # Unused
-    from ..config import clear_api_key
+    del args
+    from ..commands.auth import handle_logout
 
-    clear_api_key()
+    handle_logout()
 
 
 def cmd_run(args: argparse.Namespace, *, console: Console) -> None:
     """Start a new optimization run."""
-    from ..credits import check_promotional_credits
-    from ..events import RunStartAttemptedEvent, get_event_context, send_event
-    from ..optimizer import optimize
-    from ..utils import DefaultModelNotFoundError, UnrecognizedAPIKeysError, get_default_model
-    from ..validation import ValidationError, print_validation_error, validate_log_directory, validate_sources
+    from ..commands.credits import check_promotional_credits
+    from ..core.events import RunStartAttemptedEvent, get_event_context, send_event
+    from ..commands.run.optimize import optimize
+    from ..core.constants import DefaultModelNotFoundError, UnrecognizedAPIKeysError, get_default_model
+    from ..core.validation import ValidationError, print_validation_error, validate_log_directory, validate_sources
 
     ctx = get_event_context()
 
-    # Resolve eval backend command
     backend_name = getattr(args, "eval_backend", "shell")
     if backend_name != "shell":
         backend = load_backend(backend_name)
@@ -72,7 +70,6 @@ def cmd_run(args: argparse.Namespace, *, console: Console) -> None:
         console.print("[bold red]Error: --eval-command is required (or use --eval-backend <backend>)[/]")
         sys.exit(1)
 
-    # Required for start mode (`weco run ...` without subcommand)
     missing = []
     if not args.source and not args.sources:
         missing.append("--source / --sources")
@@ -141,80 +138,8 @@ def cmd_run(args: argparse.Namespace, *, console: Console) -> None:
     sys.exit(0 if success else 1)
 
 
-def cmd_run_status(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_status_command
-
-    handle_status_command(run_id=args.run_id, console=console)
-
-
-def cmd_run_results(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_results_command
-
-    handle_results_command(
-        run_id=args.run_id,
-        top=args.top,
-        format=args.format,
-        plot=args.plot,
-        include_code=args.include_code,
-        console=console,
-    )
-
-
-def cmd_run_show(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_show_command
-
-    handle_show_command(run_id=args.run_id, step=args.step, console=console)
-
-
-def cmd_run_diff(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_diff_command
-
-    handle_diff_command(run_id=args.run_id, step=args.step, against=args.against, console=console)
-
-
-def cmd_run_stop(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_stop_command
-
-    handle_stop_command(run_id=args.run_id, console=console)
-
-
-def cmd_run_instruct(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_instruct_command
-
-    handle_instruct_command(run_id=args.run_id, instructions=args.instructions, console=console)
-
-
-def cmd_run_review(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_review_command
-
-    handle_review_command(run_id=args.run_id, console=console)
-
-
-def cmd_run_revise(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_revise_command
-
-    handle_revise_command(
-        run_id=args.run_id,
-        node_id=args.node,
-        source_paths=_collect_source_paths(args),
-        console=console,
-    )
-
-
-def cmd_run_submit(args: argparse.Namespace, *, console: Console) -> None:
-    from ..commands import handle_submit_command
-
-    handle_submit_command(
-        run_id=args.run_id,
-        node_id=args.node,
-        source_paths=_collect_source_paths(args),
-        eval_command_override=getattr(args, "eval_command", None),
-        console=console,
-    )
-
-
 def cmd_resume(args: argparse.Namespace, *, console: Console) -> None:
-    from ..optimizer import resume_optimization
+    from ..commands.run.optimize import resume_optimization
 
     try:
         api_keys = parse_api_keys(args.api_key)
@@ -232,25 +157,101 @@ def cmd_resume(args: argparse.Namespace, *, console: Console) -> None:
 
 
 def cmd_credits(args: argparse.Namespace, *, console: Console) -> None:
-    from ..credits import handle_credits_command
+    from ..commands.credits import handle_credits_command
 
     handle_credits_command(args, console)
 
 
 def cmd_share(args: argparse.Namespace, *, console: Console) -> None:
-    from ..share import handle_share_command
+    from ..commands.share import handle_share_command
 
     handle_share_command(run_id=args.run_id, output_mode=args.output, console=console)
 
 
 def cmd_setup(args: argparse.Namespace, *, console: Console) -> None:
-    from ..setup import handle_setup_command
+    from ..commands.setup import handle_setup_command
 
     handle_setup_command(args, console)
 
 
 def cmd_observe(args: argparse.Namespace, *, console: Console) -> None:
-    del console  # Unused
-    from ..observe.cli import execute_observe_command
+    from ..commands.observe import handle
 
-    execute_observe_command(args)
+    handle(args, console)
+
+
+# ---------------------------------------------------------------------------
+# `weco run` subcommands — thin dispatch to commands.run.*
+# ---------------------------------------------------------------------------
+
+
+def cmd_run_status(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.status import handle
+
+    handle(run_id=args.run_id, console=console)
+
+
+def cmd_run_results(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.results import handle
+
+    handle(
+        run_id=args.run_id,
+        top=args.top,
+        format=args.format,
+        plot=args.plot,
+        include_code=args.include_code,
+        console=console,
+    )
+
+
+def cmd_run_show(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.show import handle
+
+    handle(run_id=args.run_id, step=args.step, console=console)
+
+
+def cmd_run_diff(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.diff import handle
+
+    handle(run_id=args.run_id, step=args.step, against=args.against, console=console)
+
+
+def cmd_run_stop(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.stop import handle
+
+    handle(run_id=args.run_id, console=console)
+
+
+def cmd_run_instruct(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.instruct import handle
+
+    handle(run_id=args.run_id, instructions=args.instructions, console=console)
+
+
+def cmd_run_review(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.review import handle
+
+    handle(run_id=args.run_id, console=console)
+
+
+def cmd_run_revise(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.revise import handle
+
+    handle(
+        run_id=args.run_id,
+        node_id=args.node,
+        source_paths=_collect_source_paths(args),
+        console=console,
+    )
+
+
+def cmd_run_submit(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands.run.submit import handle
+
+    handle(
+        run_id=args.run_id,
+        node_id=args.node,
+        source_paths=_collect_source_paths(args),
+        eval_command_override=getattr(args, "eval_command", None),
+        console=console,
+    )

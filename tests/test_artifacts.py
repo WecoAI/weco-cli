@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from weco.artifacts import RunArtifacts, _sanitize_artifact_path
+from weco.core.artifacts import RunArtifacts, _sanitize_artifact_path
 
 
 @pytest.fixture

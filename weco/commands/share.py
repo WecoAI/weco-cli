@@ -3,9 +3,9 @@
 import sys
 from rich.console import Console
 
-from . import __dashboard_url__
-from .api import WecoClient
-from .auth import handle_authentication
+from .. import __dashboard_url__
+from ..core.api import WecoClient
+from ..core.auth import handle_authentication
 
 
 def handle_share_command(run_id: str, output_mode: str, console: Console) -> None:

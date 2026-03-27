@@ -2,8 +2,7 @@ import argparse
 
 from . import commands
 from .backends import EVAL_BACKENDS, register_backend_args
-from ..constants import DEFAULT_MODELS
-from ..observe.cli import configure_observe_parser
+from ..core.constants import DEFAULT_MODELS
 
 
 def add_source_args(parser: argparse.ArgumentParser, *, required: bool = False) -> None:
@@ -243,6 +242,40 @@ def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
     for tool_name, tool_help in [("claude-code", "Set up Weco skill for Claude Code"), ("cursor", "Set up Weco rules for Cursor")]:
         p = subs.add_parser(tool_name, help=tool_help)
         p.add_argument("--local", type=str, metavar="PATH", help="Use a local weco-skill directory (development)")
+
+
+def configure_observe_parser(observe_parser: argparse.ArgumentParser) -> None:
+    """Configure the `weco observe` parser and its subcommands."""
+    subs = observe_parser.add_subparsers(dest="observe_command", help="Observe commands")
+
+    # weco observe init
+    init_p = subs.add_parser("init", help="Initialize an external run for tracking")
+    init_p.add_argument("--name", type=str, default=None, help="Run name")
+    init_p.add_argument("--metric", type=str, required=True, help="Primary metric name (e.g. val_bpb)")
+    init_p.add_argument(
+        "-g", "--goal", type=str, choices=["maximize", "max", "minimize", "min"],
+        default="minimize", help="'maximize'/'max' or 'minimize'/'min' (default: minimize)",
+    )
+    init_source = init_p.add_mutually_exclusive_group(required=True)
+    init_source.add_argument("-s", "--source", type=str, help="Path to a single source file to track")
+    init_source.add_argument("--sources", nargs="+", type=str, help="Paths to multiple source files to track")
+    init_p.add_argument(
+        "-i", "--additional-instructions", type=str, default=None, help="Additional instructions for the run",
+    )
+
+    # weco observe log
+    log_p = subs.add_parser("log", help="Log a step for an external run")
+    log_p.add_argument("--run-id", type=str, required=True, help="Run ID (from weco observe init)")
+    log_p.add_argument("--step", type=int, required=True, help="Step number")
+    log_p.add_argument(
+        "--status", type=str, default="completed", choices=["completed", "failed"], help="Step status (default: completed)",
+    )
+    log_p.add_argument("--description", type=str, default=None, help="Description of what was tried")
+    log_p.add_argument("--metrics", type=str, default=None, help="Metrics as JSON (e.g. '{\"val_bpb\": 1.03}')")
+    log_source = log_p.add_mutually_exclusive_group()
+    log_source.add_argument("-s", "--source", type=str, default=None, help="Single source file to snapshot")
+    log_source.add_argument("--sources", nargs="+", type=str, default=None, help="Multiple source files to snapshot")
+    log_p.add_argument("--parent-step", type=int, default=None, help="Parent step number for tree lineage")
 
 
 __all__ = [

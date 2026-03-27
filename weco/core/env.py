@@ -22,7 +22,7 @@ from dataclasses import dataclass
 import requests
 from packaging.version import parse as parse_version
 
-from . import __pkg_version__, __base_url__, __dashboard_url__
+from .. import __pkg_version__, __base_url__, __dashboard_url__
 from .config import load_weco_api_key
 from .events import EventContext, create_event_context, set_event_context
 
@@ -91,7 +91,7 @@ class WecoEnv:
     @property
     def installed_skills(self) -> list[InstalledSkill]:
         """Discover locally installed weco skills."""
-        from .setup import WECO_SKILL_DIR, CURSOR_WECO_SKILL_DIR
+        from ..commands.setup import WECO_SKILL_DIR, CURSOR_WECO_SKILL_DIR
 
         skills = []
         for tool, path in [("claude-code", WECO_SKILL_DIR), ("cursor", CURSOR_WECO_SKILL_DIR)]:

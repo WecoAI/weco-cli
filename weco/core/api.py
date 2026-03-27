@@ -4,8 +4,20 @@ from typing import Any, Optional
 
 import requests
 
-from weco import __base_url__, __pkg_version__
-from .utils import truncate_output
+from .. import __base_url__, __pkg_version__
+from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH
+
+
+def _truncate_output(output: str) -> str:
+    """Truncate long execution output to a manageable size for the API."""
+    if len(output) <= TRUNCATION_THRESHOLD:
+        return output
+    first = output[:TRUNCATION_KEEP_LENGTH]
+    last = output[-TRUNCATION_KEEP_LENGTH:]
+    truncated_len = len(output) - 2 * TRUNCATION_KEEP_LENGTH
+    if truncated_len <= 0:
+        return output
+    return f"{first}\n ... [{truncated_len} characters truncated] ... \n{last}"
 
 
 # ---------------------------------------------------------------------------
@@ -207,7 +219,7 @@ class WecoClient:
         If *step* is provided, transport errors (ReadTimeout, 502, ConnectionError)
         trigger an automatic recovery attempt via ``get_run_status``.
         """
-        body: dict[str, Any] = {"execution_output": truncate_output(execution_output), "metadata": {}}
+        body: dict[str, Any] = {"execution_output": _truncate_output(execution_output), "metadata": {}}
         if task_id:
             body["task_id"] = task_id
         if api_keys:
@@ -334,6 +346,66 @@ class WecoClient:
         """POST /nodes/{node_id}/submit — submit a pending_approval node for evaluation."""
         try:
             resp = self._post(f"/nodes/{node_id}/submit")
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return None
+
+    # ------------------------------------------------------------------
+    # Observe (external runs)
+    # ------------------------------------------------------------------
+
+    def create_external_run(
+        self,
+        *,
+        source_code: dict[str, str],
+        metric_name: str,
+        maximize: bool,
+        name: str | None = None,
+        additional_instructions: str | None = None,
+        metadata: dict | None = None,
+    ) -> dict | None:
+        """POST /external/runs — create an external run for tracking."""
+        body: dict = {"source_code": source_code, "metric_name": metric_name, "maximize": maximize}
+        if name is not None:
+            body["name"] = name
+        if additional_instructions is not None:
+            body["additional_instructions"] = additional_instructions
+        if metadata:
+            body["metadata"] = metadata
+        try:
+            resp = self._post("/external/runs", json=body, timeout=(5, 30))
+            resp.raise_for_status()
+            return resp.json()
+        except Exception:
+            return None
+
+    def log_external_step(
+        self,
+        run_id: str,
+        *,
+        step: int,
+        status: str = "completed",
+        description: str | None = None,
+        metrics: dict[str, float] | None = None,
+        code: dict[str, str] | None = None,
+        parent_step: int | None = None,
+        metadata: dict | None = None,
+    ) -> dict | None:
+        """POST /external/runs/{run_id}/steps — log a step to an external run."""
+        body: dict = {"step": step, "status": status}
+        if description is not None:
+            body["description"] = description
+        if metrics:
+            body["metrics"] = metrics
+        if code is not None:
+            body["code"] = code
+        if parent_step is not None:
+            body["parent_step"] = parent_step
+        if metadata:
+            body["metadata"] = metadata
+        try:
+            resp = self._post(f"/external/runs/{run_id}/steps", json=body, timeout=(5, 30))
             resp.raise_for_status()
             return resp.json()
         except Exception:

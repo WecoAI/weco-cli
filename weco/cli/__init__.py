@@ -68,14 +68,14 @@ def _main() -> None:
     args = parser.parse_args()
 
     # Initialise environment
-    from ..env import WecoEnv
+    from ..core.env import WecoEnv
 
     env = WecoEnv(via_skill=getattr(args, "via_skill", False))
     if args.command != "setup":
         env.check_for_updates()
 
     # Telemetry
-    from ..events import CLIInvokedEvent, send_event
+    from ..core.events import CLIInvokedEvent, send_event
 
     send_event(
         CLIInvokedEvent(

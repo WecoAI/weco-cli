@@ -5,7 +5,7 @@ import webbrowser
 from rich.console import Console
 from rich.live import Live
 from rich.prompt import Prompt
-from . import __base_url__
+from .. import __base_url__
 from .config import save_api_key, load_weco_api_key
 from .events import send_event, get_event_context, AuthStartedEvent, AuthCompletedEvent, AuthFailedEvent
 

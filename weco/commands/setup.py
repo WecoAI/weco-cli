@@ -16,14 +16,14 @@ from urllib.request import urlopen
 from rich.console import Console
 from rich.prompt import Prompt
 
-from .events import (
+from ..core.events import (
     send_event,
     create_event_context,
     SkillInstallStartedEvent,
     SkillInstallCompletedEvent,
     SkillInstallFailedEvent,
 )
-from .utils import copy_directory, copy_file
+from ..core.files import copy_directory, copy_file
 
 
 # =============================================================================

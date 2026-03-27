@@ -28,7 +28,7 @@ import requests
 
 from pydantic import BaseModel, Field
 
-from . import __base_url__, __pkg_version__
+from .. import __base_url__, __pkg_version__
 from .config import get_or_create_installation_id, load_weco_api_key
 
 

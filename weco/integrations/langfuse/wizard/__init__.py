@@ -8,7 +8,7 @@ from pathlib import Path
 
 from rich.console import Console
 
-from weco.browser import open_browser
+from weco.core.browser import open_browser
 
 from .server import WizardHandler, WizardServer
 

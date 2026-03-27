@@ -5,10 +5,10 @@ import requests
 from rich.console import Console
 from rich.prompt import Confirm
 from rich.table import Table
-from . import __base_url__
-from .api import handle_api_error
-from .auth import handle_authentication
-from .config import load_weco_api_key
+from .. import __base_url__
+from ..core.api import handle_api_error
+from ..core.auth import handle_authentication
+from ..core.config import load_weco_api_key
 
 
 def check_promotional_credits(model: str, api_keys: dict[str, str] | None, console: Console) -> str:

@@ -12,14 +12,15 @@ from typing import Optional
 from rich.console import Console
 from rich.prompt import Confirm
 
-from . import __dashboard_url__
-from .api import WecoClient, handle_api_error
-from .artifacts import RunArtifacts
-from .auth import handle_authentication
-from .events import get_event_context
-from .browser import open_browser
-from .ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
-from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_files_swap
+from ... import __dashboard_url__
+from ...core.api import WecoClient, handle_api_error
+from ...core.artifacts import RunArtifacts
+from ...core.auth import handle_authentication
+from ...core.browser import open_browser
+from ...core.evaluation import run_evaluation_with_files_swap
+from ...core.events import get_event_context
+from ...core.files import read_from_path, write_to_path, read_additional_instructions
+from ...ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
 
 
 @dataclass

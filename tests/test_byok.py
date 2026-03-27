@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import patch, MagicMock
 
-from weco.api import WecoClient
+from weco.core.api import WecoClient
 
 
 class TestApiKeysInStartRun:
@@ -40,7 +40,7 @@ class TestApiKeysInStartRun:
         client = WecoClient({"Authorization": "Bearer test-token"})
         return client, mock_session
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_included_in_request(self, mock_session_cls, base_params):
         """Test that api_keys are included in the request JSON when provided."""
         client, mock_session = self._make_client(mock_session_cls)
@@ -54,7 +54,7 @@ class TestApiKeysInStartRun:
         assert "api_keys" in request_json
         assert request_json["api_keys"] == {"openai": "sk-test-key", "anthropic": "sk-ant-test"}
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_not_included_when_none(self, mock_session_cls, base_params):
         """Test that api_keys field is not included when api_keys is None."""
         client, mock_session = self._make_client(mock_session_cls)
@@ -66,7 +66,7 @@ class TestApiKeysInStartRun:
         request_json = call_kwargs.kwargs["json"]
         assert "api_keys" not in request_json
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_not_included_when_empty_dict(self, mock_session_cls, base_params):
         """Test that api_keys field is not included when api_keys is an empty dict."""
         client, mock_session = self._make_client(mock_session_cls)
@@ -100,7 +100,7 @@ class TestApiKeysInSuggest:
         client = WecoClient({"Authorization": "Bearer test-token"})
         return client, mock_session
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_included_in_suggest_request(self, mock_session_cls):
         """Test that api_keys are included in the suggest request JSON when provided."""
         client, mock_session = self._make_client(mock_session_cls)
@@ -119,7 +119,7 @@ class TestApiKeysInSuggest:
         assert "api_keys" in request_json
         assert request_json["api_keys"] == {"openai": "sk-test-key"}
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_not_included_in_suggest_when_none(self, mock_session_cls):
         """Test that api_keys field is not included in suggest request when api_keys is None."""
         client, mock_session = self._make_client(mock_session_cls)
@@ -136,7 +136,7 @@ class TestApiKeysInSuggest:
         request_json = call_kwargs.kwargs["json"]
         assert "api_keys" not in request_json
 
-    @patch("weco.api.requests.Session")
+    @patch("weco.core.api.requests.Session")
     def test_api_keys_not_included_in_suggest_when_empty_dict(self, mock_session_cls):
         """Test that api_keys field is not included in suggest request when api_keys is empty."""
         client, mock_session = self._make_client(mock_session_cls)
