@@ -178,6 +178,12 @@ def cmd_run_stop(args: argparse.Namespace, *, console: Console) -> None:
     handle_stop_command(run_id=args.run_id, console=console)
 
 
+def cmd_run_instruct(args: argparse.Namespace, *, console: Console) -> None:
+    from ..commands import handle_instruct_command
+
+    handle_instruct_command(run_id=args.run_id, instructions=args.instructions, console=console)
+
+
 def cmd_run_review(args: argparse.Namespace, *, console: Console) -> None:
     from ..commands import handle_review_command
 
@@ -202,6 +208,7 @@ def cmd_run_submit(args: argparse.Namespace, *, console: Console) -> None:
         run_id=args.run_id,
         node_id=args.node,
         source_paths=_collect_source_paths(args),
+        eval_command_override=getattr(args, "eval_command", None),
         console=console,
     )
 

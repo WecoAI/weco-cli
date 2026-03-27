@@ -7,31 +7,22 @@ from typing import Optional
 
 from rich.console import Console
 
-from .api import (
-    get_optimization_run_status,
-    report_termination,
-    create_node_revision,
-    submit_node_for_evaluation,
-    claim_execution_task,
-    submit_execution_result,
-)
+from .api import WecoClient
 from .auth import handle_authentication
 
 
-def _authenticate(console: Console) -> dict:
-    """Authenticate and return auth headers, or exit."""
+def _make_client(console: Console) -> WecoClient:
+    """Authenticate and return a WecoClient, or exit."""
     _, auth_headers = handle_authentication(console)
     if not auth_headers:
         sys.exit(1)
-    return auth_headers
+    return WecoClient(auth_headers)
 
 
-def _fetch_run(console: Console, run_id: str, auth_headers: dict, include_history: bool = True) -> dict:
+def _fetch_run(client: WecoClient, run_id: str, include_history: bool = True) -> dict:
     """Fetch run data from API, or exit on error."""
     try:
-        return get_optimization_run_status(
-            console=console, run_id=run_id, include_history=include_history, auth_headers=auth_headers
-        )
+        return client.get_run_status(run_id, include_history=include_history)
     except Exception:
         sys.exit(1)
 
@@ -107,9 +98,9 @@ def _sparkline(values: list[float], width: int = 30) -> str:
 
 
 def handle_status_command(run_id: str, console: Console) -> None:
-    """Handle `weco status <run-id>`."""
-    auth_headers = _authenticate(console)
-    data = _fetch_run(console, run_id, auth_headers)
+    """Handle `weco run status <run-id>`."""
+    client = _make_client(console)
+    data = _fetch_run(client, run_id)
 
     nodes = data.get("nodes") or []
     best_result = data.get("best_result") or {}
@@ -117,11 +108,11 @@ def handle_status_command(run_id: str, console: Console) -> None:
     optimizer = data.get("optimizer") or {}
     maximize = bool(objective.get("maximize", True))
 
-    # Find pending approval nodes
+    # Find nodes pending action (not yet evaluated)
     pending_nodes = [
         {"node_id": _get_node_id(n), "step": n.get("step"), "plan": n.get("plan", "")}
         for n in nodes
-        if n.get("status") == "pending_approval"
+        if n.get("status") in ("pending_approval", "pending_evaluation")
     ]
 
     output = {
@@ -136,7 +127,7 @@ def handle_status_command(run_id: str, console: Console) -> None:
         "goal": "maximize" if maximize else "minimize",
         "model": (optimizer.get("code_generator") or {}).get("model"),
         "require_review": data.get("require_review", False),
-        "pending_approval_nodes": pending_nodes,
+        "pending_nodes": pending_nodes,
     }
 
     print(json.dumps(output, indent=2))
@@ -151,8 +142,8 @@ def handle_results_command(
     console: Console,
 ) -> None:
     """Handle `weco results <run-id>`."""
-    auth_headers = _authenticate(console)
-    data = _fetch_run(console, run_id, auth_headers)
+    client = _make_client(console)
+    data = _fetch_run(client, run_id)
 
     nodes = data.get("nodes") or []
     objective = data.get("objective") or {}
@@ -217,8 +208,8 @@ def handle_results_command(
 
 def handle_show_command(run_id: str, step: str, console: Console) -> None:
     """Handle `weco show <run-id> --step N`."""
-    auth_headers = _authenticate(console)
-    data = _fetch_run(console, run_id, auth_headers)
+    client = _make_client(console)
+    data = _fetch_run(client, run_id)
 
     nodes = data.get("nodes") or []
     objective = data.get("objective") or {}
@@ -251,8 +242,8 @@ def handle_show_command(run_id: str, step: str, console: Console) -> None:
 
 def handle_diff_command(run_id: str, step: str, against: str, console: Console) -> None:
     """Handle `weco diff <run-id> --step N [--against baseline|parent|M]`."""
-    auth_headers = _authenticate(console)
-    data = _fetch_run(console, run_id, auth_headers)
+    client = _make_client(console)
+    data = _fetch_run(client, run_id)
 
     nodes = data.get("nodes") or []
     objective = data.get("objective") or {}
@@ -327,10 +318,10 @@ def handle_diff_command(run_id: str, step: str, against: str, console: Console) 
 
 def handle_stop_command(run_id: str, console: Console) -> None:
     """Handle `weco stop <run-id>`."""
-    auth_headers = _authenticate(console)
+    client = _make_client(console)
 
     # Fetch current status first
-    data = _fetch_run(console, run_id, auth_headers, include_history=False)
+    data = _fetch_run(client, run_id, include_history=False)
     current_status = data.get("status")
 
     if current_status in ("completed", "stopped", "terminated"):
@@ -342,12 +333,10 @@ def handle_stop_command(run_id: str, console: Console) -> None:
         return
 
     # Terminate
-    success = report_termination(
-        run_id=run_id,
-        status_update="terminated",
+    success = client.terminate(
+        run_id,
         reason="user_terminated_cli_stop",
-        details="Terminated via `weco stop` command",
-        auth_headers=auth_headers,
+        details="Terminated via `weco run stop` command",
     )
 
     if not success:
@@ -356,7 +345,7 @@ def handle_stop_command(run_id: str, console: Console) -> None:
 
     # Fetch updated status for best metric info
     try:
-        data = _fetch_run(console, run_id, auth_headers, include_history=False)
+        data = _fetch_run(client, run_id, include_history=False)
     except SystemExit:
         data = {}
 
@@ -368,6 +357,24 @@ def handle_stop_command(run_id: str, console: Console) -> None:
         "best_metric": best_result.get("metric_value"),
         "best_step": best_result.get("step"),
         "message": "Run terminated. Solution tree preserved. Resume with: weco resume " + run_id,
+    }
+
+    print(json.dumps(output, indent=2))
+
+
+def handle_instruct_command(run_id: str, instructions: str, console: Console) -> None:
+    """Handle `weco run instruct <run-id> <instructions>`."""
+    client = _make_client(console)
+
+    result = client.update_instructions(run_id, instructions)
+
+    if result is None:
+        print(json.dumps({"error": "Failed to update instructions. Is the run still active?"}))
+        sys.exit(1)
+
+    output = {
+        "run_id": run_id,
+        "additional_instructions": result.get("additional_instructions"),
     }
 
     print(json.dumps(output, indent=2))
@@ -391,17 +398,16 @@ def _read_source_files(source_paths: list[str]) -> dict[str, str]:
 
 
 def handle_review_command(run_id: str, console: Console) -> None:
-    """Handle `weco review <run-id>` — show pending approval nodes."""
-    auth_headers = _authenticate(console)
-    data = _fetch_run(console, run_id, auth_headers)
+    """Handle `weco run review <run-id>` — show nodes awaiting action."""
+    client = _make_client(console)
+    data = _fetch_run(client, run_id)
 
-    require_review = data.get("require_review", False)
     nodes = data.get("nodes") or []
 
-    # Filter to pending_approval nodes
+    # Find nodes pending action (not yet evaluated)
     pending = []
     for n in nodes:
-        if n.get("status") == "pending_approval":
+        if n.get("status") in ("pending_approval", "pending_evaluation"):
             pending.append({
                 "node_id": _get_node_id(n),
                 "step": n.get("step"),
@@ -411,7 +417,7 @@ def handle_review_command(run_id: str, console: Console) -> None:
 
     output = {
         "run_id": run_id,
-        "require_review": require_review,
+        "require_review": data.get("require_review", False),
         "pending_nodes": pending,
     }
 
@@ -424,12 +430,12 @@ def handle_revise_command(
     source_paths: list[str],
     console: Console,
 ) -> None:
-    """Handle `weco revise <run-id> --node <id> --source <file>` — create a new revision."""
-    auth_headers = _authenticate(console)
+    """Handle `weco run revise <run-id> --node <id> --source <file>` — create a new revision."""
+    client = _make_client(console)
 
     code = _read_source_files(source_paths)
 
-    result = create_node_revision(node_id=node_id, code=code, auth_headers=auth_headers)
+    result = client.create_revision(node_id, code)
     if result is None:
         print(json.dumps({"error": f"Failed to create revision for node {node_id}"}))
         sys.exit(1)
@@ -449,27 +455,28 @@ def handle_submit_command(
     run_id: str,
     node_id: str,
     source_paths: Optional[list[str]],
+    eval_command_override: Optional[str],
     console: Console,
 ) -> None:
-    """Handle `weco submit <run-id> --node <id> [--source <file>]`.
+    """Handle `weco run submit <run-id> --node <id> [--source <file>]`.
 
     If --source is provided, creates a revision first (revise + submit in one step).
     Then submits the node for evaluation, claims the task, evaluates locally, and reports results.
     """
     from .utils import run_evaluation_with_files_swap
 
-    auth_headers = _authenticate(console)
+    client = _make_client(console)
 
     # If source files provided, create a revision first
     if source_paths:
         code = _read_source_files(source_paths)
-        revision_result = create_node_revision(node_id=node_id, code=code, auth_headers=auth_headers)
+        revision_result = client.create_revision(node_id, code)
         if revision_result is None:
             print(json.dumps({"error": f"Failed to create revision for node {node_id}"}))
             sys.exit(1)
 
     # Submit node for evaluation — creates an execution task
-    submit_result = submit_node_for_evaluation(node_id=node_id, auth_headers=auth_headers)
+    submit_result = client.submit_node(node_id)
     if submit_result is None:
         print(json.dumps({"error": f"Failed to submit node {node_id} for evaluation. Is the run in review mode and the node pending approval?"}))
         sys.exit(1)
@@ -480,7 +487,7 @@ def handle_submit_command(
         sys.exit(1)
 
     # Claim the task
-    claimed = claim_execution_task(task_id=task_id, auth_headers=auth_headers)
+    claimed = client.claim_task(task_id)
     if claimed is None:
         print(json.dumps({"error": f"Failed to claim task {task_id}"}))
         sys.exit(1)
@@ -493,13 +500,13 @@ def handle_submit_command(
         sys.exit(1)
 
     # Fetch run config to get eval command and source paths for restoration
-    data = _fetch_run(console, run_id, auth_headers, include_history=False)
+    data = _fetch_run(client, run_id, include_history=False)
     objective = data.get("objective") or {}
-    eval_command = objective.get("evaluation_command", "")
+    eval_command = eval_command_override or objective.get("evaluation_command", "")
     eval_timeout = data.get("eval_timeout")
 
     if not eval_command:
-        print(json.dumps({"error": "No evaluation command found for this run"}))
+        print(json.dumps({"error": "No evaluation command found for this run. Use --eval-command to specify one."}))
         sys.exit(1)
 
     # Read original source files for restoration after eval
@@ -520,25 +527,23 @@ def handle_submit_command(
     )
 
     # Submit result
-    result = submit_execution_result(
-        run_id=run_id,
-        task_id=task_id,
-        execution_output=term_out,
-        auth_headers=auth_headers,
-    )
+    result = client.suggest(run_id, execution_output=term_out, task_id=task_id)
 
     if result is None:
         print(json.dumps({"error": "Failed to submit execution result"}))
         sys.exit(1)
 
+    # previous_solution_metric_value is the metric for the solution just evaluated.
+    # It's null when eval failed to produce a parseable metric (the solution is marked buggy).
     metric_value = result.get("previous_solution_metric_value")
+    eval_failed = metric_value is None
 
     output = {
-        "status": "submitted",
+        "status": "eval_failed" if eval_failed else "submitted",
         "node_id": node_id,
         "task_id": task_id,
         "metric": metric_value,
-        "is_done": result.get("is_done", False),
+        "run_completed": result.get("is_done", False),
         "execution_output": term_out[:2000] if term_out else "",
     }
 

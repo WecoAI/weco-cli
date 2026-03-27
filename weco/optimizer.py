@@ -4,6 +4,8 @@ import sys
 import threading
 import time
 import traceback
+
+import requests
 from dataclasses import dataclass
 from typing import Optional
 
@@ -11,16 +13,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from . import __dashboard_url__
-from .api import (
-    claim_execution_task,
-    get_execution_tasks,
-    get_optimization_run_status,
-    report_termination,
-    resume_optimization_run,
-    send_heartbeat,
-    start_optimization_run,
-    submit_execution_result,
-)
+from .api import WecoClient, handle_api_error
 from .artifacts import RunArtifacts
 from .auth import handle_authentication
 from .events import get_event_context
@@ -42,29 +35,24 @@ class OptimizationResult:
 
 # --- Heartbeat Sender Class ---
 class HeartbeatSender(threading.Thread):
-    def __init__(self, run_id: str, auth_headers: dict, stop_event: threading.Event, interval: int = 30):
-        super().__init__(daemon=True)  # Daemon thread exits when main thread exits
+    def __init__(self, run_id: str, client: WecoClient, stop_event: threading.Event, interval: int = 30):
+        super().__init__(daemon=True)
         self.run_id = run_id
-        self.auth_headers = auth_headers
+        self.client = client
         self.interval = interval
         self.stop_event = stop_event
 
     def run(self):
         try:
             while not self.stop_event.is_set():
-                if not send_heartbeat(self.run_id, self.auth_headers):
-                    # send_heartbeat logs to stderr when it returns False.
-                    pass
+                self.client.heartbeat(self.run_id)
 
                 if self.stop_event.is_set():
-                    # Check once more before waiting for faster shutdown.
                     break
 
-                # Wait for the next interval, or exit early on stop signal.
                 self.stop_event.wait(self.interval)
 
         except Exception as e:
-            # Avoid silent heartbeat thread failures during long runs.
             print(f"[ERROR HeartbeatSender] Unexpected error in heartbeat thread for run {self.run_id}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
@@ -72,7 +60,7 @@ class HeartbeatSender(threading.Thread):
 def _run_optimization_loop(
     ui: OptimizationUI,
     run_id: str,
-    auth_headers: dict,
+    client: WecoClient,
     source_code: dict[str, str],
     eval_command: str,
     eval_timeout: Optional[int],
@@ -113,9 +101,7 @@ def _run_optimization_loop(
         while True:
             # Check if run has been stopped via dashboard
             try:
-                status_response = get_optimization_run_status(
-                    console=None, run_id=run_id, include_history=False, auth_headers=auth_headers
-                )
+                status_response = client.get_run_status(run_id)
                 if status_response.get("status") == "stopping":
                     ui.on_stop_requested()
                     return OptimizationResult(
@@ -134,7 +120,7 @@ def _run_optimization_loop(
             poll_attempts = 0
 
             while not tasks_result or not tasks_result.tasks:
-                tasks_result = get_execution_tasks(run_id, auth_headers)
+                tasks_result = client.get_execution_tasks(run_id)
 
                 # Check if run was stopped (from run summary in response)
                 if tasks_result and tasks_result.run:
@@ -166,7 +152,7 @@ def _run_optimization_loop(
             task_id = task["id"]
 
             # Claim the task
-            claimed = claim_execution_task(task_id, auth_headers)
+            claimed = client.claim_task(task_id)
             if claimed is None:
                 ui.on_warning(f"Task {task_id} already claimed, retrying...")
                 continue
@@ -191,9 +177,7 @@ def _run_optimization_loop(
 
             # Submit result
             ui.on_submitting()
-            result = submit_execution_result(
-                run_id=run_id, task_id=task_id, execution_output=term_out, auth_headers=auth_headers, api_keys=api_keys
-            )
+            result = client.suggest(run_id, execution_output=term_out, task_id=task_id, api_keys=api_keys)
 
             if result is None:
                 ui.on_error("Failed to submit result")
@@ -230,7 +214,7 @@ def _offer_apply_best_solution(
     run_id: str,
     source_code: dict[str, str],
     artifacts: RunArtifacts,
-    auth_headers: dict,
+    client: WecoClient,
     apply_change: bool = False,
 ) -> None:
     """
@@ -246,7 +230,7 @@ def _offer_apply_best_solution(
     """
     try:
         # Fetch final status to get best solution
-        status = get_optimization_run_status(console=console, run_id=run_id, include_history=False, auth_headers=auth_headers)
+        status = client.get_run_status(run_id)
         best_result = status.get("best_result")
 
         if best_result is None:
@@ -324,9 +308,11 @@ def resume_optimization(
     if weco_api_key is None:
         return False
 
+    client = WecoClient(auth_headers)
+
     # Fetch status first for validation and to display confirmation info
     try:
-        status = get_optimization_run_status(console=console, run_id=run_id, include_history=True, auth_headers=auth_headers)
+        status = client.get_run_status(run_id, include_history=True)
     except Exception as e:
         console.print(f"[bold red]Error fetching run status: {e}[/]")
         return False
@@ -372,7 +358,15 @@ def resume_optimization(
         return False
 
     # Call backend to prepare resume (this sets status to 'running')
-    resume_resp = resume_optimization_run(console=console, run_id=run_id, auth_headers=auth_headers, api_keys=api_keys)
+    try:
+        with console.status("[bold green]Resuming run..."):
+            resume_resp = client.resume_run(run_id, api_keys=api_keys)
+    except requests.exceptions.HTTPError as e:
+        handle_api_error(e, console)
+        return False
+    except Exception as e:
+        console.print(f"[bold red]Error resuming run: {e}[/]")
+        return False
     if resume_resp is None:
         return False
 
@@ -401,7 +395,7 @@ def resume_optimization(
 
     # Start heartbeat thread
     stop_heartbeat_event = threading.Event()
-    heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
+    heartbeat_thread = HeartbeatSender(run_id, client, stop_heartbeat_event)
     heartbeat_thread.start()
 
     # Extract best solution info from resume response (if available)
@@ -435,7 +429,7 @@ def resume_optimization(
             result = _run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
-                auth_headers=auth_headers,
+                client=client,
                 source_code=source_code,
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
@@ -463,7 +457,7 @@ def resume_optimization(
             run_id=run_id,
             source_code=source_code,
             artifacts=artifacts,
-            auth_headers=auth_headers,
+            client=client,
             apply_change=apply_change,
         )
 
@@ -476,13 +470,7 @@ def resume_optimization(
         # Report termination to backend
         if result is not None:
             try:
-                report_termination(
-                    run_id=run_id,
-                    status_update=result.status,
-                    reason=result.reason,
-                    details=result.details,
-                    auth_headers=auth_headers,
-                )
+                client.terminate(run_id, reason=result.reason, details=result.details)
             except Exception:
                 pass  # Best effort
 
@@ -534,8 +522,9 @@ def optimize(
     # Authenticate
     weco_api_key, auth_headers = handle_authentication(console)
     if weco_api_key is None:
-        # Authentication failed or user declined
         return False
+
+    client = WecoClient(auth_headers)
 
     # Process parameters
     maximize = goal.lower() in ["maximize", "max"]
@@ -562,28 +551,34 @@ def optimize(
     event_ctx = get_event_context()
 
     # Start the run
-    run_response = start_optimization_run(
-        console=console,
-        source_code=source_code,
-        source_path=source_path_for_api,
-        evaluation_command=eval_command,
-        metric_name=metric,
-        maximize=maximize,
-        steps=steps,
-        code_generator_config=code_generator_config,
-        evaluator_config=evaluator_config,
-        search_policy_config=search_policy_config,
-        additional_instructions=processed_instructions,
-        eval_timeout=eval_timeout,
-        save_logs=save_logs,
-        log_dir=log_dir,
-        auth_headers=auth_headers,
-        api_keys=api_keys,
-        require_review=require_review,
-        installation_id=event_ctx.installation_id,
-        invocation_id=event_ctx.invocation_id,
-        invoked_via=event_ctx.invoked_via,
-    )
+    try:
+        with console.status("[bold green]Starting Optimization..."):
+            run_response = client.start_run(
+                source_code=source_code,
+                source_path=source_path_for_api,
+                evaluation_command=eval_command,
+                metric_name=metric,
+                maximize=maximize,
+                steps=steps,
+                code_generator_config=code_generator_config,
+                evaluator_config=evaluator_config,
+                search_policy_config=search_policy_config,
+                additional_instructions=processed_instructions,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                log_dir=log_dir,
+                api_keys=api_keys,
+                require_review=require_review,
+                installation_id=event_ctx.installation_id,
+                invocation_id=event_ctx.invocation_id,
+                invoked_via=event_ctx.invoked_via,
+            )
+    except requests.exceptions.HTTPError as e:
+        handle_api_error(e, console)
+        return False
+    except Exception as e:
+        console.print(f"[bold red]Error starting run: {e}[/]")
+        return False
 
     if run_response is None:
         return False
@@ -600,7 +595,7 @@ def optimize(
 
     # Start heartbeat thread
     stop_heartbeat_event = threading.Event()
-    heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
+    heartbeat_thread = HeartbeatSender(run_id, client, stop_heartbeat_event)
     heartbeat_thread.start()
 
     result: Optional[OptimizationResult] = None
@@ -619,7 +614,7 @@ def optimize(
             result = _run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
-                auth_headers=auth_headers,
+                client=client,
                 source_code=source_code,
                 eval_command=eval_command,
                 eval_timeout=eval_timeout,
@@ -647,7 +642,7 @@ def optimize(
             run_id=run_id,
             source_code=source_code,
             artifacts=artifacts,
-            auth_headers=auth_headers,
+            client=client,
             apply_change=apply_change,
         )
 
@@ -660,12 +655,6 @@ def optimize(
         # Report termination to backend
         if result is not None:
             try:
-                report_termination(
-                    run_id=run_id,
-                    status_update=result.status,
-                    reason=result.reason,
-                    details=result.details,
-                    auth_headers=auth_headers,
-                )
+                client.terminate(run_id, reason=result.reason, details=result.details)
             except Exception:
                 pass  # Best effort

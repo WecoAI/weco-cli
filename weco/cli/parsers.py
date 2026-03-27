@@ -159,6 +159,12 @@ def configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     p.add_argument("run_id", type=str, help="Run UUID")
     p.set_defaults(func=commands.cmd_run_stop)
 
+    # weco run instruct <run-id> <instructions>
+    p = subs.add_parser("instruct", help="Update additional instructions for an active run")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("instructions", type=str, help="New instructions (text or path to file)")
+    p.set_defaults(func=commands.cmd_run_instruct)
+
     # weco run review <run-id>
     p = subs.add_parser("review", help="Show pending approval nodes (review mode)")
     p.add_argument("run_id", type=str, help="Run UUID")
@@ -176,6 +182,10 @@ def configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     p.add_argument("run_id", type=str, help="Run UUID")
     p.add_argument("--node", type=str, required=True, help="Node ID to submit")
     add_source_args(p)  # optional — creates revision before submitting
+    p.add_argument(
+        "-c", "--eval-command", type=str, default=None,
+        help="Override the eval command (use when the stored command doesn't work in this environment)",
+    )
     p.set_defaults(func=commands.cmd_run_submit)
 
 
