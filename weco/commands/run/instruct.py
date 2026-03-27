@@ -17,9 +17,6 @@ def handle(run_id: str, instructions: str, console: Console) -> None:
         print(json.dumps({"error": "Failed to update instructions. Is the run still active?"}))
         sys.exit(1)
 
-    output = {
-        "run_id": run_id,
-        "additional_instructions": result.get("additional_instructions"),
-    }
+    output = {"run_id": run_id, "additional_instructions": result.get("additional_instructions")}
 
     print(json.dumps(output, indent=2))

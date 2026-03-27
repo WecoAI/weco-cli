@@ -11,11 +11,7 @@ from .. import make_client, fetch_run, read_source_files, validate_relative_code
 
 
 def handle(
-    run_id: str,
-    node_id: str,
-    source_paths: Optional[list[str]],
-    eval_command_override: Optional[str],
-    console: Console,
+    run_id: str, node_id: str, source_paths: Optional[list[str]], eval_command_override: Optional[str], console: Console
 ) -> None:
     from ...core.evaluation import run_evaluation_with_files_swap
 
@@ -32,7 +28,13 @@ def handle(
     # Submit node for evaluation — creates an execution task
     submit_result = client.submit_node(node_id)
     if submit_result is None:
-        print(json.dumps({"error": f"Failed to submit node {node_id} for evaluation. Is the run in review mode and the node pending approval?"}))
+        print(
+            json.dumps(
+                {
+                    "error": f"Failed to submit node {node_id} for evaluation. Is the run in review mode and the node pending approval?"
+                }
+            )
+        )
         sys.exit(1)
 
     task_id = submit_result.get("task_id")

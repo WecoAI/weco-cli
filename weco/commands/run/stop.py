@@ -15,18 +15,12 @@ def handle(run_id: str, console: Console) -> None:
     current_status = data.get("status")
 
     if current_status in ("completed", "stopped", "terminated"):
-        print(json.dumps({
-            "run_id": run_id,
-            "status": current_status,
-            "message": f"Run is already {current_status}",
-        }, indent=2))
+        print(
+            json.dumps({"run_id": run_id, "status": current_status, "message": f"Run is already {current_status}"}, indent=2)
+        )
         return
 
-    success = client.terminate(
-        run_id,
-        reason="user_terminated_cli_stop",
-        details="Terminated via `weco run stop` command",
-    )
+    success = client.terminate(run_id, reason="user_terminated_cli_stop", details="Terminated via `weco run stop` command")
 
     if not success:
         print(json.dumps({"error": "Failed to terminate run"}))

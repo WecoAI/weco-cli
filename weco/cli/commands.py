@@ -148,10 +148,7 @@ def cmd_resume(args: argparse.Namespace, *, console: Console) -> None:
         sys.exit(1)
 
     success = resume_optimization(
-        run_id=args.run_id,
-        api_keys=api_keys,
-        apply_change=args.apply_change,
-        output_mode=args.output,
+        run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change, output_mode=args.output
     )
     sys.exit(0 if success else 1)
 
@@ -195,12 +192,7 @@ def cmd_run_results(args: argparse.Namespace, *, console: Console) -> None:
     from ..commands.run.results import handle
 
     handle(
-        run_id=args.run_id,
-        top=args.top,
-        format=args.format,
-        plot=args.plot,
-        include_code=args.include_code,
-        console=console,
+        run_id=args.run_id, top=args.top, format=args.format, plot=args.plot, include_code=args.include_code, console=console
     )
 
 
@@ -237,12 +229,7 @@ def cmd_run_review(args: argparse.Namespace, *, console: Console) -> None:
 def cmd_run_revise(args: argparse.Namespace, *, console: Console) -> None:
     from ..commands.run.revise import handle
 
-    handle(
-        run_id=args.run_id,
-        node_id=args.node,
-        source_paths=_collect_source_paths(args),
-        console=console,
-    )
+    handle(run_id=args.run_id, node_id=args.node, source_paths=_collect_source_paths(args), console=console)
 
 
 def cmd_run_submit(args: argparse.Namespace, *, console: Console) -> None:

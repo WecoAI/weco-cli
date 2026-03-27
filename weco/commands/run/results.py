@@ -23,14 +23,7 @@ def _sparkline(values: list[float], width: int = 30) -> str:
     return "".join(blocks[min(int((v - lo) / spread * (len(blocks) - 1)), len(blocks) - 1)] for v in sampled)
 
 
-def handle(
-    run_id: str,
-    top: Optional[int],
-    format: str,
-    plot: bool,
-    include_code: bool,
-    console: Console,
-) -> None:
+def handle(run_id: str, top: Optional[int], format: str, plot: bool, include_code: bool, console: Console) -> None:
     client = make_client(console)
     data = fetch_run(client, run_id)
 
@@ -79,8 +72,7 @@ def handle(
 
     if plot:
         all_nodes_by_step = sorted(
-            [n for n in (data.get("nodes") or []) if n.get("metric_value") is not None],
-            key=lambda n: n.get("step", 0),
+            [n for n in (data.get("nodes") or []) if n.get("metric_value") is not None], key=lambda n: n.get("step", 0)
         )
         if all_nodes_by_step:
             values = [n["metric_value"] for n in all_nodes_by_step]

@@ -106,12 +106,7 @@ class TestApiKeysInSuggest:
         client, mock_session = self._make_client(mock_session_cls)
 
         api_keys = {"openai": "sk-test-key"}
-        client.suggest(
-            "test-run-id",
-            execution_output="accuracy: 0.95",
-            step=1,
-            api_keys=api_keys,
-        )
+        client.suggest("test-run-id", execution_output="accuracy: 0.95", step=1, api_keys=api_keys)
 
         mock_session.post.assert_called_once()
         call_kwargs = mock_session.post.call_args
@@ -124,12 +119,7 @@ class TestApiKeysInSuggest:
         """Test that api_keys field is not included in suggest request when api_keys is None."""
         client, mock_session = self._make_client(mock_session_cls)
 
-        client.suggest(
-            "test-run-id",
-            execution_output="accuracy: 0.95",
-            step=1,
-            api_keys=None,
-        )
+        client.suggest("test-run-id", execution_output="accuracy: 0.95", step=1, api_keys=None)
 
         mock_session.post.assert_called_once()
         call_kwargs = mock_session.post.call_args
@@ -141,12 +131,7 @@ class TestApiKeysInSuggest:
         """Test that api_keys field is not included in suggest request when api_keys is empty."""
         client, mock_session = self._make_client(mock_session_cls)
 
-        client.suggest(
-            "test-run-id",
-            execution_output="accuracy: 0.95",
-            step=1,
-            api_keys={},
-        )
+        client.suggest("test-run-id", execution_output="accuracy: 0.95", step=1, api_keys={})
 
         mock_session.post.assert_called_once()
         call_kwargs = mock_session.post.call_args

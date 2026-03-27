@@ -155,11 +155,7 @@ class WecoClient:
             "source_code": source_code,
             "source_path": source_path,
             "additional_instructions": additional_instructions,
-            "objective": {
-                "evaluation_command": evaluation_command,
-                "metric_name": metric_name,
-                "maximize": maximize,
-            },
+            "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
             "optimizer": {
                 "steps": steps,
                 "code_generator": code_generator_config,
@@ -278,10 +274,7 @@ class WecoClient:
     def update_instructions(self, run_id: str, instructions: str | None) -> dict | None:
         """POST /runs/{run_id}/additional_instructions — update mid-run instructions."""
         try:
-            resp = self._post(
-                f"/runs/{run_id}/additional_instructions",
-                json={"additional_instructions": instructions},
-            )
+            resp = self._post(f"/runs/{run_id}/additional_instructions", json={"additional_instructions": instructions})
             resp.raise_for_status()
             return resp.json()
         except Exception:
@@ -311,8 +304,7 @@ class WecoClient:
             if data.get("run"):
                 rd = data["run"]
                 run_summary = RunSummary(
-                    id=rd["id"], status=rd["status"],
-                    name=rd.get("name"), require_review=rd.get("require_review", False),
+                    id=rd["id"], status=rd["status"], name=rd.get("name"), require_review=rd.get("require_review", False)
                 )
             return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
         except Exception:

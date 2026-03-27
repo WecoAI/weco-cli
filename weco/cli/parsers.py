@@ -95,11 +95,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
     )
     run_parser.add_argument("-l", "--log-dir", type=str, default=".runs", help="Directory for logs. Defaults to `.runs`.")
     run_parser.add_argument(
-        "-i",
-        "--additional-instructions",
-        default=None,
-        type=str,
-        help="Extra guidance (text or file path).",
+        "-i", "--additional-instructions", default=None, type=str, help="Extra guidance (text or file path)."
     )
     run_parser.add_argument("--eval-timeout", type=int, default=None, help="Timeout in seconds per evaluation.")
     run_parser.add_argument("--save-logs", action="store_true", help="Save execution outputs per step.")
@@ -182,7 +178,10 @@ def configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     p.add_argument("--node", type=str, required=True, help="Node ID to submit")
     add_source_args(p)  # optional — creates revision before submitting
     p.add_argument(
-        "-c", "--eval-command", type=str, default=None,
+        "-c",
+        "--eval-command",
+        type=str,
+        default=None,
         help="Override the eval command (use when the stored command doesn't work in this environment)",
     )
     p.set_defaults(func=commands.cmd_run_submit)
@@ -239,7 +238,10 @@ def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
     """Configure the `weco setup` parser and its subcommands."""
     subs = setup_parser.add_subparsers(dest="tool", help="AI tool to set up")
 
-    for tool_name, tool_help in [("claude-code", "Set up Weco skill for Claude Code"), ("cursor", "Set up Weco rules for Cursor")]:
+    for tool_name, tool_help in [
+        ("claude-code", "Set up Weco skill for Claude Code"),
+        ("cursor", "Set up Weco rules for Cursor"),
+    ]:
         p = subs.add_parser(tool_name, help=tool_help)
         p.add_argument("--local", type=str, metavar="PATH", help="Use a local weco-skill directory (development)")
 
@@ -253,22 +255,24 @@ def configure_observe_parser(observe_parser: argparse.ArgumentParser) -> None:
     init_p.add_argument("--name", type=str, default=None, help="Run name")
     init_p.add_argument("--metric", type=str, required=True, help="Primary metric name (e.g. val_bpb)")
     init_p.add_argument(
-        "-g", "--goal", type=str, choices=["maximize", "max", "minimize", "min"],
-        default="minimize", help="'maximize'/'max' or 'minimize'/'min' (default: minimize)",
+        "-g",
+        "--goal",
+        type=str,
+        choices=["maximize", "max", "minimize", "min"],
+        default="minimize",
+        help="'maximize'/'max' or 'minimize'/'min' (default: minimize)",
     )
     init_source = init_p.add_mutually_exclusive_group(required=True)
     init_source.add_argument("-s", "--source", type=str, help="Path to a single source file to track")
     init_source.add_argument("--sources", nargs="+", type=str, help="Paths to multiple source files to track")
-    init_p.add_argument(
-        "-i", "--additional-instructions", type=str, default=None, help="Additional instructions for the run",
-    )
+    init_p.add_argument("-i", "--additional-instructions", type=str, default=None, help="Additional instructions for the run")
 
     # weco observe log
     log_p = subs.add_parser("log", help="Log a step for an external run")
     log_p.add_argument("--run-id", type=str, required=True, help="Run ID (from weco observe init)")
     log_p.add_argument("--step", type=int, required=True, help="Step number")
     log_p.add_argument(
-        "--status", type=str, default="completed", choices=["completed", "failed"], help="Step status (default: completed)",
+        "--status", type=str, default="completed", choices=["completed", "failed"], help="Step status (default: completed)"
     )
     log_p.add_argument("--description", type=str, default=None, help="Description of what was tried")
     log_p.add_argument("--metrics", type=str, default=None, help="Metrics as JSON (e.g. '{\"val_bpb\": 1.03}')")

@@ -69,11 +69,7 @@ class WecoObserver:
     Usage::
 
         obs = WecoObserver()
-        run = obs.create_run(
-            source_code={"train.py": open("train.py").read()},
-            primary_metric="val_bpb",
-            maximize=False,
-        )
+        run = obs.create_run(source_code={"train.py": open("train.py").read()}, primary_metric="val_bpb", maximize=False)
         run.log_step(step=1, metrics={"val_bpb": 1.03})
     """
 

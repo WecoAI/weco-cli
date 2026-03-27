@@ -16,17 +16,10 @@ def handle(run_id: str, console: Console) -> None:
     pending = []
     for n in nodes:
         if n.get("status") in ("pending_approval", "pending_evaluation"):
-            pending.append({
-                "node_id": get_node_id(n),
-                "step": n.get("step"),
-                "plan": n.get("plan", ""),
-                "code": n.get("code", {}),
-            })
+            pending.append(
+                {"node_id": get_node_id(n), "step": n.get("step"), "plan": n.get("plan", ""), "code": n.get("code", {})}
+            )
 
-    output = {
-        "run_id": run_id,
-        "require_review": data.get("require_review", False),
-        "pending_nodes": pending,
-    }
+    output = {"run_id": run_id, "require_review": data.get("require_review", False), "pending_nodes": pending}
 
     print(json.dumps(output, indent=2))
