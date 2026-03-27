@@ -9,6 +9,7 @@ Provides the three functions required by the eval backend interface:
 import argparse
 import shlex
 import sys
+from pathlib import Path
 
 from rich.console import Console
 
@@ -124,7 +125,8 @@ def build_eval_command(args: argparse.Namespace) -> str:
     resulting string is executed via ``shell=True`` in ``run_evaluation()``.
     """
     q = shlex.quote
-    parts = ["python", "-m", "weco.integrations.langfuse"]
+    bridge = str(Path(__file__).resolve().parent / "bridge.py")
+    parts = ["python", q(bridge)]
     parts.extend(["--dataset", q(args.langfuse_dataset)])
     parts.extend(["--target", q(args.langfuse_target)])
     if args.langfuse_evaluators:

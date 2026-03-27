@@ -202,7 +202,7 @@ class TestBuildEvalCommand:
         )
         validate_args(args)
         cmd = build_eval_command(args)
-        assert "python -m weco.integrations.langsmith" in cmd
+        assert "bridge.py" in cmd
         assert "--dataset my-data" in cmd
         assert "--target agent:run" in cmd
         assert "--evaluators acc" in cmd

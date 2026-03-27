@@ -1,6 +1,0 @@
-{
-  "source_file": "/Users/aliroberts/Work/weco/weco-cli/examples/hello-world/module.py",
-  "metric": "speedup",
-  "goal": "maximize",
-  "context": "PyTorch model that performs matrix multiplication, division, summation, and scaling. Optimize the forward pass for speed while maintaining numerical correctness."
-}

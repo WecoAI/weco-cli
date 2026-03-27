@@ -365,6 +365,10 @@ def main():
 
     args = parser.parse_args()
 
+    # Support LANGFUSE_BASE_URL as a fallback for LANGFUSE_HOST
+    if not os.environ.get("LANGFUSE_HOST") and os.environ.get("LANGFUSE_BASE_URL"):
+        os.environ["LANGFUSE_HOST"] = os.environ["LANGFUSE_BASE_URL"]
+
     # Validate environment
     if not os.environ.get("LANGFUSE_SECRET_KEY"):
         print("ERROR: LANGFUSE_SECRET_KEY environment variable not set.")

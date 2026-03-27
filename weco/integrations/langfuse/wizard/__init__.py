@@ -29,7 +29,7 @@ def run_wizard(args: argparse.Namespace) -> None:
     initial_state = {
         "secret_key_set": bool(os.environ.get("LANGFUSE_SECRET_KEY")),
         "public_key_set": bool(os.environ.get("LANGFUSE_PUBLIC_KEY")),
-        "host": os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
+        "host": os.environ.get("LANGFUSE_HOST") or os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com"),
         # Core params
         "metric": getattr(args, "metric", ""),
         "goal": getattr(args, "goal", ""),
