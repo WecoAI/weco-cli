@@ -186,13 +186,49 @@ For more advanced examples, including [Triton](/examples/triton/README.md), [CUD
 
 | Command | Description | When to Use |
 |---------|-------------|-------------|
-| `weco run [options]` | Direct optimization execution | **For advanced users** - When you know exactly what to optimize and how |
+| `weco run [options]` | Start a new optimization | When you know what to optimize and how |
 | `weco resume <run-id>` | Resume an interrupted run | Continue from the last completed step |
 | `weco login` | Authenticate with Weco | First-time setup or switching accounts |
-| `weco logout` | Clear authentication credentials | To switch accounts or troubleshoot authentication issues |
+| `weco logout` | Clear authentication credentials | Switch accounts or troubleshoot auth |
 | `weco credits balance` | Check your current credit balance | Monitor usage |
 | `weco credits topup [amount]` | Purchase additional credits | When you need more credits (default: 10) |
 | `weco credits autotopup` | Configure automatic top-up | Set up automatic credit replenishment |
+
+### Run Subcommands
+
+Inspect and manage optimization runs. All output is JSON, designed for programmatic access (AI coding agents, scripts).
+
+| Command | Description |
+|---------|-------------|
+| `weco run status <run-id>` | Run progress, pending nodes, review mode flag |
+| `weco run results <run-id>` | Results sorted by metric |
+| `weco run show <run-id> --step <N\|best>` | Single node detail with code |
+| `weco run diff <run-id> --step <N\|best>` | Unified code diff between steps |
+| `weco run stop <run-id>` | Graceful termination (tree preserved) |
+| `weco run instruct <run-id> "<text>"` | Update instructions mid-run |
+| `weco run review <run-id>` | List pending approval nodes (review mode) |
+| `weco run revise <run-id> --node <id> --source <file>` | Replace a node's code |
+| `weco run submit <run-id> --node <id>` | Evaluate and submit a node |
+
+```bash
+# Check progress
+weco run status 0002e071-1b67-411f-a514-36947f0c4b31
+
+# Top 5 results as JSON
+weco run results 0002e071-1b67-411f-a514-36947f0c4b31 --top 5
+
+# Diff best solution against baseline
+weco run diff 0002e071-1b67-411f-a514-36947f0c4b31 --step best
+
+# Review mode: inspect, optionally edit, and submit
+weco run review 0002e071-1b67-411f-a514-36947f0c4b31
+weco run submit 0002e071-1b67-411f-a514-36947f0c4b31 --node <node-id>
+
+# Submit with your own code (explicit path mapping)
+weco run submit <run-id> --node <id> --source module.py=./my_version.py
+```
+
+**Source path mapping:** When using `--source` with `revise` or `submit`, you can map local files to the run's source paths using `target_path=local_path` syntax (e.g., `--source module.py=./optimized.py`). Without an explicit mapping, files are matched positionally to the run's original source paths.
 
 ### Observe Commands
 

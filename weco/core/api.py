@@ -213,6 +213,44 @@ class WecoClient:
                 node["code"] = ""
         return result
 
+    def list_nodes(
+        self,
+        run_id: str,
+        *,
+        step: int | None = None,
+        status: str | None = None,
+        top: int | None = None,
+        sort: str | None = None,
+        include_code: bool = True,
+    ) -> dict:
+        """``GET /runs/{run_id}/nodes`` — list nodes with optional filtering.
+
+        Args:
+            run_id: The run UUID.
+            step: Return only the node at this step number.
+            status: Comma-separated statuses to filter by.
+            top: Return only the top N nodes (use with ``sort``).
+            sort: Sort field (``"metric"``).
+            include_code: Include source code in response.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        params: dict[str, Any] = {}
+        if step is not None:
+            params["step"] = step
+        if status:
+            params["status"] = status
+        if top is not None:
+            params["top"] = top
+        if sort:
+            params["sort"] = sort
+        if not include_code:
+            params["include_code"] = False
+        resp = self._get(f"/runs/{run_id}/nodes", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
     def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None) -> dict:
         """``POST /runs/{run_id}/resume`` — resume an interrupted run.
 

@@ -176,6 +176,72 @@ Default models for providers:
         _load_backend(backend_name).register_args(run_parser)
 
 
+def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
+    """Add subcommands under ``weco run`` for inspecting and managing existing runs."""
+    subs = run_parser.add_subparsers(dest="run_subcommand")
+
+    # weco run status <run-id>
+    p = subs.add_parser("status", help="Show run status and progress (JSON)")
+    p.add_argument("run_id", type=str, help="Run UUID")
+
+    # weco run results <run-id>
+    p = subs.add_parser("results", help="Show results sorted by metric")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("--top", type=int, default=None, help="Show only the top N results")
+    p.add_argument("--format", type=str, choices=["json", "table", "csv"], default="json", help="Output format")
+    p.add_argument("--plot", action="store_true", help="Show ASCII metric trajectory")
+    p.add_argument("--include-code", action="store_true", help="Include full source code")
+
+    # weco run show <run-id> --step N
+    p = subs.add_parser("show", help="Show details for a specific step")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("--step", type=str, required=True, help="Step number or 'best'")
+
+    # weco run diff <run-id> --step N
+    p = subs.add_parser("diff", help="Show code diff between steps")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("--step", type=str, required=True, help="Step number or 'best'")
+    p.add_argument("--against", type=str, default="baseline", help="'baseline' (default), 'parent', or step number")
+
+    # weco run stop <run-id>
+    p = subs.add_parser("stop", help="Terminate a running optimization")
+    p.add_argument("run_id", type=str, help="Run UUID")
+
+    # weco run instruct <run-id> <instructions>
+    p = subs.add_parser("instruct", help="Update additional instructions for an active run")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("instructions", type=str, help="New instructions (text or path to file)")
+
+    # weco run review <run-id>
+    p = subs.add_parser("review", help="Show pending approval nodes (review mode)")
+    p.add_argument("run_id", type=str, help="Run UUID")
+
+    # weco run revise <run-id> --node <id> --source <file>
+    p = subs.add_parser("revise", help="Replace a pending node's code with a new revision")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("--node", type=str, required=True, help="Node ID to revise")
+    revise_source = p.add_mutually_exclusive_group(required=True)
+    revise_source.add_argument("-s", "--source", type=str, help="Path to a single source file")
+    revise_source.add_argument("--sources", nargs="+", type=str, help="Paths to multiple source files")
+
+    # weco run submit <run-id> --node <id>
+    p = subs.add_parser("submit", help="Submit a pending node for evaluation (review mode)")
+    p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument("--node", type=str, required=True, help="Node ID to submit")
+    submit_source = p.add_mutually_exclusive_group()
+    submit_source.add_argument("-s", "--source", type=str, help="Optional: source file (creates revision before submitting)")
+    submit_source.add_argument(
+        "--sources", nargs="+", type=str, help="Optional: source files (creates revision before submitting)"
+    )
+    p.add_argument(
+        "-c",
+        "--eval-command",
+        type=str,
+        default=None,
+        help="Override the eval command (use when the stored command doesn't work in this environment)",
+    )
+
+
 def configure_credits_parser(credits_parser: argparse.ArgumentParser) -> None:
     """Configure the credits command parser and all its subcommands."""
     credits_subparsers = credits_parser.add_subparsers(dest="credits_command", help="Credit management commands")
@@ -276,6 +342,52 @@ Supported provider names: {supported_providers}.
         default="rich",
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
+
+
+def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
+    """Dispatch ``weco run <subcommand>`` to the appropriate handler."""
+    from .commands.run import status, results, show, diff, stop, instruct, review, revise, submit
+
+    def _collect_source_paths() -> list[str] | None:
+        if getattr(args, "sources", None):
+            return args.sources
+        if getattr(args, "source", None):
+            return [args.source]
+        return None
+
+    handlers = {
+        "status": lambda: status.handle(run_id=args.run_id, console=console),
+        "results": lambda: results.handle(
+            run_id=args.run_id,
+            top=args.top,
+            format=args.format,
+            plot=args.plot,
+            include_code=args.include_code,
+            console=console,
+        ),
+        "show": lambda: show.handle(run_id=args.run_id, step=args.step, console=console),
+        "diff": lambda: diff.handle(run_id=args.run_id, step=args.step, against=args.against, console=console),
+        "stop": lambda: stop.handle(run_id=args.run_id, console=console),
+        "instruct": lambda: instruct.handle(run_id=args.run_id, instructions=args.instructions, console=console),
+        "review": lambda: review.handle(run_id=args.run_id, console=console),
+        "revise": lambda: revise.handle(
+            run_id=args.run_id, node_id=args.node, source_paths=_collect_source_paths(), console=console
+        ),
+        "submit": lambda: submit.handle(
+            run_id=args.run_id,
+            node_id=args.node,
+            source_paths=_collect_source_paths(),
+            eval_command_override=getattr(args, "eval_command", None),
+            console=console,
+        ),
+    }
+
+    handler = handlers.get(sub)
+    if handler is None:
+        console.print(f"[bold red]Unknown run subcommand: {sub}[/]")
+        sys.exit(1)
+    handler()
+    sys.exit(0)
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -419,9 +531,10 @@ def _main() -> None:
 
     # --- Run Command Parser Setup ---
     run_parser = subparsers.add_parser(
-        "run", help="Run code optimization", formatter_class=argparse.RawTextHelpFormatter, allow_abbrev=False
+        "run", help="Run and manage optimizations", formatter_class=argparse.RawTextHelpFormatter, allow_abbrev=False
     )
-    configure_run_parser(run_parser)  # Use the helper to add arguments
+    configure_run_parser(run_parser)  # Flags for starting a new optimization
+    _configure_run_subcommands(run_parser)  # Subcommands for inspecting/managing runs
 
     # --- Login Command Parser Setup ---
     _ = subparsers.add_parser("login", help="Log in to Weco and save your API key.")
@@ -500,7 +613,11 @@ def _main() -> None:
         clear_api_key()
         sys.exit(0)
     elif args.command == "run":
-        execute_run_command(args)
+        sub = getattr(args, "run_subcommand", None)
+        if sub is not None:
+            _dispatch_run_subcommand(sub, args)
+        else:
+            execute_run_command(args)
     elif args.command == "credits":
         from .credits import handle_credits_command
 
