@@ -247,7 +247,7 @@ class WecoClient:
             params["sort"] = sort
         if not include_code:
             params["include_code"] = False
-        resp = self._get(f"/runs/{run_id}/nodes", params=params)
+        resp = self._get(f"/runs/{run_id}/node-list", params=params)
         resp.raise_for_status()
         return resp.json()
 
