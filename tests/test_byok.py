@@ -31,7 +31,7 @@ class TestApiKeysInStartOptimizationRun:
             "search_policy_config": {"num_drafts": 2},
         }
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_included_in_request(self, mock_post, base_params):
         """Test that api_keys are included in the request JSON when provided."""
         mock_response = MagicMock()
@@ -54,7 +54,7 @@ class TestApiKeysInStartOptimizationRun:
         assert "api_keys" in request_json
         assert request_json["api_keys"] == {"openai": "sk-test-key", "anthropic": "sk-ant-test"}
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_not_included_when_none(self, mock_post, base_params):
         """Test that api_keys field is not included when api_keys is None."""
         mock_response = MagicMock()
@@ -75,7 +75,7 @@ class TestApiKeysInStartOptimizationRun:
         request_json = call_kwargs.kwargs["json"]
         assert "api_keys" not in request_json
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_not_included_when_empty_dict(self, mock_post, base_params):
         """Test that api_keys field is not included when api_keys is an empty dict."""
         mock_response = MagicMock()
@@ -105,7 +105,7 @@ class TestApiKeysInEvaluateFeedbackThenSuggest:
         """Create a mock console for testing."""
         return MagicMock(spec=Console)
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_included_in_suggest_request(self, mock_post, mock_console):
         """Test that api_keys are included in the suggest request JSON when provided."""
         mock_response = MagicMock()
@@ -135,7 +135,7 @@ class TestApiKeysInEvaluateFeedbackThenSuggest:
         assert "api_keys" in request_json
         assert request_json["api_keys"] == {"openai": "sk-test-key"}
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_not_included_in_suggest_when_none(self, mock_post, mock_console):
         """Test that api_keys field is not included in suggest request when api_keys is None."""
         mock_response = MagicMock()
@@ -163,7 +163,7 @@ class TestApiKeysInEvaluateFeedbackThenSuggest:
         request_json = call_kwargs.kwargs["json"]
         assert "api_keys" not in request_json
 
-    @patch("weco.api.requests.post")
+    @patch("weco.core.api.requests.Session.post")
     def test_api_keys_not_included_in_suggest_when_empty_dict(self, mock_post, mock_console):
         """Test that api_keys field is not included in suggest request when api_keys is None."""
         mock_response = MagicMock()
