@@ -165,11 +165,7 @@ class WecoClient:
             "source_code": source_code,
             "source_path": source_path,
             "additional_instructions": additional_instructions,
-            "objective": {
-                "evaluation_command": evaluation_command,
-                "metric_name": metric_name,
-                "maximize": maximize,
-            },
+            "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
             "optimizer": {
                 "steps": steps,
                 "code_generator": code_generator_config,
@@ -216,6 +212,44 @@ class WecoClient:
             if node.get("code") is None:
                 node["code"] = ""
         return result
+
+    def list_nodes(
+        self,
+        run_id: str,
+        *,
+        step: int | None = None,
+        status: str | None = None,
+        top: int | None = None,
+        sort: str | None = None,
+        include_code: bool = True,
+    ) -> dict:
+        """``GET /runs/{run_id}/nodes`` — list nodes with optional filtering.
+
+        Args:
+            run_id: The run UUID.
+            step: Return only the node at this step number.
+            status: Comma-separated statuses to filter by.
+            top: Return only the top N nodes (use with ``sort``).
+            sort: Sort field (``"metric"``).
+            include_code: Include source code in response.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        params: dict[str, Any] = {}
+        if step is not None:
+            params["step"] = step
+        if status:
+            params["status"] = status
+        if top is not None:
+            params["top"] = top
+        if sort:
+            params["sort"] = sort
+        if not include_code:
+            params["include_code"] = False
+        resp = self._get(f"/runs/{run_id}/nodes", params=params)
+        resp.raise_for_status()
+        return resp.json()
 
     def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None) -> dict:
         """``POST /runs/{run_id}/resume`` — resume an interrupted run.
@@ -311,10 +345,7 @@ class WecoClient:
     def update_instructions(self, run_id: str, instructions: str | None) -> dict | None:
         """``POST /runs/{run_id}/additional_instructions`` — update mid-run instructions."""
         try:
-            resp = self._post(
-                f"/runs/{run_id}/additional_instructions",
-                json={"additional_instructions": instructions},
-            )
+            resp = self._post(f"/runs/{run_id}/additional_instructions", json={"additional_instructions": instructions})
             resp.raise_for_status()
             return resp.json()
         except Exception:
@@ -348,10 +379,7 @@ class WecoClient:
             if data.get("run"):
                 rd = data["run"]
                 run_summary = RunSummary(
-                    id=rd["id"],
-                    status=rd["status"],
-                    name=rd.get("name"),
-                    require_review=rd.get("require_review", False),
+                    id=rd["id"], status=rd["status"], name=rd.get("name"), require_review=rd.get("require_review", False)
                 )
             return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
         except Exception:

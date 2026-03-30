@@ -5,13 +5,12 @@ All existing callers (``optimizer.py``, ``share.py``, ``credits.py``,
 ``WecoClient`` from ``weco.core.api`` directly.
 """
 
-import sys
 from typing import Any, Dict, Optional, Tuple, Union
 
 import requests
 from rich.console import Console
 
-from weco import __pkg_version__, __base_url__
+from weco import __base_url__
 
 # Re-export everything from core.api so ``from weco.api import X`` keeps working.
 from .core.api import (  # noqa: F401
