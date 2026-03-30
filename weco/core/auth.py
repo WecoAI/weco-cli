@@ -1,4 +1,5 @@
-# weco/auth.py
+"""Authentication: device login flow and session management."""
+
 import time
 import requests
 import webbrowser
@@ -146,11 +147,11 @@ def perform_login(console: Console):
 
 
 def handle_authentication(console: Console) -> tuple[str | None, dict]:
-    """
-    Handle the complete authentication flow. Authentication is now mandatory.
+    """Run the full authentication flow, prompting for login if needed.
 
     Returns:
-        tuple: (weco_api_key, auth_headers)
+        A ``(weco_api_key, auth_headers)`` tuple.  Both values are empty
+        when authentication fails or is declined.
     """
     weco_api_key = load_weco_api_key()
 

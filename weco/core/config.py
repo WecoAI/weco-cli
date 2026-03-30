@@ -1,7 +1,6 @@
-# weco/config.py
-"""Configuration and credential management for Weco CLI.
+"""Configuration and credential management.
 
-This module handles:
+Handles:
 - API key storage and retrieval
 - Installation ID management for anonymous event tracking
 - Config directory management

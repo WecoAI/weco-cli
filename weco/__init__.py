@@ -1,3 +1,8 @@
+"""Weco CLI — AI-driven code optimization.
+
+Package-level constants (version, API URLs) consumed by all submodules.
+"""
+
 import os
 import importlib.metadata
 

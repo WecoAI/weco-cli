@@ -1,3 +1,5 @@
+"""CLI entry point: parser construction, environment setup, and dispatch."""
+
 import argparse
 import os
 import sys

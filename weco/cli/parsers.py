@@ -1,3 +1,5 @@
+"""Argparse definitions for every CLI command and subcommand."""
+
 import argparse
 
 from . import commands

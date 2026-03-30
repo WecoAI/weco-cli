@@ -1,3 +1,9 @@
+"""Command handlers wired to argparse via ``set_defaults(func=...)``.
+
+Each ``cmd_*`` function receives the parsed ``Namespace`` and a Rich
+``Console``, then delegates to the appropriate module in ``commands/``.
+"""
+
 import argparse
 import sys
 
@@ -7,7 +13,17 @@ from .backends import load_backend
 
 
 def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
-    """Parse API key arguments from CLI into a dictionary."""
+    """Parse ``provider=key`` pairs from the ``--api-key`` flag.
+
+    Args:
+        api_key_args: Raw strings from argparse (e.g. ``["openai=sk-xxx"]``).
+
+    Returns:
+        Mapping of lowercase provider names to API keys.
+
+    Raises:
+        ValueError: If any argument is malformed.
+    """
     if not api_key_args:
         return {}
 
@@ -26,6 +42,7 @@ def parse_api_keys(api_key_args: list[str] | None) -> dict[str, str]:
 
 
 def _collect_source_paths(args: argparse.Namespace) -> list[str] | None:
+    """Return ``[path, ...]`` from ``--source``/``--sources``, or ``None``."""
     if getattr(args, "sources", None):
         return args.sources
     if getattr(args, "source", None):

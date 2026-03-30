@@ -1,3 +1,5 @@
+"""HTTP client for the Weco API."""
+
 import sys
 from dataclasses import dataclass
 from typing import Any, Optional

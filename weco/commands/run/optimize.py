@@ -1,3 +1,5 @@
+"""``weco run`` — start or resume an optimization."""
+
 import math
 import pathlib
 import sys
@@ -34,8 +36,9 @@ class OptimizationResult:
     details: Optional[str] = None
 
 
-# --- Heartbeat Sender Class ---
 class HeartbeatSender(threading.Thread):
+    """Daemon thread that sends periodic heartbeats to keep a run alive."""
+
     def __init__(self, run_id: str, client: WecoClient, stop_event: threading.Event, interval: int = 30):
         super().__init__(daemon=True)
         self.run_id = run_id
@@ -72,25 +75,23 @@ def _run_optimization_loop(
     max_poll_attempts: int = 300,
     api_keys: Optional[dict] = None,
 ) -> OptimizationResult:
-    """
-    Shared queue-based execution loop for optimize and resume.
+    """Queue-based execution loop shared by ``optimize`` and ``resume``.
 
-    Polls for execution tasks, executes locally, and submits results.
-    This function handles the core optimization loop and returns a result
-    object describing the outcome.
+    Polls for execution tasks, evaluates locally, and submits results
+    until the run completes, errors out, or is interrupted.
 
     Args:
         ui: UI handler for displaying progress and events.
         run_id: The optimization run ID.
-        auth_headers: Authentication headers.
-        source_code: Original source code content keyed by file path.
-        eval_command: Evaluation command to run.
-        eval_timeout: Timeout for evaluation in seconds.
-        artifacts: RunArtifacts instance for writing step/output artifacts.
-        save_logs: Whether to save execution logs.
-        start_step: Initial step number (0 for new runs, current_step for resume).
-        poll_interval: Seconds between polling attempts.
-        max_poll_attempts: Max polls before timeout (~10 min with 2s interval).
+        client: Authenticated API client.
+        source_code: Original source code keyed by file path.
+        eval_command: Shell command to evaluate each candidate.
+        eval_timeout: Per-evaluation timeout in seconds.
+        artifacts: Manages ``.runs/`` artifact storage.
+        save_logs: Whether to persist execution output per step.
+        start_step: Initial step number (0 for new runs, ``current_step`` for resume).
+        poll_interval: Seconds between task-polling attempts.
+        max_poll_attempts: Max polls before timeout (~10 min at 2 s interval).
         api_keys: Optional API keys for LLM providers.
 
     Returns:
@@ -218,16 +219,15 @@ def _offer_apply_best_solution(
     client: WecoClient,
     apply_change: bool = False,
 ) -> None:
-    """
-    Fetch the best solution from the backend and offer to apply it.
+    """Fetch the best solution and offer to apply it to source files.
 
     Args:
         console: Rich console for output.
         run_id: The optimization run ID.
-        source_code: Original source code content keyed by file path.
-        artifacts: RunArtifacts instance for saving best solution.
-        auth_headers: Authentication headers.
-        apply_change: If True, apply automatically without prompting.
+        source_code: Original source code keyed by file path.
+        artifacts: Manages ``.runs/`` artifact storage.
+        client: Authenticated API client.
+        apply_change: If ``True``, apply without prompting.
     """
     try:
         # Fetch final status to get best solution
@@ -286,21 +286,17 @@ def resume_optimization(
     apply_change: bool = False,
     output_mode: str = "rich",
 ) -> bool:
-    """
-    Resume an interrupted run using the queue-based optimization loop.
-
-    Polls for execution tasks, executes locally, and submits results.
-    Uses the execution queue flow instead of the legacy direct flow.
+    """Resume an interrupted run.
 
     Args:
-        run_id: The UUID of the run to resume.
-        api_keys: Optional API keys for LLM providers.
-        poll_interval: Seconds between polling attempts.
-        apply_change: If True, automatically apply best solution; if False, prompt user.
-        output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
+        run_id: UUID of the run to resume.
+        api_keys: Optional LLM provider API keys.
+        poll_interval: Seconds between task-polling attempts.
+        apply_change: Apply best solution automatically when ``True``.
+        output_mode: ``"rich"`` for interactive UI, ``"plain"`` for agents.
 
     Returns:
-        True if optimization completed successfully, False otherwise.
+        ``True`` if the run completed successfully.
     """
     console = Console(force_terminal=output_mode == "rich")
 
@@ -493,30 +489,27 @@ def optimize(
     require_review: bool = False,
     output_mode: str = "rich",
 ) -> bool:
-    """
-    Simplified queue-based optimization loop.
-
-    Polls for execution tasks, executes locally, and submits results.
-    Uses the new execution queue flow instead of the legacy direct flow.
+    """Start a new optimization run.
 
     Args:
-        source: Path to a single source file (str) or list of file paths.
-        eval_command: Command to run for evaluation.
+        source: Source file path(s) to optimize.
+        eval_command: Shell command to evaluate each candidate.
         metric: Name of the metric to optimize.
-        goal: "maximize" or "minimize".
-        model: LLM model to use.
+        goal: ``"maximize"`` or ``"minimize"``.
+        model: LLM model name.
         steps: Number of optimization steps.
-        additional_instructions: Optional instructions for the optimizer.
-        eval_timeout: Timeout for evaluation command in seconds.
-        save_logs: Whether to save execution logs.
-        log_dir: Directory for logs.
-        api_keys: Optional API keys for LLM providers.
-        poll_interval: Seconds between polling attempts.
-        apply_change: If True, automatically apply best solution; if False, prompt user.
-        output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
+        additional_instructions: Extra guidance for the optimizer.
+        eval_timeout: Per-evaluation timeout in seconds.
+        save_logs: Persist execution output per step.
+        log_dir: Directory for ``.runs/`` artifacts.
+        api_keys: Optional LLM provider API keys.
+        poll_interval: Seconds between task-polling attempts.
+        apply_change: Apply best solution automatically when ``True``.
+        require_review: Require approval before each evaluation.
+        output_mode: ``"rich"`` for interactive UI, ``"plain"`` for agents.
 
     Returns:
-        True if optimization completed successfully, False otherwise.
+        ``True`` if the run completed successfully.
     """
     console = Console(force_terminal=output_mode == "rich")
 
