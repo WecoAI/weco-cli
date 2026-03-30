@@ -56,7 +56,8 @@ def cmd_run(args: argparse.Namespace, *, console: Console) -> None:
     from ..commands.credits import check_promotional_credits
     from ..core.events import RunStartAttemptedEvent, get_event_context, send_event
     from ..commands.run.optimize import optimize
-    from ..core.constants import DefaultModelNotFoundError, UnrecognizedAPIKeysError, get_default_model
+    from ..core.errors import DefaultModelNotFoundError, UnrecognizedAPIKeysError
+    from ..core.model_selection import get_default_model
     from ..core.validation import ValidationError, print_validation_error, validate_log_directory, validate_sources
 
     ctx = get_event_context()
