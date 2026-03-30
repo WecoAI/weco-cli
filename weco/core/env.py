@@ -91,7 +91,7 @@ class WecoEnv:
     @property
     def installed_skills(self) -> list[InstalledSkill]:
         """Discover locally installed weco skills."""
-        from ..commands.setup import WECO_SKILL_DIR, CURSOR_WECO_SKILL_DIR
+        from ..commands.setup.paths import WECO_SKILL_DIR, CURSOR_WECO_SKILL_DIR
 
         skills = []
         for tool, path in [("claude-code", WECO_SKILL_DIR), ("cursor", CURSOR_WECO_SKILL_DIR)]:

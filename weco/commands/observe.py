@@ -126,7 +126,7 @@ def _read_code_files(paths: list[str]) -> dict[str, str]:
 
 def handle(args: argparse.Namespace, console: Console) -> None:
     """Execute an observe subcommand. Always exits 0."""
-    del console
+    del console  # unused
 
     if not args.observe_command:
         print("Usage: weco observe {init,log}", file=sys.stderr)

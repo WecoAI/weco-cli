@@ -52,6 +52,70 @@ def copy_directory(src: pathlib.Path, dest: pathlib.Path, ignore_patterns: set[s
     shutil.copytree(src, dest, ignore=ignore_func)
 
 
+def safe_remove_directory(path: pathlib.Path, allowed_parents: set[pathlib.Path]) -> None:
+    """Safely remove a directory with multiple defensive checks.
+
+    This function is intentionally paranoid to prevent accidental deletion of
+    important directories due to bugs, path traversal, or misconfiguration.
+
+    Args:
+        path: The directory to remove.
+        allowed_parents: The path must be a direct child of one of these directories.
+
+    Raises:
+        SafetyError: If any safety check fails.
+    """
+    resolved_path = path.resolve()
+
+    if not resolved_path.exists():
+        return
+
+    if not resolved_path.is_dir():
+        raise SafetyError(f"Refusing to remove: not a directory: {resolved_path}")
+
+    if resolved_path.is_symlink():
+        raise SafetyError(f"Refusing to remove: path is a symlink: {resolved_path}")
+
+    home = pathlib.Path.home().resolve()
+    if resolved_path == home:
+        raise SafetyError(f"Refusing to remove: path is home directory: {resolved_path}")
+    if resolved_path == pathlib.Path("/").resolve():
+        raise SafetyError(f"Refusing to remove: path is root directory: {resolved_path}")
+
+    try:
+        home.relative_to(resolved_path)
+        raise SafetyError(f"Refusing to remove: path is a parent of home directory: {resolved_path}")
+    except ValueError:
+        pass
+
+    resolved_allowed = {p.resolve() for p in allowed_parents}
+    parent = resolved_path.parent
+
+    if parent not in resolved_allowed:
+        raise SafetyError(
+            f"Refusing to remove: path {resolved_path} is not a direct child of allowed directories: "
+            f"{[str(p) for p in resolved_allowed]}"
+        )
+
+    try:
+        relative = resolved_path.relative_to(parent)
+        if len(relative.parts) != 1:
+            raise SafetyError(f"Refusing to remove: path {resolved_path} is not exactly 1 level below parent {parent}")
+    except ValueError:
+        raise SafetyError(f"Refusing to remove: path {resolved_path} is not relative to any allowed parent")
+
+    if resolved_path.name != "weco":
+        raise SafetyError(f"Refusing to remove: directory name is not 'weco': {resolved_path}")
+
+    shutil.rmtree(resolved_path)
+
+
+class SafetyError(Exception):
+    """Raised when a safety check fails during directory operations."""
+
+    pass
+
+
 def read_additional_instructions(additional_instructions: str | None) -> str | None:
     """Read additional instructions from a file path or return the string as-is."""
     if additional_instructions is None:
