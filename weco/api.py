@@ -1,114 +1,34 @@
+"""Backward-compatible free functions wrapping ``core.api.WecoClient``.
+
+All existing callers (``optimizer.py``, ``share.py``, ``credits.py``,
+``auth.py``) continue to work without changes.  New code should import
+``WecoClient`` from ``weco.core.api`` directly.
+"""
+
 import sys
-from dataclasses import dataclass
-from typing import Dict, Any, Optional, Union, Tuple
+from typing import Any, Dict, Optional, Tuple, Union
+
 import requests
 from rich.console import Console
 
 from weco import __pkg_version__, __base_url__
-from .utils import truncate_output
+
+# Re-export everything from core.api so ``from weco.api import X`` keeps working.
+from .core.api import (  # noqa: F401
+    WecoClient,
+    RunSummary,
+    ExecutionTasksResult,
+    handle_api_error,
+    _truncate_output,
+)
+
+# Keep truncate_output importable under its old name for callers like utils.py tests.
+truncate_output = _truncate_output
 
 
-@dataclass
-class RunSummary:
-    """Brief run summary from execution task response."""
-
-    id: str
-    status: str
-    name: Optional[str] = None
-    require_review: bool = False
-
-
-@dataclass
-class ExecutionTasksResult:
-    """Result from get_execution_tasks containing tasks and run info."""
-
-    tasks: list
-    run: Optional[RunSummary] = None
-
-
-def handle_api_error(e: requests.exceptions.HTTPError, console: Console) -> None:
-    """Extract and display error messages from API responses in a structured format."""
-    status = getattr(e.response, "status_code", None)
-    try:
-        payload = e.response.json()
-        detail = payload.get("detail", payload)
-    except (ValueError, AttributeError):
-        detail = getattr(e.response, "text", "") or f"HTTP {status} Error"
-
-    def _render(detail_obj: Any) -> None:
-        if isinstance(detail_obj, str):
-            console.print(f"[bold red]{detail_obj}[/]")
-        elif isinstance(detail_obj, dict):
-            # Try common message keys in order of preference
-            message_keys = ("message", "error", "msg", "detail")
-            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
-            suggestion = detail_obj.get("suggestion")
-            if message:
-                console.print(f"[bold red]{message}[/]")
-            else:
-                console.print(f"[bold red]HTTP {status} Error[/]")
-            if suggestion:
-                console.print(f"[yellow]{suggestion}[/]")
-            extras = {
-                k: v
-                for k, v in detail_obj.items()
-                if k not in {"message", "error", "msg", "detail", "suggestion"} and v not in (None, "")
-            }
-            for key, value in extras.items():
-                console.print(f"[dim]{key}: {value}[/]")
-        elif isinstance(detail_obj, list) and detail_obj:
-            _render(detail_obj[0])
-            for extra in detail_obj[1:]:
-                console.print(f"[yellow]{extra}[/]")
-        else:
-            console.print(f"[bold red]{detail_obj or f'HTTP {status} Error'}[/]")
-
-    _render(detail)
-
-
-def _recover_suggest_after_transport_error(
-    console: Console, run_id: str, step: int, auth_headers: dict
-) -> Optional[Dict[str, Any]]:
-    """
-    Try to reconstruct the /suggest response after a transport error (ReadTimeout/502/RemoteDisconnected)
-    by fetching run status and using the latest nodes.
-
-    Args:
-        console: The console object to use for logging.
-        run_id: The ID of the run to recover.
-        step: The step of the solution to recover.
-        auth_headers: The authentication headers to use for the request.
-
-    Returns:
-        The recovered response if the run is in a valid state, otherwise None.
-    """
-    run_status_recovery_response = get_optimization_run_status(
-        console=console, run_id=run_id, include_history=True, auth_headers=auth_headers
-    )
-    current_step = run_status_recovery_response.get("current_step")
-    current_status = run_status_recovery_response.get("status")
-    # The run should be "running" and the current step should correspond to the solution step we are attempting to generate
-    is_valid_run_state = current_status is not None and current_status == "running"
-    is_valid_step = current_step is not None and current_step == step
-    if is_valid_run_state and is_valid_step:
-        nodes = run_status_recovery_response.get("nodes") or []
-        # We need at least 2 nodes to reconstruct the expected response i.e., the last two nodes
-        if len(nodes) >= 2:
-            nodes_sorted_ascending = sorted(nodes, key=lambda n: n["step"])
-            latest_node = nodes_sorted_ascending[-1]
-            penultimate_node = nodes_sorted_ascending[-2]
-            # If the server finished generating the next candidate, it should be exactly this step
-            if latest_node and latest_node["step"] == step:
-                # Try to reconstruct the expected response from the /suggest endpoint using the run status info
-                return {
-                    "run_id": run_id,
-                    "previous_solution_metric_value": penultimate_node.get("metric_value"),
-                    "solution_id": latest_node.get("solution_id"),
-                    "code": latest_node.get("code"),
-                    "plan": latest_node.get("plan"),
-                    "is_done": False,
-                }
-    return None
+# ---------------------------------------------------------------------------
+# Legacy free functions — delegate to WecoClient
+# ---------------------------------------------------------------------------
 
 
 def start_optimization_run(
@@ -137,42 +57,26 @@ def start_optimization_run(
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
         try:
-            # Build metadata with client info and optional event context
-            metadata = {"client_name": invoked_via or "cli", "client_version": __pkg_version__}
-            if installation_id:
-                metadata["installation_id"] = installation_id
-            if invocation_id:
-                metadata["invocation_id"] = invocation_id
-
-            request_json = {
-                "source_code": source_code,
-                "source_path": source_path,
-                "additional_instructions": additional_instructions,
-                "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
-                "optimizer": {
-                    "steps": steps,
-                    "code_generator": code_generator_config,
-                    "evaluator": evaluator_config,
-                    "search_policy": search_policy_config,
-                },
-                "eval_timeout": eval_timeout,
-                "save_logs": save_logs,
-                "log_dir": log_dir,
-                "require_review": require_review,
-                "metadata": metadata,
-            }
-            if api_keys:
-                request_json["api_keys"] = api_keys
-
-            response = requests.post(f"{__base_url__}/runs/", json=request_json, headers=auth_headers, timeout=timeout)
-            response.raise_for_status()
-            result = response.json()
-            # Handle None values for code and plan fields
-            if result.get("plan") is None:
-                result["plan"] = ""
-            if result.get("code") is None:
-                result["code"] = ""
-            return result
+            return WecoClient(auth_headers).start_run(
+                source_code=source_code,
+                source_path=source_path,
+                evaluation_command=evaluation_command,
+                metric_name=metric_name,
+                maximize=maximize,
+                steps=steps,
+                code_generator_config=code_generator_config,
+                evaluator_config=evaluator_config,
+                search_policy_config=search_policy_config,
+                additional_instructions=additional_instructions,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                log_dir=log_dir,
+                api_keys=api_keys,
+                require_review=require_review,
+                installation_id=installation_id,
+                invocation_id=invocation_id,
+                invoked_via=invoked_via,
+            )
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
             return None
@@ -191,16 +95,7 @@ def resume_optimization_run(
     """Request the backend to resume an interrupted run."""
     with console.status("[bold green]Resuming run..."):
         try:
-            request_json = {"metadata": {"client_name": "cli", "client_version": __pkg_version__}}
-            if api_keys:
-                request_json["api_keys"] = api_keys
-
-            response = requests.post(
-                f"{__base_url__}/runs/{run_id}/resume", json=request_json, headers=auth_headers, timeout=timeout
-            )
-            response.raise_for_status()
-            result = response.json()
-            return result
+            return WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
             return None
@@ -219,58 +114,17 @@ def evaluate_feedback_then_suggest_next_solution(
     api_keys: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Evaluate the feedback and suggest the next solution."""
+    client = WecoClient(auth_headers)
     try:
-        # Truncate the execution output before sending to backend
-        truncated_output = truncate_output(execution_output)
-
-        request_json = {"execution_output": truncated_output, "metadata": {}}
-        if api_keys:
-            request_json["api_keys"] = api_keys
-
-        response = requests.post(
-            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
-        )
-        response.raise_for_status()
-        result = response.json()
-        # Handle None values for code and plan fields
-        if result.get("plan") is None:
-            result["plan"] = ""
-        if result.get("code") is None:
-            result["code"] = ""
-        return result
-    except requests.exceptions.ReadTimeout as e:
-        # ReadTimeout can mean either:
-        # 1) the server truly didn't finish before the client's read timeout, or
-        # 2) the server finished but an intermediary (proxy/LB) dropped the response.
-        # We only try to recover case (2): fetch run status to confirm the step completed and reconstruct the response.
-        recovered = _recover_suggest_after_transport_error(
-            console=console, run_id=run_id, step=step, auth_headers=auth_headers
-        )
-        if recovered is not None:
-            return recovered
-        # If we cannot confirm completion, bubble up the timeout so the caller can resume later.
-        raise requests.exceptions.ReadTimeout(e)
-    except requests.exceptions.HTTPError as e:
-        # Treat only 502 Bad Gateway as a transient transport/gateway issue (akin to a dropped response).
-        # For 502, attempt the status-based recovery method used for ReadTimeout errors; otherwise render the HTTP error normally.
-        if (resp := getattr(e, "response", None)) is not None and resp.status_code == 502:
-            recovered = _recover_suggest_after_transport_error(
-                console=console, run_id=run_id, step=step, auth_headers=auth_headers
-            )
-            if recovered is not None:
-                return recovered
-        # Surface non-502 HTTP errors to the user.
-        handle_api_error(e, console)
+        return client.suggest(run_id, execution_output=execution_output, step=step, api_keys=api_keys)
+    except requests.exceptions.ReadTimeout:
+        # Original behavior: re-raise without printing — caller handles resume.
         raise
     except requests.exceptions.ConnectionError as e:
-        # Covers connection resets with no HTTP response (e.g., RemoteDisconnected).
-        # Treat as a potential "response lost after completion": try status-based recovery first similar to how ReadTimeout errors are handled.
-        recovered = _recover_suggest_after_transport_error(
-            console=console, run_id=run_id, step=step, auth_headers=auth_headers
-        )
-        if recovered is not None:
-            return recovered
-        # Surface the connection error to the user.
+        # Original behavior: show structured error via handle_api_error.
+        handle_api_error(e, console)
+        raise
+    except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
         raise
     except Exception as e:
@@ -286,26 +140,9 @@ def get_optimization_run_status(
     timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> Dict[str, Any]:
     """Get the current status of the optimization run."""
+    client = WecoClient(auth_headers)
     try:
-        response = requests.get(
-            f"{__base_url__}/runs/{run_id}", params={"include_history": include_history}, headers=auth_headers, timeout=timeout
-        )
-        response.raise_for_status()
-        result = response.json()
-        # Handle None values for code and plan fields in best_result and nodes
-        if result.get("best_result"):
-            if result["best_result"].get("code") is None:
-                result["best_result"]["code"] = ""
-            if result["best_result"].get("plan") is None:
-                result["best_result"]["plan"] = ""
-        # Handle None values for code and plan fields in nodes array
-        if result.get("nodes"):
-            for i, node in enumerate(result["nodes"]):
-                if node.get("plan") is None:
-                    result["nodes"][i]["plan"] = ""
-                if node.get("code") is None:
-                    result["nodes"][i]["code"] = ""
-        return result
+        return client.get_run_status(run_id, include_history=include_history)
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
         raise
@@ -316,19 +153,7 @@ def get_optimization_run_status(
 
 def send_heartbeat(run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 10)) -> bool:
     """Send a heartbeat signal to the backend."""
-    try:
-        response = requests.put(f"{__base_url__}/runs/{run_id}/heartbeat", headers=auth_headers, timeout=timeout)
-        response.raise_for_status()
-        return True
-    except requests.exceptions.HTTPError as e:
-        if e.response.status_code == 409:
-            print(f"Polling ignore: Run {run_id} is not running.", file=sys.stderr)
-        else:
-            print(f"Polling failed for run {run_id}: HTTP {e.response.status_code}", file=sys.stderr)
-        return False
-    except Exception as e:
-        print(f"Error sending heartbeat for run {run_id}: {e}", file=sys.stderr)
-        return False
+    return WecoClient(auth_headers).heartbeat(run_id)
 
 
 def report_termination(
@@ -340,18 +165,7 @@ def report_termination(
     timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> bool:
     """Report the termination reason to the backend."""
-    try:
-        response = requests.post(
-            f"{__base_url__}/runs/{run_id}/terminate",
-            json={"status_update": status_update, "termination_reason": reason, "termination_details": details},
-            headers=auth_headers,
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        return True
-    except Exception as e:
-        print(f"Warning: Failed to report termination to backend for run {run_id}: {e}", file=sys.stderr)
-        return False
+    return WecoClient(auth_headers).terminate(run_id, status_update=status_update, reason=reason, details=details)
 
 
 # --- Execution Queue API Functions ---
@@ -360,64 +174,15 @@ def report_termination(
 def get_execution_tasks(
     run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[ExecutionTasksResult]:
-    """Poll for ready execution tasks.
-
-    Args:
-        run_id: The run ID to get tasks for.
-        auth_headers: Authentication headers.
-        timeout: Request timeout.
-
-    Returns:
-        ExecutionTasksResult with tasks and run summary, or None if request failed.
-    """
-    try:
-        response = requests.get(
-            f"{__base_url__}/execution-tasks/", params={"run_id": run_id}, headers=auth_headers, timeout=timeout
-        )
-        response.raise_for_status()
-        data = response.json()
-
-        # Extract run summary from top-level run field
-        run_summary = None
-        if data.get("run"):
-            run_data = data["run"]
-            run_summary = RunSummary(
-                id=run_data["id"],
-                status=run_data["status"],
-                name=run_data.get("name"),
-                require_review=run_data.get("require_review", False),
-            )
-
-        return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
-    except requests.exceptions.HTTPError:
-        return None
-    except Exception:
-        return None
+    """Poll for ready execution tasks."""
+    return WecoClient(auth_headers).get_execution_tasks(run_id)
 
 
 def claim_execution_task(
     task_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[Dict[str, Any]]:
-    """Claim an execution task.
-
-    Args:
-        task_id: The task ID to claim.
-        auth_headers: Authentication headers.
-        timeout: Request timeout.
-
-    Returns:
-        The claimed task with revision, or None if already claimed or error.
-    """
-    try:
-        response = requests.post(f"{__base_url__}/execution-tasks/{task_id}/claim", headers=auth_headers, timeout=timeout)
-        if response.status_code == 409:
-            return None  # Already claimed
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError:
-        return None
-    except Exception:
-        return None
+    """Claim an execution task."""
+    return WecoClient(auth_headers).claim_task(task_id)
 
 
 def submit_execution_result(
@@ -428,32 +193,10 @@ def submit_execution_result(
     timeout: Union[int, Tuple[int, int]] = (10, 3650),
     api_keys: Optional[Dict[str, str]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Submit execution result for a task.
-
-    Args:
-        run_id: The run ID.
-        task_id: The task ID being completed.
-        execution_output: The execution output to submit.
-        auth_headers: Authentication headers.
-        timeout: Request timeout.
-        api_keys: Optional API keys for LLM providers.
-
-    Returns:
-        The suggest response, or None if request failed.
-    """
+    """Submit execution result for a task."""
+    client = WecoClient(auth_headers)
     try:
-        truncated_output = truncate_output(execution_output)
-        request_json = {"execution_output": truncated_output, "task_id": task_id, "metadata": {}}
-        if api_keys:
-            request_json["api_keys"] = api_keys
-
-        response = requests.post(
-            f"{__base_url__}/runs/{run_id}/suggest", json=request_json, headers=auth_headers, timeout=timeout
-        )
-        response.raise_for_status()
-        return response.json()
-    except requests.exceptions.HTTPError:
-        return None
+        return client.suggest(run_id, execution_output=execution_output, task_id=task_id, api_keys=api_keys)
     except Exception:
         return None
 
@@ -464,21 +207,11 @@ def submit_execution_result(
 def create_share_link(
     console: Console, run_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[str]:
-    """Create a public share link for a run.
-
-    Args:
-        console: Rich console for output.
-        run_id: The run ID to share.
-        auth_headers: Authentication headers.
-        timeout: Request timeout.
-
-    Returns:
-        The share ID if successful, or None on failure.
-    """
+    """Create a public share link for a run."""
     try:
-        response = requests.post(f"{__base_url__}/runs/{run_id}/share", headers=auth_headers, timeout=timeout)
-        response.raise_for_status()
-        result = response.json()
+        resp = requests.post(f"{__base_url__}/runs/{run_id}/share", headers=auth_headers, timeout=timeout)
+        resp.raise_for_status()
+        result = resp.json()
         return result.get("share_id")
     except requests.exceptions.HTTPError as e:
         handle_api_error(e, console)
