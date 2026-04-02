@@ -31,6 +31,50 @@ def _truncate_output(output: str) -> str:
     return f"{first}\n ... [{truncated_len} characters truncated] ... \n{last}"
 
 
+def format_api_error(e: requests.exceptions.HTTPError) -> str:
+    """Extract API error details as a plain multi-line string.
+
+    Mirrors :func:`handle_api_error` but returns text instead of printing,
+    so it can be passed to UI handlers (e.g. ``ui.on_error``) that don't
+    expose a Rich console — the Rich Live panel and the plain-text UI both
+    consume errors as plain strings via the ``on_error`` protocol.
+    """
+    status = getattr(e.response, "status_code", None)
+    try:
+        payload = e.response.json()
+        detail = payload.get("detail", payload)
+    except (ValueError, AttributeError):
+        return getattr(e.response, "text", "") or f"HTTP {status} Error"
+
+    def _format(detail_obj: Any) -> list[str]:
+        if isinstance(detail_obj, str):
+            return [detail_obj]
+        if isinstance(detail_obj, dict):
+            lines: list[str] = []
+            message_keys = ("message", "error", "msg", "detail")
+            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
+            lines.append(message or f"HTTP {status} Error")
+            suggestion = detail_obj.get("suggestion")
+            if suggestion:
+                lines.append(str(suggestion))
+            extras = {
+                k: v
+                for k, v in detail_obj.items()
+                if k not in {"message", "error", "msg", "detail", "suggestion"} and v not in (None, "")
+            }
+            for key, value in extras.items():
+                lines.append(f"{key}: {value}")
+            return lines
+        if isinstance(detail_obj, list) and detail_obj:
+            lines = list(_format(detail_obj[0]))
+            for extra in detail_obj[1:]:
+                lines.append(str(extra))
+            return lines
+        return [str(detail_obj) if detail_obj else f"HTTP {status} Error"]
+
+    return "\n".join(_format(detail))
+
+
 def handle_api_error(e: requests.exceptions.HTTPError, console) -> None:
     """Extract and display error messages from API responses in a structured format."""
     status = getattr(e.response, "status_code", None)
@@ -248,6 +292,52 @@ class WecoClient:
         if not include_code:
             params["include_code"] = False
         resp = self._get(f"/runs/{run_id}/node-list", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
+    def derive_run(
+        self,
+        run_id: str,
+        *,
+        derive_from: str = "lineage_best",
+        additional_instructions: str | None = None,
+        stop_parent: bool = True,
+        steps: int | None = None,
+        eval_timeout: int | None = None,
+        require_review: bool | None = None,
+        api_keys: dict[str, str] | None = None,
+    ) -> dict:
+        """``POST /runs/{run_id}/derive`` — create a derived run.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        body: dict[str, Any] = {
+            "derive_from": derive_from,
+            "stop_parent": stop_parent,
+            "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+        }
+        if additional_instructions is not None:
+            body["additional_instructions"] = additional_instructions
+        if steps is not None:
+            body["steps"] = steps
+        if eval_timeout is not None:
+            body["eval_timeout"] = eval_timeout
+        if require_review is not None:
+            body["require_review"] = require_review
+        if api_keys:
+            body["api_keys"] = api_keys
+        resp = self._post(f"/runs/{run_id}/derive", json=body, timeout=(10, 3650))
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_lineage(self, lineage_id: str) -> dict:
+        """``GET /lineages/{lineage_id}``
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        resp = self._get(f"/lineages/{lineage_id}")
         resp.raise_for_status()
         return resp.json()
 

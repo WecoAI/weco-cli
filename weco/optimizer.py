@@ -7,12 +7,14 @@ import traceback
 from dataclasses import dataclass
 from typing import Optional
 
+from requests.exceptions import HTTPError
 from rich.console import Console
 from rich.prompt import Confirm
 
 from . import __dashboard_url__
 from .api import (
     claim_execution_task,
+    format_api_error,
     get_execution_tasks,
     get_optimization_run_status,
     report_termination,
@@ -69,7 +71,7 @@ class HeartbeatSender(threading.Thread):
             traceback.print_exc(file=sys.stderr)
 
 
-def _run_optimization_loop(
+def run_optimization_loop(
     ui: OptimizationUI,
     run_id: str,
     auth_headers: dict,
@@ -189,21 +191,12 @@ def _run_optimization_loop(
 
             ui.on_output(term_out)
 
-            # Submit result
+            # Submit result. Errors (insufficient credits, candidate generation failures, etc.)
+            # propagate as HTTPError and are handled centrally by the outer try/except.
             ui.on_submitting()
             result = submit_execution_result(
                 run_id=run_id, task_id=task_id, execution_output=term_out, auth_headers=auth_headers, api_keys=api_keys
             )
-
-            if result is None:
-                ui.on_error("Failed to submit result")
-                return OptimizationResult(
-                    success=False,
-                    final_step=step,
-                    status="error",
-                    reason="submit_failed",
-                    details="Failed to submit execution result",
-                )
 
             is_done = result.get("is_done", False)
             prev_metric = result.get("previous_solution_metric_value")
@@ -220,12 +213,25 @@ def _run_optimization_loop(
     except KeyboardInterrupt:
         ui.on_interrupted()
         return OptimizationResult(success=False, final_step=step, status="terminated", reason="user_terminated_sigint")
+    except HTTPError as e:
+        # Surface structured API error details (insufficient credits, auth failures, candidate
+        # generation failures, etc.) through the UI rather than dumping a generic exception string.
+        error_message = format_api_error(e)
+        ui.on_error(error_message)
+        status_code = getattr(e.response, "status_code", None)
+        return OptimizationResult(
+            success=False,
+            final_step=step,
+            status="error",
+            reason=f"http_{status_code}" if status_code else "http_error",
+            details=error_message,
+        )
     except Exception as e:
         ui.on_error(f"Error: {e}")
         return OptimizationResult(success=False, final_step=step, status="error", reason="unknown", details=str(e))
 
 
-def _offer_apply_best_solution(
+def offer_apply_best_solution(
     console: Console,
     run_id: str,
     source_code: dict[str, str],
@@ -428,11 +434,12 @@ def resume_optimization(
             )
 
         with ui_instance as ui:
+            ui.on_init()
             # Populate UI with best solution from previous run if available
             if best_metric_value is not None and best_step is not None:
                 ui.on_metric(best_step, best_metric_value)
 
-            result = _run_optimization_loop(
+            result = run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
@@ -458,7 +465,7 @@ def resume_optimization(
                 console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
-        _offer_apply_best_solution(
+        offer_apply_best_solution(
             console=console,
             run_id=run_id,
             source_code=source_code,
@@ -616,7 +623,8 @@ def optimize(
             )
 
         with ui_instance as ui:
-            result = _run_optimization_loop(
+            ui.on_init()
+            result = run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
@@ -642,7 +650,7 @@ def optimize(
                 console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
-        _offer_apply_best_solution(
+        offer_apply_best_solution(
             console=console,
             run_id=run_id,
             source_code=source_code,

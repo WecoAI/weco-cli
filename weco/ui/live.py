@@ -1,13 +1,7 @@
-"""
-Optimization loop UI components.
-
-This module contains the UI protocol and implementations for displaying
-optimization progress in the CLI.
-"""
+"""Rich Live panel implementation of ``OptimizationUI``."""
 
 import time
-from dataclasses import dataclass, field
-from typing import List, Optional, Protocol
+from typing import List, Optional
 
 from rich.console import Console, Group
 from rich.live import Live
@@ -15,66 +9,7 @@ from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-
-class OptimizationUI(Protocol):
-    """Protocol for optimization UI event handlers."""
-
-    def on_polling(self, step: int) -> None:
-        """Called when polling for execution tasks."""
-        ...
-
-    def on_task_claimed(self, task_id: str, plan: Optional[str]) -> None:
-        """Called when a task is successfully claimed."""
-        ...
-
-    def on_executing(self, step: int) -> None:
-        """Called when starting to execute code."""
-        ...
-
-    def on_output(self, output: str, max_preview: int = 200) -> None:
-        """Called with execution output."""
-        ...
-
-    def on_submitting(self) -> None:
-        """Called when submitting result to backend."""
-        ...
-
-    def on_metric(self, step: int, value: float) -> None:
-        """Called when a metric value is received."""
-        ...
-
-    def on_complete(self, total_steps: int) -> None:
-        """Called when optimization completes successfully."""
-        ...
-
-    def on_stop_requested(self) -> None:
-        """Called when a stop request is received from dashboard."""
-        ...
-
-    def on_interrupted(self) -> None:
-        """Called when interrupted by user (Ctrl+C)."""
-        ...
-
-    def on_warning(self, message: str) -> None:
-        """Called for non-fatal warnings."""
-        ...
-
-    def on_error(self, message: str) -> None:
-        """Called for errors."""
-        ...
-
-
-@dataclass
-class UIState:
-    """Reactive state for the live optimization UI."""
-
-    step: int = 0
-    total_steps: int = 0
-    status: str = "initializing"  # polling, executing, submitting, complete, stopped, error
-    plan_preview: str = ""
-    output_preview: str = ""
-    metrics: List[tuple] = field(default_factory=list)  # (step, value)
-    error: Optional[str] = None
+from .base import UIState
 
 
 class LiveOptimizationUI:
@@ -124,6 +59,7 @@ class LiveOptimizationUI:
         self.maximize = maximize
         self.state = UIState(total_steps=total_steps)
         self._live: Optional[Live] = None
+        self._derived_from: Optional[dict] = None  # populated by on_init for derived runs
 
     def _sparkline(self, values: List[float], max_width: int) -> str:
         """
@@ -170,6 +106,10 @@ class LiveOptimizationUI:
             grid.add_row("Model", f"[cyan]{self.model}[/]")
         if self.metric_name:
             grid.add_row("Metric", f"[magenta]{self.metric_name}[/]")
+        if self._derived_from:
+            df = self._derived_from
+            metric_suffix = f" [dim](metric: {df['metric_value']:.6g})[/]" if df.get("metric_value") is not None else ""
+            grid.add_row("From", f"[yellow]{df['run_id']}[/] [dim]@ step {df['step']}[/]{metric_suffix}")
         grid.add_row("", "")
 
         # Progress (always shown)
@@ -267,6 +207,12 @@ class LiveOptimizationUI:
             self._live = None
 
     # --- OptimizationUI Protocol Implementation ---
+    def on_init(self, derived_from: Optional[dict] = None) -> None:
+        """Display the run header. For derived runs, the parent reference is
+        included as a "From" row in the panel."""
+        self._derived_from = derived_from
+        self._update()
+
     def on_polling(self, step: int) -> None:
         self.state.step = step
         self.state.status = "polling"
@@ -315,119 +261,3 @@ class LiveOptimizationUI:
         self.state.error = message
         self.state.status = "error"
         self._update()
-
-
-class PlainOptimizationUI:
-    """
-    Plain text implementation of OptimizationUI for machine-readable output.
-
-    Designed to be consumed by LLM agents - outputs structured, parseable text
-    without Rich formatting, ANSI codes, or interactive elements.
-    Includes full execution output for agent consumption.
-    """
-
-    def __init__(
-        self,
-        run_id: str,
-        run_name: str,
-        total_steps: int,
-        dashboard_url: str,
-        model: str = "",
-        metric_name: str = "",
-        maximize: bool = True,
-    ):
-        self.run_id = run_id
-        self.run_name = run_name
-        self.total_steps = total_steps
-        self.dashboard_url = dashboard_url
-        self.model = model
-        self.metric_name = metric_name
-        self.maximize = maximize
-        self.current_step = 0
-        self.metrics: List[tuple] = []  # (step, value)
-        self._header_printed = False
-
-    def _print(self, message: str) -> None:
-        """Print a message to stdout with flush for immediate output."""
-        print(message, flush=True)
-
-    def _print_header(self) -> None:
-        """Print run header info once at start."""
-        if self._header_printed:
-            return
-        self._header_printed = True
-        self._print("=" * 60)
-        self._print("WECO OPTIMIZATION RUN")
-        self._print("=" * 60)
-        self._print(f"Run ID: {self.run_id}")
-        self._print(f"Run Name: {self.run_name}")
-        self._print(f"Dashboard: {self.dashboard_url}")
-        if self.model:
-            self._print(f"Model: {self.model}")
-        if self.metric_name:
-            self._print(f"Metric: {self.metric_name}")
-        self._print(f"Total Steps: {self.total_steps}")
-        self._print("=" * 60)
-        self._print("")
-
-    # --- Context manager (no-op for plain output) ---
-    def __enter__(self) -> "PlainOptimizationUI":
-        self._print_header()
-        return self
-
-    def __exit__(self, *args) -> None:
-        pass
-
-    # --- OptimizationUI Protocol Implementation ---
-    def on_polling(self, step: int) -> None:
-        self.current_step = step
-        self._print(f"[STEP {step}/{self.total_steps}] Polling for task...")
-
-    def on_task_claimed(self, task_id: str, plan: Optional[str]) -> None:
-        self._print(f"[TASK CLAIMED] {task_id}")
-        if plan:
-            self._print(f"[PLAN] {plan}")
-
-    def on_executing(self, step: int) -> None:
-        self.current_step = step
-        self._print(f"[STEP {step}/{self.total_steps}] Executing code...")
-
-    def on_output(self, output: str, max_preview: int = 200) -> None:
-        # For plain mode, output the full execution result for LLM consumption
-        self._print("[EXECUTION OUTPUT START]")
-        self._print(output)
-        self._print("[EXECUTION OUTPUT END]")
-
-    def on_submitting(self) -> None:
-        self._print("[SUBMITTING] Sending result to backend...")
-
-    def on_metric(self, step: int, value: float) -> None:
-        self.metrics.append((step, value))
-        best_fn = max if self.maximize else min
-        best = best_fn(m[1] for m in self.metrics) if self.metrics else value
-        self._print(f"[METRIC] Step {step}: {value:.6g} (best so far: {best:.6g})")
-
-    def on_complete(self, total_steps: int) -> None:
-        self._print("")
-        self._print("=" * 60)
-        self._print("[COMPLETE] Optimization finished successfully")
-        self._print(f"Total steps completed: {total_steps}")
-        if self.metrics:
-            values = [m[1] for m in self.metrics]
-            best_fn = max if self.maximize else min
-            self._print(f"Best metric value: {best_fn(values):.6g}")
-        self._print("=" * 60)
-
-    def on_stop_requested(self) -> None:
-        self._print("")
-        self._print("[STOPPED] Run stopped by user request")
-
-    def on_interrupted(self) -> None:
-        self._print("")
-        self._print("[INTERRUPTED] Run interrupted (Ctrl+C)")
-
-    def on_warning(self, message: str) -> None:
-        self._print(f"[WARNING] {message}")
-
-    def on_error(self, message: str) -> None:
-        self._print(f"[ERROR] {message}")
