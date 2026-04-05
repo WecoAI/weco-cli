@@ -256,17 +256,26 @@ All observe commands are fire-and-forget — they always exit 0, so they never c
 | Command | Description |
 |---------|-------------|
 | `weco setup claude-code` | Set up Weco skill for Claude Code |
-| `weco setup cursor` | Set up Weco rules for Cursor |
+| `weco setup cursor` | Set up Weco skill for Cursor |
+| `weco setup codex` | Set up Weco skill for Codex |
+| `weco setup openclaw` | Set up Weco skill for OpenClaw |
+| `weco setup all` | Set up Weco for all supported AI tools |
 
 The `setup` command installs Weco skills for AI coding assistants:
 
 ```bash
+weco setup              # Interactive picker, defaults to "All of the above"
 weco setup claude-code  # For Claude Code
 weco setup cursor       # For Cursor
+weco setup codex        # For Codex
+weco setup openclaw     # For OpenClaw
+weco setup all          # For all supported tools
 ```
 
-- **Claude Code**: Downloads the Weco skill to `~/.claude/skills/weco/` and updates `~/.claude/CLAUDE.md`
-- **Cursor**: Downloads the Weco skill to `~/.cursor/skills/weco/` and creates `~/.cursor/rules/weco.mdc`
+- **Claude Code**: Downloads the Weco skill to `~/.claude/skills/weco/` and writes `CLAUDE.md` inside the installed skill
+- **Cursor**: Downloads the Weco skill to `~/.cursor/skills/weco/`
+- **Codex**: Downloads the Weco skill to `$CODEX_HOME/skills/weco/` (defaults to `~/.codex/skills/weco/`)
+- **OpenClaw**: Downloads the Weco skill to `~/.openclaw/skills/weco/`
 
 ### Model Selection
 
