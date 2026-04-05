@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import zipfile
+from collections.abc import Callable
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
 
@@ -22,6 +23,13 @@ from .events import (
     SkillInstallStartedEvent,
     SkillInstallCompletedEvent,
     SkillInstallFailedEvent,
+)
+from .setup_targets import (
+    ALL_SETUP_OPTION_LABEL,
+    ALL_SETUP_OPTION_NAME,
+    SETUP_TARGET_BY_NAME,
+    SETUP_TARGET_NAMES,
+    SETUP_TARGETS,
 )
 from .utils import copy_directory, copy_file
 
@@ -64,21 +72,19 @@ WECO_SKILL_REPO_URL = "https://github.com/WecoAI/weco-skill"
 WECO_SKILL_BRANCH = "main"
 
 # Claude Code paths
-CLAUDE_DIR = pathlib.Path.home() / ".claude"
-CLAUDE_SKILLS_DIR = CLAUDE_DIR / "skills"
-WECO_SKILL_DIR = CLAUDE_SKILLS_DIR / "weco"
+WECO_SKILL_DIR = SETUP_TARGET_BY_NAME["claude-code"].install_dir
 WECO_CLAUDE_SNIPPET_PATH = WECO_SKILL_DIR / "snippets" / "claude.md"
 WECO_CLAUDE_MD_PATH = WECO_SKILL_DIR / "CLAUDE.md"
-# Cursor paths
-CURSOR_DIR = pathlib.Path.home() / ".cursor"
-CURSOR_SKILLS_DIR = CURSOR_DIR / "skills"
-CURSOR_WECO_SKILL_DIR = CURSOR_SKILLS_DIR / "weco"
+# Other tool paths
+CURSOR_WECO_SKILL_DIR = SETUP_TARGET_BY_NAME["cursor"].install_dir
+CODEX_WECO_SKILL_DIR = SETUP_TARGET_BY_NAME["codex"].install_dir
+OPENCLAW_WECO_SKILL_DIR = SETUP_TARGET_BY_NAME["openclaw"].install_dir
 
 # Files/directories to skip when copying local repos
 _COPY_IGNORE_PATTERNS = {".git", "__pycache__", ".DS_Store"}
 
 # Allowed parent directories for safe removal (defense in depth)
-_ALLOWED_SKILL_PARENTS = {CLAUDE_SKILLS_DIR, CURSOR_SKILLS_DIR}
+_ALLOWED_SKILL_PARENTS = {target.install_parent for target in SETUP_TARGETS}
 
 
 # =============================================================================
@@ -345,40 +351,70 @@ def install_skill(skill_dir: pathlib.Path, console: Console, local_path: pathlib
 # =============================================================================
 
 
-def setup_claude_code(console: Console, local_path: pathlib.Path | None = None) -> None:
-    """Set up Weco skill for Claude Code."""
-    console.print("[bold blue]Setting up Weco for Claude Code...[/]\n")
-
-    # Install the skill into Claude's skills directory.
-    install_skill(WECO_SKILL_DIR, console, local_path)
-
-    # Copy snippets/claude.md to CLAUDE.md in the skill directory
-    copy_file(WECO_CLAUDE_SNIPPET_PATH, WECO_CLAUDE_MD_PATH)
-    console.print("[green]CLAUDE.md installed to skill directory.[/]")
-
+def _print_setup_complete(console: Console, skill_dir: pathlib.Path, local_path: pathlib.Path | None) -> None:
+    """Print a shared success footer for setup commands."""
     console.print("\n[bold green]Setup complete![/]")
     if local_path:
         console.print(f"[dim]Skill copied from: {local_path}[/]")
-    console.print(f"[dim]Skill installed at: {WECO_SKILL_DIR}[/]")
+    console.print(f"[dim]Skill installed at: {skill_dir}[/]")
+
+
+def _setup_skill_target(
+    console: Console,
+    *,
+    label: str,
+    skill_dir: pathlib.Path,
+    local_path: pathlib.Path | None = None,
+    after_install: Callable[[], None] | None = None,
+) -> None:
+    """Install the Weco skill into a tool-specific directory."""
+    console.print(f"[bold blue]Setting up Weco for {label}...[/]\n")
+    install_skill(skill_dir, console, local_path)
+    if after_install is not None:
+        after_install()
+    _print_setup_complete(console, skill_dir, local_path)
+
+
+def setup_claude_code(console: Console, local_path: pathlib.Path | None = None) -> None:
+    """Set up Weco skill for Claude Code."""
+    def install_claude_snippet() -> None:
+        copy_file(WECO_CLAUDE_SNIPPET_PATH, WECO_CLAUDE_MD_PATH)
+        console.print("[green]CLAUDE.md installed to skill directory.[/]")
+
+    _setup_skill_target(
+        console,
+        label="Claude Code",
+        skill_dir=WECO_SKILL_DIR,
+        local_path=local_path,
+        after_install=install_claude_snippet,
+    )
 
 
 def setup_cursor(console: Console, local_path: pathlib.Path | None = None) -> None:
-    """Set up Weco rules for Cursor."""
-    console.print("[bold blue]Setting up Weco for Cursor...[/]\n")
+    """Set up Weco skill for Cursor."""
+    _setup_skill_target(console, label="Cursor", skill_dir=CURSOR_WECO_SKILL_DIR, local_path=local_path)
 
-    install_skill(CURSOR_WECO_SKILL_DIR, console, local_path)
 
-    console.print("\n[bold green]Setup complete![/]")
-    if local_path:
-        console.print(f"[dim]Skill copied from: {local_path}[/]")
-    console.print(f"[dim]Skill installed at: {CURSOR_WECO_SKILL_DIR}[/]")
+def setup_codex(console: Console, local_path: pathlib.Path | None = None) -> None:
+    """Set up Weco skill for Codex."""
+    _setup_skill_target(console, label="Codex", skill_dir=CODEX_WECO_SKILL_DIR, local_path=local_path)
+
+
+def setup_openclaw(console: Console, local_path: pathlib.Path | None = None) -> None:
+    """Set up Weco skill for OpenClaw."""
+    _setup_skill_target(console, label="OpenClaw", skill_dir=OPENCLAW_WECO_SKILL_DIR, local_path=local_path)
 
 
 # =============================================================================
 # CLI entry point
 # =============================================================================
 
-SETUP_HANDLERS = {"claude-code": setup_claude_code, "cursor": setup_cursor}
+SETUP_HANDLERS = {
+    "claude-code": setup_claude_code,
+    "cursor": setup_cursor,
+    "codex": setup_codex,
+    "openclaw": setup_openclaw,
+}
 
 
 def prompt_tool_selection(console: Console) -> list[str]:
@@ -387,16 +423,16 @@ def prompt_tool_selection(console: Console) -> list[str]:
     Returns:
         List of tool names to set up.
     """
-    tool_names = list(SETUP_HANDLERS.keys())
+    tool_names = list(SETUP_TARGET_NAMES)
     all_option = len(tool_names) + 1
 
     console.print("\n[bold cyan]Available tools to set up:[/]\n")
-    for i, name in enumerate(tool_names, 1):
-        console.print(f"  {i}. {name}")
-    console.print(f"  {all_option}. All of the above")
+    for i, target in enumerate(SETUP_TARGETS, 1):
+        console.print(f"  {i}. {target.label} [dim]({target.name})[/]")
+    console.print(f"  {all_option}. {ALL_SETUP_OPTION_LABEL} [dim](default)[/]")
 
     valid_choices = [str(i) for i in range(1, all_option + 1)]
-    choice = Prompt.ask("\n[bold]Select an option[/]", choices=valid_choices, show_choices=True)
+    choice = Prompt.ask("\n[bold]Select an option[/]", choices=valid_choices, default=str(all_option), show_choices=True)
 
     idx = int(choice)
     if idx == all_option:
@@ -440,10 +476,12 @@ def handle_setup_command(args, console: Console) -> None:
 
     if args.tool is None:
         selected_tools = prompt_tool_selection(console)
+    elif args.tool == ALL_SETUP_OPTION_NAME:
+        selected_tools = list(SETUP_TARGET_NAMES)
     else:
         handler = SETUP_HANDLERS.get(args.tool)
         if handler is None:
-            available_tools = ", ".join(SETUP_HANDLERS)
+            available_tools = ", ".join((*SETUP_HANDLERS, ALL_SETUP_OPTION_NAME))
             console.print(f"[bold red]Error:[/] Unknown tool: {args.tool}")
             console.print(f"Available tools: {available_tools}")
             sys.exit(1)

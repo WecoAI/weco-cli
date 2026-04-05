@@ -25,6 +25,7 @@ from packaging.version import parse as parse_version
 from . import __pkg_version__, __base_url__, __dashboard_url__
 from .config import load_weco_api_key
 from .events import EventContext, create_event_context, set_event_context
+from .setup_targets import SETUP_TARGETS
 
 
 _UNSET = object()
@@ -37,7 +38,7 @@ _CLI_UPDATE_PYPI_URL = "https://pypi.org/pypi/weco/json"
 class InstalledSkill:
     """A locally installed weco skill."""
 
-    tool: str  # "claude-code" or "cursor"
+    tool: str
     path: pathlib.Path
     version: str  # Installed skill version ("" if unknown)
 
@@ -91,17 +92,15 @@ class WecoEnv:
     @property
     def installed_skills(self) -> list[InstalledSkill]:
         """Discover locally installed weco skills."""
-        from .setup import WECO_SKILL_DIR, CURSOR_WECO_SKILL_DIR
-
         skills = []
-        for tool, path in [("claude-code", WECO_SKILL_DIR), ("cursor", CURSOR_WECO_SKILL_DIR)]:
-            if path.exists():
+        for target in SETUP_TARGETS:
+            if target.install_dir.exists():
                 version = ""
                 try:
-                    version = (path / "VERSION").read_text().strip()
+                    version = (target.install_dir / "VERSION").read_text().strip()
                 except (OSError, FileNotFoundError):
                     pass
-                skills.append(InstalledSkill(tool=tool, path=path, version=version))
+                skills.append(InstalledSkill(tool=target.name, path=target.install_dir, version=version))
         return skills
 
     # ── Event Context ───────────────────────────────────────────
