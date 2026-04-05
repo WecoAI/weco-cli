@@ -1,5 +1,9 @@
 """Tests for CLI functions, particularly parse_api_keys."""
 
+import pathlib
+import subprocess
+import sys
+
 import pytest
 from weco.cli import parse_api_keys
 
@@ -68,3 +72,21 @@ class TestParseApiKeys:
         """Test that mixed case providers are normalized correctly."""
         result = parse_api_keys(["OpenAI=sk-xxx", "ANTHROPIC=sk-ant-yyy"])
         assert result == {"openai": "sk-xxx", "anthropic": "sk-ant-yyy"}
+
+
+def test_module_execution_invokes_cli_help():
+    """Running the module directly should invoke the CLI entrypoint."""
+    repo_root = pathlib.Path(__file__).resolve().parent.parent
+    result = subprocess.run(
+        [sys.executable, "-m", "weco.cli", "setup", "--help"],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0
+    assert "usage:" in result.stdout
+    assert "claude-code" in result.stdout
+    assert "codex" in result.stdout
+    assert "openclaw" in result.stdout

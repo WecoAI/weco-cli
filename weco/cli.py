@@ -645,3 +645,7 @@ def _main() -> None:
         # or if an invalid command is provided.
         parser.print_help()  # Default action if no command given and not chatbot.
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
