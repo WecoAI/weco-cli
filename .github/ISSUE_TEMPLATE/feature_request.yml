@@ -1,0 +1,65 @@
+name: Feature request
+description: Propose a feature, UX improvement, or workflow enhancement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What would you like to see added or improved?
+      placeholder: A short description of the requested feature.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: requester_mode
+    attributes:
+      label: Request source
+      description: Who is proposing this request?
+      options:
+        - Human user
+        - Coding agent / automation
+        - Human + coding agent
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: What workflow, pain point, or limitation is driving this request?
+      placeholder: Describe the underlying problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the preferred approach.
+      placeholder: Explain what should change.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Any workarounds, rejected options, or tradeoffs.
+
+  - type: textarea
+    id: success
+    attributes:
+      label: Success criteria
+      description: How would we know this request is done and successful?
+      placeholder: Clear acceptance criteria, user outcome, or measurable result.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched for an existing issue first.
+          required: true
