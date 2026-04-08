@@ -549,7 +549,7 @@ def main() -> None:
 def _main() -> None:
     """Internal main function containing the CLI logic."""
     parser = argparse.ArgumentParser(
-        description="[bold cyan]Weco CLI[/]\nEnhance your code with AI-driven optimization.",
+        description="Weco CLI\nEnhance your code with AI-driven optimization.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
