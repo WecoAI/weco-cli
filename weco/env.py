@@ -25,7 +25,7 @@ from packaging.version import parse as parse_version
 from . import __pkg_version__, __base_url__, __dashboard_url__
 from .config import load_weco_api_key
 from .events import EventContext, create_event_context, set_event_context
-from .setup_targets import SETUP_TARGETS
+from .commands.setup.targets import SETUP_TARGETS
 
 
 _UNSET = object()

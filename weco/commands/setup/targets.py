@@ -1,6 +1,6 @@
 """Shared setup target definitions for AI tool integrations."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import pathlib
 
 
@@ -12,6 +12,8 @@ class SetupTarget:
     label: str
     help_text: str
     install_dir: pathlib.Path
+    # Extra files to copy after install, as (src, dst) pairs relative to install_dir.
+    extra_files: tuple[tuple[str, str], ...] = field(default_factory=tuple)
 
     @property
     def install_parent(self) -> pathlib.Path:
@@ -25,6 +27,7 @@ SETUP_TARGETS = (
         label="Claude Code",
         help_text="Set up Weco skill for Claude Code",
         install_dir=pathlib.Path.home() / ".claude" / "skills" / "weco",
+        extra_files=(("snippets/claude.md", "CLAUDE.md"),),
     ),
     SetupTarget(
         name="cursor",

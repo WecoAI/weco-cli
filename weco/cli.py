@@ -10,7 +10,7 @@ from .constants import DEFAULT_MODELS
 from .env import WecoEnv
 from .events import send_event, get_event_context, CLIInvokedEvent, RunStartAttemptedEvent
 from .observe.cli import configure_observe_parser, execute_observe_command
-from .setup_targets import ALL_SETUP_OPTION_NAME, SETUP_TARGETS
+from .commands.setup.targets import ALL_SETUP_OPTION_NAME, SETUP_TARGETS
 from .utils import get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
 from .validation import validate_sources, validate_log_directory, ValidationError, print_validation_error
 
@@ -633,7 +633,7 @@ def _main() -> None:
         handle_share_command(run_id=args.run_id, output_mode=args.output, console=console)
         sys.exit(0)
     elif args.command == "setup":
-        from .setup import handle_setup_command
+        from .commands.setup import handle_setup_command
 
         handle_setup_command(args, console)
         sys.exit(0)

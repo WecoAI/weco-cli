@@ -7,8 +7,8 @@ import pytest
 from rich.console import Console
 
 from weco.cli import configure_setup_parser
-from weco.setup import handle_setup_command, prompt_tool_selection
-from weco.setup_targets import ALL_SETUP_OPTION_NAME, SETUP_TARGET_NAMES
+from weco.commands.setup import handle_setup_command, prompt_tool_selection
+from weco.commands.setup.targets import ALL_SETUP_OPTION_NAME, SETUP_TARGET_NAMES
 
 
 def build_setup_parser() -> argparse.ArgumentParser:
@@ -44,7 +44,7 @@ def test_prompt_tool_selection_defaults_to_all(monkeypatch):
         captured["default"] = kwargs.get("default")
         return kwargs["default"]
 
-    monkeypatch.setattr("weco.setup.Prompt.ask", fake_ask)
+    monkeypatch.setattr("weco.commands.setup.Prompt.ask", fake_ask)
 
     selected = prompt_tool_selection(console=build_console())
 
@@ -59,7 +59,7 @@ def test_handle_setup_command_all_runs_all_handlers(monkeypatch):
     def fake_run_setup(tool, console, local_path, ctx):
         called_tools.append((tool, local_path, ctx))
 
-    monkeypatch.setattr("weco.setup._run_setup_for_tool", fake_run_setup)
+    monkeypatch.setattr("weco.commands.setup.run_setup_for_tool", fake_run_setup)
     args = argparse.Namespace(tool=ALL_SETUP_OPTION_NAME, local=None)
 
     handle_setup_command(args, console=build_console())
@@ -75,7 +75,7 @@ def test_handle_setup_command_runs_single_selected_handler(monkeypatch, tool):
     def fake_run_setup(selected_tool, console, local_path, ctx):
         called_tools.append((selected_tool, local_path, ctx))
 
-    monkeypatch.setattr("weco.setup._run_setup_for_tool", fake_run_setup)
+    monkeypatch.setattr("weco.commands.setup.run_setup_for_tool", fake_run_setup)
     args = argparse.Namespace(tool=tool, local=None)
 
     handle_setup_command(args, console=build_console())

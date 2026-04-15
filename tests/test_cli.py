@@ -78,11 +78,7 @@ def test_module_execution_invokes_cli_help():
     """Running the module directly should invoke the CLI entrypoint."""
     repo_root = pathlib.Path(__file__).resolve().parent.parent
     result = subprocess.run(
-        [sys.executable, "-m", "weco.cli", "setup", "--help"],
-        cwd=repo_root,
-        capture_output=True,
-        text=True,
-        check=False,
+        [sys.executable, "-m", "weco.cli", "setup", "--help"], cwd=repo_root, capture_output=True, text=True, check=False
     )
 
     assert result.returncode == 0
