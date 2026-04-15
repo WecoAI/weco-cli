@@ -1,8 +1,12 @@
 from typing import Any, Dict, List, Tuple, Union
+import io
 import json
 import shutil
 import time
 import subprocess
+import zipfile
+from urllib.error import HTTPError, URLError
+from urllib.request import urlopen
 import psutil
 from rich.layout import Layout
 from rich.live import Live
@@ -136,6 +140,108 @@ def remove_directory(path: pathlib.Path) -> None:
     """
     if path.exists():
         shutil.rmtree(path)
+
+
+class UnsafeRemoveError(Exception):
+    """Raised when ``safe_remove_directory`` refuses to remove a path."""
+
+
+def safe_remove_directory(path: pathlib.Path, *, allowed_parents: set[pathlib.Path], expected_name: str | None = None) -> None:
+    """Remove a directory only if it passes defensive safety checks.
+
+    The path must:
+      * exist and be a real directory (not a symlink)
+      * not be home, root, or an ancestor of home
+      * be a direct child of one of ``allowed_parents``
+      * match ``expected_name`` if supplied
+
+    Does nothing if the path doesn't exist. Raises ``UnsafeRemoveError`` if any
+    other check fails.
+    """
+    resolved = path.resolve()
+
+    if not resolved.exists():
+        return
+    if not resolved.is_dir():
+        raise UnsafeRemoveError(f"Refusing to remove: not a directory: {resolved}")
+    if resolved.is_symlink():
+        raise UnsafeRemoveError(f"Refusing to remove: path is a symlink: {resolved}")
+
+    home = pathlib.Path.home().resolve()
+    if resolved == home:
+        raise UnsafeRemoveError(f"Refusing to remove: path is home directory: {resolved}")
+    if resolved == pathlib.Path("/").resolve():
+        raise UnsafeRemoveError(f"Refusing to remove: path is root directory: {resolved}")
+    try:
+        home.relative_to(resolved)
+        raise UnsafeRemoveError(f"Refusing to remove: path is a parent of home directory: {resolved}")
+    except ValueError:
+        pass
+
+    resolved_allowed = {p.resolve() for p in allowed_parents}
+    if resolved.parent not in resolved_allowed:
+        raise UnsafeRemoveError(
+            f"Refusing to remove: path {resolved} is not a direct child of allowed directories: "
+            f"{[str(p) for p in resolved_allowed]}"
+        )
+
+    if expected_name is not None and resolved.name != expected_name:
+        raise UnsafeRemoveError(f"Refusing to remove: directory name is not {expected_name!r}: {resolved}")
+
+    shutil.rmtree(resolved)
+
+
+class DownloadError(Exception):
+    """Raised when downloading or extracting a remote archive fails."""
+
+
+def download_github_archive(url: str, dest: pathlib.Path, *, timeout: int = 60) -> None:
+    """Download a GitHub-style zip archive and extract its contents to ``dest``.
+
+    GitHub archive zips wrap everything in a single top-level directory (e.g.
+    ``repo-main/``); this function strips that prefix so ``dest`` receives the
+    repo contents directly.
+    """
+    try:
+        with urlopen(url, timeout=timeout) as response:
+            zip_data = io.BytesIO(response.read())
+    except HTTPError as e:
+        raise DownloadError(f"Failed to download: HTTP {e.code} - {e.reason}")
+    except URLError as e:
+        raise DownloadError(f"Failed to download: {e.reason}")
+    except TimeoutError:
+        raise DownloadError("Failed to download: connection timed out")
+    except Exception as e:
+        raise DownloadError(f"Failed to download: {e}")
+
+    try:
+        with zipfile.ZipFile(zip_data) as zf:
+            top_level_dirs = {name.split("/")[0] for name in zf.namelist() if "/" in name}
+            if len(top_level_dirs) != 1:
+                raise DownloadError("Unexpected zip structure: expected single top-level directory")
+
+            prefix = f"{top_level_dirs.pop()}/"
+            dest.mkdir(parents=True, exist_ok=True)
+
+            for member in zf.namelist():
+                if not member.startswith(prefix):
+                    continue
+                relative_path = member[len(prefix) :]
+                if not relative_path:
+                    continue
+                target_path = dest / relative_path
+                if member.endswith("/"):
+                    target_path.mkdir(parents=True, exist_ok=True)
+                else:
+                    target_path.parent.mkdir(parents=True, exist_ok=True)
+                    with zf.open(member) as source, open(target_path, "wb") as out:
+                        out.write(source.read())
+    except zipfile.BadZipFile:
+        raise DownloadError("Downloaded file is not a valid zip archive")
+    except DownloadError:
+        raise
+    except Exception as e:
+        raise DownloadError(f"Failed to extract zip: {e}")
 
 
 # Visualization helper functions

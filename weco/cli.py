@@ -10,6 +10,7 @@ from .constants import DEFAULT_MODELS
 from .env import WecoEnv
 from .events import send_event, get_event_context, CLIInvokedEvent, RunStartAttemptedEvent
 from .observe.cli import configure_observe_parser, execute_observe_command
+from .commands.setup.targets import ALL_SETUP_OPTION_NAME, SETUP_TARGETS
 from .utils import get_default_model, UnrecognizedAPIKeysError, DefaultModelNotFoundError
 from .validation import validate_sources, validate_log_directory, ValidationError, print_validation_error
 
@@ -298,11 +299,12 @@ def configure_setup_parser(setup_parser: argparse.ArgumentParser) -> None:
     """Configure the setup command parser and its subcommands."""
     setup_subparsers = setup_parser.add_subparsers(dest="tool", help="AI tool to set up")
 
-    claude_parser = setup_subparsers.add_parser("claude-code", help="Set up Weco skill for Claude Code")
-    _add_setup_source_args(claude_parser)
+    for target in SETUP_TARGETS:
+        target_parser = setup_subparsers.add_parser(target.name, help=target.help_text)
+        _add_setup_source_args(target_parser)
 
-    cursor_parser = setup_subparsers.add_parser("cursor", help="Set up Weco rules for Cursor")
-    _add_setup_source_args(cursor_parser)
+    all_parser = setup_subparsers.add_parser(ALL_SETUP_OPTION_NAME, help="Set up Weco for all supported AI tools")
+    _add_setup_source_args(all_parser)
 
 
 def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
@@ -631,7 +633,7 @@ def _main() -> None:
         handle_share_command(run_id=args.run_id, output_mode=args.output, console=console)
         sys.exit(0)
     elif args.command == "setup":
-        from .setup import handle_setup_command
+        from .commands.setup import handle_setup_command
 
         handle_setup_command(args, console)
         sys.exit(0)
@@ -643,3 +645,7 @@ def _main() -> None:
         # or if an invalid command is provided.
         parser.print_help()  # Default action if no command given and not chatbot.
         sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()

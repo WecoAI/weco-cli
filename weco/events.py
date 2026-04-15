@@ -67,7 +67,7 @@ class CLIInvokedEvent(BaseEvent):
 class SkillInstallStartedEvent(BaseEvent):
     """Tracked when skill installation begins."""
 
-    tool: str  # 'cursor' or 'claude_code'
+    tool: str
     source: str  # 'local' or 'repo'
 
     @property
