@@ -17,6 +17,7 @@ from .core.api import (  # noqa: F401
     WecoClient,
     RunSummary,
     ExecutionTasksResult,
+    format_api_error,
     handle_api_error,
     _truncate_output,
 )
@@ -189,15 +190,24 @@ def submit_execution_result(
     task_id: str,
     execution_output: str,
     auth_headers: dict = {},
-    timeout: Union[int, Tuple[int, int]] = (10, 3650),
+    timeout: Optional[Union[int, Tuple[int, int]]] = None,
     api_keys: Optional[Dict[str, str]] = None,
-) -> Optional[Dict[str, Any]]:
-    """Submit execution result for a task."""
+) -> Dict[str, Any]:
+    """Submit execution result for a task.
+
+    Args:
+        timeout: Optional override for the HTTP ``(connect, read)`` timeout.
+            ``None`` keeps the existing default of ``(10, 3650)`` so callers
+            that don't opt in see no behavior change.
+
+    Raises:
+        requests.exceptions.HTTPError: On non-2xx responses (e.g. 402 insufficient
+            credits, 503 candidate generation failed). Callers should format the
+            error via :func:`format_api_error` and surface it through the UI.
+        requests.exceptions.RequestException: On network errors.
+    """
     client = WecoClient(auth_headers)
-    try:
-        return client.suggest(run_id, execution_output=execution_output, task_id=task_id, api_keys=api_keys)
-    except Exception:
-        return None
+    return client.suggest(run_id, execution_output=execution_output, task_id=task_id, api_keys=api_keys, timeout=timeout)
 
 
 # --- Share API Functions ---

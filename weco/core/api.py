@@ -31,6 +31,50 @@ def _truncate_output(output: str) -> str:
     return f"{first}\n ... [{truncated_len} characters truncated] ... \n{last}"
 
 
+def format_api_error(e: requests.exceptions.HTTPError) -> str:
+    """Extract API error details as a plain multi-line string.
+
+    Mirrors :func:`handle_api_error` but returns text instead of printing,
+    so it can be passed to UI handlers (e.g. ``ui.on_error``) that don't
+    expose a Rich console — the Rich Live panel and the plain-text UI both
+    consume errors as plain strings via the ``on_error`` protocol.
+    """
+    status = getattr(e.response, "status_code", None)
+    try:
+        payload = e.response.json()
+        detail = payload.get("detail", payload)
+    except (ValueError, AttributeError):
+        return getattr(e.response, "text", "") or f"HTTP {status} Error"
+
+    def _format(detail_obj: Any) -> list[str]:
+        if isinstance(detail_obj, str):
+            return [detail_obj]
+        if isinstance(detail_obj, dict):
+            lines: list[str] = []
+            message_keys = ("message", "error", "msg", "detail")
+            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
+            lines.append(message or f"HTTP {status} Error")
+            suggestion = detail_obj.get("suggestion")
+            if suggestion:
+                lines.append(str(suggestion))
+            extras = {
+                k: v
+                for k, v in detail_obj.items()
+                if k not in {"message", "error", "msg", "detail", "suggestion"} and v not in (None, "")
+            }
+            for key, value in extras.items():
+                lines.append(f"{key}: {value}")
+            return lines
+        if isinstance(detail_obj, list) and detail_obj:
+            lines = list(_format(detail_obj[0]))
+            for extra in detail_obj[1:]:
+                lines.append(str(extra))
+            return lines
+        return [str(detail_obj) if detail_obj else f"HTTP {status} Error"]
+
+    return "\n".join(_format(detail))
+
+
 def handle_api_error(e: requests.exceptions.HTTPError, console) -> None:
     """Extract and display error messages from API responses in a structured format."""
     status = getattr(e.response, "status_code", None)
@@ -272,11 +316,20 @@ class WecoClient:
         step: int | None = None,
         task_id: str | None = None,
         api_keys: dict[str, str] | None = None,
+        timeout: tuple[int, int] | int | None = None,
     ) -> dict:
         """``POST /runs/{run_id}/suggest`` — submit execution output, get next candidate.
 
-        If *step* is provided, transport errors (ReadTimeout, 502, ConnectionError)
-        trigger an automatic recovery attempt via ``get_run_status``.
+        If *step* is provided (legacy flow), transport errors (ReadTimeout, 502,
+        ConnectionError) trigger recovery via ``get_run_status``. If *task_id* is
+        provided (queue flow), recovery instead checks ``/execution-tasks/`` and
+        the run status, so a dropped response doesn't hang the CLI for up to
+        ``timeout[1]`` seconds waiting on a socket the backend has already replied on.
+
+        Args:
+            timeout: Optional ``(connect, read)`` tuple or int override for the
+                HTTP request. Defaults to ``(10, 3650)`` to preserve existing
+                behavior; pass a smaller value to exercise the recovery path.
 
         Raises:
             requests.exceptions.HTTPError: On non-recoverable HTTP errors.
@@ -289,8 +342,10 @@ class WecoClient:
         if api_keys:
             body["api_keys"] = api_keys
 
+        request_timeout = timeout if timeout is not None else (10, 3650)
+
         try:
-            resp = self._post(f"/runs/{run_id}/suggest", json=body, timeout=(10, 3650))
+            resp = self._post(f"/runs/{run_id}/suggest", json=body, timeout=request_timeout)
             resp.raise_for_status()
             result = resp.json()
             if result.get("plan") is None:
@@ -303,10 +358,19 @@ class WecoClient:
                 recovered = self._recover_suggest(run_id, step)
                 if recovered is not None:
                     return recovered
+            elif task_id is not None:
+                recovered = self._recover_queue_suggest(run_id)
+                if recovered is not None:
+                    return recovered
             raise type(exc)(exc) from exc
         except requests.exceptions.HTTPError as exc:
-            if step is not None and getattr(exc.response, "status_code", None) == 502:
+            status_code = getattr(exc.response, "status_code", None)
+            if step is not None and status_code == 502:
                 recovered = self._recover_suggest(run_id, step)
+                if recovered is not None:
+                    return recovered
+            elif task_id is not None and status_code in (502, 503, 504):
+                recovered = self._recover_queue_suggest(run_id)
                 if recovered is not None:
                     return recovered
             raise
@@ -481,6 +545,64 @@ class WecoClient:
     # ------------------------------------------------------------------
     # Internal
     # ------------------------------------------------------------------
+
+    def _recover_queue_suggest(self, run_id: str) -> dict | None:
+        """Try to reconstruct a ``/suggest`` response for queue-mode clients.
+
+        Called after a transport error (ReadTimeout / 5xx / ConnectionError) when
+        a ``task_id`` was supplied. The backend marks the submitted task as
+        completed early in ``/suggest`` and, if everything succeeds, atomically
+        creates the next node + revision + execution task before returning.
+
+        If we can observe either (a) a ready execution task queued for this run,
+        or (b) the run transitioning to ``completed``, the submit effectively
+        landed — we can synthesize a success response and let the main loop
+        proceed to its next poll/claim iteration. Also recover the previous
+        step's metric from the run history so the UI's ``on_metric`` still fires
+        for the step whose response we missed. Otherwise return ``None`` and let
+        the caller surface the transport error.
+        """
+        try:
+            run_data = self.get_run_status(run_id, include_history=True)
+        except Exception:
+            run_data = None
+
+        run_status = (run_data or {}).get("status")
+        if run_status in ("terminated", "error"):
+            return None
+
+        # Latest node that has an execution output is the one we just evaluated
+        # — its metric is the ``previous_solution_metric_value`` the caller expects.
+        previous_metric = None
+        if run_data is not None:
+            evaluated_nodes = [
+                n
+                for n in (run_data.get("nodes") or [])
+                if n.get("execution_output") is not None and n.get("metric_value") is not None
+            ]
+            if evaluated_nodes:
+                latest_evaluated = max(evaluated_nodes, key=lambda n: n.get("step", 0))
+                previous_metric = latest_evaluated.get("metric_value")
+
+        def _with_metric(payload: dict) -> dict:
+            if previous_metric is not None:
+                payload["previous_solution_metric_value"] = previous_metric
+            return payload
+
+        if run_status == "completed":
+            return _with_metric({"run_id": run_id, "is_done": True})
+
+        # Verify the next candidate task is queued — that's the signal that the
+        # submit landed end-to-end (not just that the previous node was updated).
+        try:
+            tasks_result = self.get_execution_tasks(run_id)
+        except Exception:
+            tasks_result = None
+
+        if tasks_result is not None and tasks_result.tasks:
+            return _with_metric({"run_id": run_id, "is_done": False})
+
+        return None
 
     def _recover_suggest(self, run_id: str, step: int) -> dict | None:
         """Try to reconstruct a ``/suggest`` response after a transport error.

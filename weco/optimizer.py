@@ -7,12 +7,14 @@ import traceback
 from dataclasses import dataclass
 from typing import Optional
 
+from requests.exceptions import HTTPError
 from rich.console import Console
 from rich.prompt import Confirm
 
 from . import __dashboard_url__
 from .api import (
     claim_execution_task,
+    format_api_error,
     get_execution_tasks,
     get_optimization_run_status,
     report_termination,
@@ -82,6 +84,7 @@ def _run_optimization_loop(
     poll_interval: float = 2.0,
     max_poll_attempts: int = 300,
     api_keys: Optional[dict] = None,
+    submit_timeout: Optional[int] = None,
 ) -> OptimizationResult:
     """
     Shared queue-based execution loop for optimize and resume.
@@ -103,6 +106,9 @@ def _run_optimization_loop(
         poll_interval: Seconds between polling attempts.
         max_poll_attempts: Max polls before timeout (~10 min with 2s interval).
         api_keys: Optional API keys for LLM providers.
+        submit_timeout: Optional read-timeout override (seconds) for the
+            ``/suggest`` call made when submitting a step's result. ``None``
+            preserves the existing ~61-minute default.
 
     Returns:
         OptimizationResult with success status and termination info.
@@ -189,21 +195,19 @@ def _run_optimization_loop(
 
             ui.on_output(term_out)
 
-            # Submit result
+            # Submit result. HTTP errors (insufficient credits, candidate generation
+            # failures, etc.) propagate and are handled centrally below so the real
+            # backend detail reaches the user and the run's termination record.
             ui.on_submitting()
+            submit_timeout_tuple = (10, submit_timeout) if submit_timeout is not None else None
             result = submit_execution_result(
-                run_id=run_id, task_id=task_id, execution_output=term_out, auth_headers=auth_headers, api_keys=api_keys
+                run_id=run_id,
+                task_id=task_id,
+                execution_output=term_out,
+                auth_headers=auth_headers,
+                api_keys=api_keys,
+                timeout=submit_timeout_tuple,
             )
-
-            if result is None:
-                ui.on_error("Failed to submit result")
-                return OptimizationResult(
-                    success=False,
-                    final_step=step,
-                    status="error",
-                    reason="submit_failed",
-                    details="Failed to submit execution result",
-                )
 
             is_done = result.get("is_done", False)
             prev_metric = result.get("previous_solution_metric_value")
@@ -220,6 +224,19 @@ def _run_optimization_loop(
     except KeyboardInterrupt:
         ui.on_interrupted()
         return OptimizationResult(success=False, final_step=step, status="terminated", reason="user_terminated_sigint")
+    except HTTPError as e:
+        # Surface structured API error details (insufficient credits, auth failures, candidate
+        # generation failures, etc.) through the UI rather than a generic exception string.
+        error_message = format_api_error(e)
+        ui.on_error(error_message)
+        status_code = getattr(e.response, "status_code", None)
+        return OptimizationResult(
+            success=False,
+            final_step=step,
+            status="error",
+            reason=f"http_{status_code}" if status_code else "http_error",
+            details=error_message,
+        )
     except Exception as e:
         ui.on_error(f"Error: {e}")
         return OptimizationResult(success=False, final_step=step, status="error", reason="unknown", details=str(e))
@@ -300,6 +317,7 @@ def resume_optimization(
     poll_interval: float = 2.0,
     apply_change: bool = False,
     output_mode: str = "rich",
+    submit_timeout: Optional[int] = None,
 ) -> bool:
     """
     Resume an interrupted run using the queue-based optimization loop.
@@ -444,6 +462,7 @@ def resume_optimization(
                 start_step=current_step,
                 poll_interval=poll_interval,
                 api_keys=api_keys,
+                submit_timeout=submit_timeout,
             )
 
         # Stop heartbeat immediately after loop completes
@@ -503,6 +522,7 @@ def optimize(
     apply_change: bool = False,
     require_review: bool = False,
     output_mode: str = "rich",
+    submit_timeout: Optional[int] = None,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -628,6 +648,7 @@ def optimize(
                 start_step=0,
                 poll_interval=poll_interval,
                 api_keys=api_keys,
+                submit_timeout=submit_timeout,
             )
 
         # Stop heartbeat immediately after loop completes

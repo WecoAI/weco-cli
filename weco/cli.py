@@ -164,6 +164,7 @@ Default models for providers:
         default="rich",
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
+    run_parser.add_argument("--submit-timeout", type=int, default=None, help=argparse.SUPPRESS)
 
     # --- Eval backend integration ---
     run_parser.add_argument(
@@ -344,6 +345,7 @@ Supported provider names: {supported_providers}.
         default="rich",
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
+    resume_parser.add_argument("--submit-timeout", type=int, default=None, help=argparse.SUPPRESS)
 
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
@@ -480,6 +482,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         apply_change=args.apply_change,
         require_review=args.require_review,
         output_mode=args.output,
+        submit_timeout=getattr(args, "submit_timeout", None),
     )
 
     exit_code = 0 if success else 1
@@ -497,7 +500,11 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         sys.exit(1)
 
     success = resume_optimization(
-        run_id=args.run_id, api_keys=api_keys, apply_change=args.apply_change, output_mode=args.output
+        run_id=args.run_id,
+        api_keys=api_keys,
+        apply_change=args.apply_change,
+        output_mode=args.output,
+        submit_timeout=getattr(args, "submit_timeout", None),
     )
 
     sys.exit(0 if success else 1)
