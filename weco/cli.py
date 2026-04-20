@@ -450,10 +450,13 @@ def execute_run_command(args: argparse.Namespace) -> None:
         if api_keys:
             console.print(f"[bold yellow]Custom API keys provided. Using default model: {model} for the run.[/]")
 
-    # Check for promotional credits and prompt user if applicable
-    from .credits import check_promotional_credits
-
-    model = check_promotional_credits(model, api_keys, console)
+    if api_keys and "/" in model:
+        bare_model = model.split("/", 1)[1]
+        console.print(
+            f"[yellow]Note: provider prefix in '{model}' is ignored when using your own API keys — "
+            f"the provider is inferred from the key you supplied. Using '{bare_model}'.[/]"
+        )
+        model = bare_model
 
     # Send run attempt event before starting (helps measure dropoff before server)
     send_event(
