@@ -112,7 +112,6 @@ def patched():
         patch("weco.commands.run.derive.WecoClient") as MockClient,
         patch("weco.commands.run.derive.run_optimization_loop") as mock_loop,
         patch("weco.heartbeat.HeartbeatSender"),
-        patch("weco.commands.run.derive.open_browser"),
         patch("weco.commands.run.derive.RunArtifacts") as mock_artifacts,
         patch("weco.commands.run.derive.report_termination"),
         patch("weco.commands.run.derive.offer_apply_best_solution") as mock_apply,

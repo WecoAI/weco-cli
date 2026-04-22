@@ -11,7 +11,6 @@ from rich.prompt import Confirm
 from ...api import report_termination
 from ...artifacts import RunArtifacts
 from ...auth import handle_authentication
-from ...browser import open_browser
 from ...core.api import WecoClient, handle_api_error
 from ...heartbeat import heartbeat
 from ...optimizer import OptimizationResult, offer_apply_best_solution, run_optimization_loop
@@ -306,8 +305,6 @@ def handle(
     ):
         console.print("[yellow]Derive cancelled. Adjust your working directory and re-run.[/]")
         return False
-
-    open_browser(dashboard_url)
 
     return _run_derived_loop(
         console=console,
