@@ -8,10 +8,12 @@ held-out, time-based validation split.
 
 This example reproduces the setup from Weco's fraud-detection case study
 ([blog post](https://weco.ai/blog/framing-the-problem),
-[code](https://github.com/WecoAI/fraud-detection-case-study)). Expected
-improvement: **baseline ≈ 0.914 → full-pipeline pooled mean 0.9305 ± 0.0035**
-after 200 steps with `gemini-3.1-pro-preview` and the instructions in
-`instructions.md`.
+[code](https://github.com/WecoAI/fraud-detection-case-study)). The example's
+baseline is **AUC ≈ 0.910** — a few points below the 0.914 reported in the
+case study because this example fits all encoders on `train_df` only
+(no time-leakage into val features). With the bundled `instructions.md`
+and 200 steps of `gemini-3.1-pro-preview`, expect AUC in the **0.928–0.933**
+range, consistent with the case study trajectory on a clean baseline.
 
 ## Prerequisites
 
@@ -62,10 +64,10 @@ Run the baseline once to confirm everything loads:
 
 ```bash
 python evaluate.py
-# → auc_roc: 0.914xxx   (takes ~30s)
+# → auc_roc: 0.910xxx   (takes ~30s)
 ```
 
-If you see an AUC in the 0.91-0.92 range, you're ready.
+If you see an AUC in the 0.90-0.92 range, you're ready.
 
 ## Run Weco
 
@@ -125,28 +127,39 @@ Expected trajectory:
    `features.py` + `model.py`). In our case study, features-only delivered
    most of the improvement that full-pipeline did.
 
-## Watch out for silent target leakage
+## Watch out for silent leakage
 
-IEEE-CIS is a known trap for automated optimizers. A plausible idea like
-"count how many columns are zero per row" becomes leaky if the dataframe
-still contains `isFraud`, because fraud rows contribute a different count
-than non-fraud rows. The `build_features` in `train.py` drops `isFraud` and
-`TransactionID` before any cross-column aggregation — don't let proposals
-reintroduce aggregations on a dataframe that still contains the label.
+Two flavors both show up in IEEE-CIS optimization runs.
 
-Signs to check for when a run reports a surprisingly high AUC (> 0.95 on this
-subsample):
+**Target leakage** — `isFraud` ends up encoded into features. A plausible
+idea like "count how many columns are zero per row" becomes leaky if the
+dataframe still contains `isFraud`, because fraud rows contribute a
+different count than non-fraud rows. The baseline `build_features` drops
+`isFraud` and `TransactionID` up-front; don't let proposals reintroduce
+aggregations on a dataframe that still has the label. The case study walks
+through a real instance where this bug reported AUC 0.9591 that dropped to
+0.9154 after a one-line fix — see
+<https://weco.ai/blog/framing-the-problem>.
+
+**Time leakage** — validation-period statistics leak into train features.
+This is a time-based split; at serving time you don't have the val period.
+Any encoder, groupby aggregation, frequency count, or target encoding must
+be **fit on `train_df` only** and then applied to both splits. The baseline
+demonstrates the pattern — fit `card1_amt_mean` on train, `.join` it onto
+both train and val, fill unseen val keys with a train-global default. If a
+proposal does `pd.concat([train_df, val_df]).groupby(...)`, that's a leak
+even if it drops `isFraud` first.
+
+Signs a run has one of these leaks (AUC suspiciously high on this 100K/25K
+subsample, e.g. > 0.95):
 
 - Any `df.sum`/`df.mean`/`(df == x)` across all columns before the label is
   dropped.
-- Target encoding without out-of-fold protection (encoder fit on train + val
-  concat).
-- Features computed using validation data (time-leakage: using `val_df` in
-  `train`'s feature-engineering step).
-
-The case study walks through a real instance where an uninstructed run
-reported AUC 0.9591 that dropped to 0.9154 after a one-line fix. See
-<https://weco.ai/blog/framing-the-problem>.
+- Target encoding without out-of-fold protection (encoder fit on full train
+  then applied to train).
+- Groupby / value-counts / target encoders fit on `pd.concat([train, val])`.
+- Features computed using validation data at all — velocity features that
+  sort train + val together and take row-wise diffs, etc.
 
 ## Citing the case study
 

@@ -15,54 +15,86 @@ import lightgbm as lgb
 from sklearn.metrics import roc_auc_score
 
 
-def build_features(
-    train_df: pd.DataFrame, val_df: pd.DataFrame
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """Build features from the base data. Returns (X_train, y_train, X_val, y_val).
-
-    This is a small starting set. Weco can replace or extend it — the case study
-    found UID-based aggregations (card1 + addr1 + account-creation-day estimate),
-    target encoding with out-of-fold protection, frequency encoding, and velocity
-    features are the most impactful additions.
-    """
-    y_train = train_df["isFraud"].values.astype(np.int32)
-    y_val = val_df["isFraud"].values.astype(np.int32)
-
-    n_train = len(train_df)
-    df = pd.concat([train_df, val_df], axis=0, ignore_index=True)
-
-    # Drop the label BEFORE any cross-column aggregation to avoid target leakage.
-    df = df.drop(columns=["isFraud", "TransactionID"])
-
-    # --- Time features from TransactionDT (seconds offset from a reference date) ---
+def _add_row_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Per-row features that don't depend on any other row (safe to compute anywhere)."""
+    df = df.copy()
     df["hour"] = (df["TransactionDT"] // 3600) % 24
     df["day_of_week"] = (df["TransactionDT"] // 86400) % 7
     df["hour_sin"] = np.sin(2 * np.pi * df["hour"] / 24)
     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
 
-    # --- Amount features ---
     df["TransactionAmt_log"] = np.log1p(df["TransactionAmt"])
     df["TransactionAmt_decimal"] = (
         df["TransactionAmt"] - df["TransactionAmt"].astype(int)
     ).round(2)
     df["TransactionAmt_is_round"] = (df["TransactionAmt_decimal"] == 0).astype(np.int8)
+    return df
 
-    # --- Simple aggregations on card1 / addr1 ---
+
+def build_features(
+    train_df: pd.DataFrame, val_df: pd.DataFrame
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Build features from the base data. Returns (X_train, y_train, X_val, y_val).
+
+    Any aggregation or encoding (groupby stats, frequency, target encoding, ...)
+    is fit on `train_df` ONLY and applied to both train and val. This mirrors
+    production: at serving time you do not have the validation period yet, so
+    letting val rows shape the features is time-leakage that inflates the AUC
+    Weco optimizes against.
+
+    Weco can replace or extend this — the case study found UID-based
+    aggregations (card1 + addr1 + account-creation-day estimate), target
+    encoding with out-of-fold protection, frequency encoding, and velocity
+    features are the most impactful additions. Keep the fit-on-train /
+    apply-to-both discipline for any new encoder.
+    """
+    y_train = train_df["isFraud"].values.astype(np.int32)
+    y_val = val_df["isFraud"].values.astype(np.int32)
+
+    # Drop label/ID from a copy of each split so no downstream aggregation can
+    # accidentally include them.
+    train = train_df.drop(columns=["isFraud", "TransactionID"])
+    val = val_df.drop(columns=["isFraud", "TransactionID"])
+
+    train = _add_row_features(train)
+    val = _add_row_features(val)
+
+    # --- Aggregations on card1 / addr1 (fit on train, apply to both) ---
     for key in ["card1", "addr1"]:
-        grp = df.groupby(key)["TransactionAmt"]
-        df[f"{key}_amt_mean"] = grp.transform("mean")
-        df[f"{key}_amt_std"] = grp.transform("std").fillna(0)
-        df[f"{key}_amt_count"] = grp.transform("count")
+        grp = train.groupby(key)["TransactionAmt"]
+        stats = grp.agg(["mean", "std", "count"]).rename(
+            columns={"mean": f"{key}_amt_mean",
+                     "std": f"{key}_amt_std",
+                     "count": f"{key}_amt_count"}
+        )
+        # Unseen keys in val: fall back to train-global mean/std and count=0.
+        defaults = {
+            f"{key}_amt_mean": train["TransactionAmt"].mean(),
+            f"{key}_amt_std": train["TransactionAmt"].std(),
+            f"{key}_amt_count": 0,
+        }
+        train = train.join(stats, on=key)
+        val = val.join(stats, on=key)
+        for col, default in defaults.items():
+            train[col] = train[col].fillna(default)
+            val[col] = val[col].fillna(default)
 
-    # --- Frequency encoding for high-cardinality categoricals ---
+    # --- Frequency encoding (fit on train, apply to both; unseen = 0) ---
     for col in ["card1", "card2", "card5", "addr1"]:
-        if col in df.columns:
-            freq = df[col].value_counts(normalize=True)
-            df[f"{col}_freq"] = df[col].map(freq).fillna(0)
+        if col not in train.columns:
+            continue
+        freq = train[col].value_counts(normalize=True)
+        train[f"{col}_freq"] = train[col].map(freq).fillna(0)
+        val[f"{col}_freq"] = val[col].map(freq).fillna(0)
 
-    df = df.drop(columns=["TransactionDT"])
-    X = df.values.astype(np.float32)
-    return X[:n_train], y_train, X[n_train:], y_val
+    train = train.drop(columns=["TransactionDT"])
+    val = val.drop(columns=["TransactionDT"])
+    # Align columns in case defaults introduced divergent dtypes.
+    val = val[train.columns]
+
+    X_train = train.values.astype(np.float32)
+    X_val = val.values.astype(np.float32)
+    return X_train, y_train, X_val, y_val
 
 
 def train_and_evaluate(

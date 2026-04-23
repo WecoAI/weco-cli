@@ -95,5 +95,22 @@ Count of NaN values across D-columns, M-columns, V-columns per row. Sum/mean of 
 - Categoricals are already integer-encoded — treat them as numeric
 - Keep the `run_pipeline() -> float` function signature and the `auc_roc: 0.xxxxxx` print format intact
 
-## Avoiding silent target leakage
-`isFraud` is the label. If you compute features that aggregate across all columns of the dataframe (e.g. `(df == 0).sum(axis=1)`, row-wise NaN counts over the entire frame), drop `isFraud` and `TransactionID` first. Otherwise the label signal bleeds into the features and produces implausibly high AUC (>0.95) that collapses the moment the fix is applied. Target encoding must use out-of-fold protection: compute encoding on train folds only, never on the full train + val concat.
+## Avoiding silent leakage
+
+Two distinct leaks to avoid. Both inflate reported AUC without improving the real pipeline.
+
+**1. Target leakage (isFraud bleeding into features).** `isFraud` is the label. If you compute features that aggregate across all columns of the dataframe (e.g. `(df == 0).sum(axis=1)`, row-wise NaN counts over the entire frame), drop `isFraud` and `TransactionID` first. Otherwise the label signal encodes into the features and produces implausibly high AUC (> 0.95) that collapses the moment the fix is applied.
+
+**2. Time leakage (validation distribution bleeding into features).** This is a time-based train/val split — val rows are transactions from a later period you wouldn't see at serving time. Any encoder, aggregation, frequency count, or target encoding MUST be fit on `train_df` only and then applied to both splits. Concatenating `train_df + val_df` before a `groupby` lets val-period statistics shape train features and lets each val row influence its own encoded values. Expected fallout: smaller inflation than target leakage, but still material (noticeable bump in val AUC that doesn't survive a real time cutoff).
+
+Pattern to follow for any new group/frequency/target encoder:
+
+```python
+# Fit on train
+freq = train_df[col].value_counts(normalize=True)
+# Apply to both, unseen keys get 0 (or a sensible train-global default)
+train_df[f"{col}_freq"] = train_df[col].map(freq).fillna(0)
+val_df[f"{col}_freq"] = val_df[col].map(freq).fillna(0)
+```
+
+For target encoding specifically, even on train you need out-of-fold protection (fit encoder on K-1 folds, apply to the held-out fold) — otherwise you leak train labels into train features.
