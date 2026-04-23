@@ -42,10 +42,25 @@ def download_kaggle() -> None:
         return
 
     print(f"[download] kaggle competitions download -c ieee-fraud-detection -p {DATA_DIR}")
-    subprocess.check_call(
-        ["kaggle", "competitions", "download", "-c", "ieee-fraud-detection",
-         "-p", str(DATA_DIR)]
-    )
+    print("[download] this takes ~1-2 min over a fast link; ~120MB of CSVs")
+    # Use `python -m kaggle.cli` — the `kaggle` package has no __main__, so
+    # `python -m kaggle` fails. kaggle.cli is the canonical entry point.
+    try:
+        subprocess.check_call(
+            [sys.executable, "-m", "kaggle.cli", "competitions", "download",
+             "-c", "ieee-fraud-detection", "-p", str(DATA_DIR)]
+        )
+    except subprocess.CalledProcessError as e:
+        print(
+            "\n[error] Kaggle download failed. Most common causes:\n"
+            "  1. You haven't joined the competition. Visit\n"
+            "     https://www.kaggle.com/c/ieee-fraud-detection\n"
+            "     and click 'Late Submission' / 'Join Competition' to accept the rules.\n"
+            "  2. ~/.kaggle/kaggle.json is missing or has wrong permissions.\n"
+            "     Run: chmod 600 ~/.kaggle/kaggle.json\n",
+            file=sys.stderr,
+        )
+        raise SystemExit(e.returncode)
     zip_path = DATA_DIR / "ieee-fraud-detection.zip"
     print(f"[extract] {zip_path}")
     with zipfile.ZipFile(zip_path) as zf:

@@ -16,10 +16,13 @@ after 200 steps with `gemini-3.1-pro-preview` and the instructions in
 ## Prerequisites
 
 1. **Kaggle API token**. Put a valid `kaggle.json` at `~/.kaggle/kaggle.json`
-   (see [Kaggle API credentials](https://github.com/Kaggle/kaggle-api#api-credentials)).
-2. **Join the competition**. Visit
-   <https://www.kaggle.com/c/ieee-fraud-detection> and accept the rules, or
-   the download will 403.
+   (see [Kaggle API credentials](https://github.com/Kaggle/kaggle-api#api-credentials)),
+   then `chmod 600 ~/.kaggle/kaggle.json` to silence the permissions warning.
+2. **You must join the competition.** Visit
+   <https://www.kaggle.com/c/ieee-fraud-detection> and click "Late Submission" /
+   "Join Competition" to accept the rules. Without this,
+   `prepare_data.py` will fail with `403 Forbidden` from the Kaggle API —
+   this is the single most common first-time friction.
 3. **Weco API key** (free tier is fine). See the
    [Weco docs](https://docs.weco.ai).
 
@@ -27,6 +30,15 @@ after 200 steps with `gemini-3.1-pro-preview` and the instructions in
 
 ```bash
 cd examples/fraud-detection
+
+# Virtualenv is strongly recommended — modern Python installs (Debian/Ubuntu,
+# recent Homebrew) refuse `pip install` to the system site-packages under
+# PEP 668. If you skip this step you'll hit
+# `error: externally-managed-environment`.
+python3 -m venv .venv
+source .venv/bin/activate     # Windows: .venv\Scripts\activate
+# After activation, `python` resolves to the venv's interpreter.
+
 pip install -r requirements.txt
 
 # Downloads ~120MB of CSVs, builds a small 100K/25K parquet split.
