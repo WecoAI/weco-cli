@@ -27,17 +27,10 @@ from weco.optimizer import OptimizationResult
 # ---------------------------------------------------------------------------
 
 
-_FAKE_DERIVED_FROM = {
-    "run_id": "parent-id",
-    "node_id": "n1",
-    "step": 1,
-    "metric_value": 0.7,
-}
+_FAKE_DERIVED_FROM = {"run_id": "parent-id", "node_id": "n1", "step": 1, "metric_value": 0.7}
 
 
-def _fake_derive_response(
-    *, candidate_code: dict[str, str] | None = None, **run_overrides
-) -> dict:
+def _fake_derive_response(*, candidate_code: dict[str, str] | None = None, **run_overrides) -> dict:
     """Build a canonical successful derive response.
 
     Override any field in the inner ``run`` dict via kwargs (e.g.
@@ -105,10 +98,7 @@ def patched():
     ``patched.plain_ui.on_init`` (or ``live_ui.on_init``) for inspection.
     """
     with (
-        patch(
-            "weco.commands.run.derive.handle_authentication",
-            return_value=("api-key", {"Authorization": "Bearer t"}),
-        ),
+        patch("weco.commands.run.derive.handle_authentication", return_value=("api-key", {"Authorization": "Bearer t"})),
         patch("weco.commands.run.derive.WecoClient") as MockClient,
         patch("weco.commands.run.derive.run_optimization_loop") as mock_loop,
         patch("weco.heartbeat.HeartbeatSender"),
@@ -234,12 +224,7 @@ def test_from_step_wiring(patched, from_step, expected_derive_from, expects_look
 
 
 @pytest.mark.parametrize(
-    "loop_kwarg, expected",
-    [
-        ("eval_command", "python test.py"),
-        ("save_logs", True),
-        ("eval_timeout", 600),
-    ],
+    "loop_kwarg, expected", [("eval_command", "python test.py"), ("save_logs", True), ("eval_timeout", 600)]
 )
 def test_loop_config_inherited_from_response(patched, loop_kwarg, expected):
     """The loop receives its config from the derive response, not from
@@ -266,10 +251,7 @@ def test_additional_instructions_flow_through_to_derive_run(patched):
     """The (resolved) --additional-instructions value reaches the backend.
     Locks in the rename from the older `direction` field name."""
     _call_handle(additional_instructions="focus on memory efficiency")
-    assert (
-        patched.client.derive_run.call_args.kwargs["additional_instructions"]
-        == "focus on memory efficiency"
-    )
+    assert patched.client.derive_run.call_args.kwargs["additional_instructions"] == "focus on memory efficiency"
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +265,7 @@ def test_originals_use_inherited_source_when_local_files_missing(patched, tmp_pa
     pollute the working directory with generated code on every eval cycle."""
     monkeypatch.chdir(tmp_path)  # empty directory: no local files
     patched.client.derive_run.return_value = _fake_derive_response(
-        source_code={"main.py": "INHERITED"},
-        candidate_code={"main.py": "CANDIDATE"},
+        source_code={"main.py": "INHERITED"}, candidate_code={"main.py": "CANDIDATE"}
     )
 
     _call_handle()
@@ -298,9 +279,7 @@ def test_originals_prefer_local_files_when_present(patched, tmp_path, monkeypatc
     the user may have made local edits since the parent run."""
     monkeypatch.chdir(tmp_path)
     (tmp_path / "main.py").write_text("LOCAL_EDITED")
-    patched.client.derive_run.return_value = _fake_derive_response(
-        source_code={"main.py": "INHERITED"}
-    )
+    patched.client.derive_run.return_value = _fake_derive_response(source_code={"main.py": "INHERITED"})
 
     _call_handle()
 
@@ -313,8 +292,7 @@ def test_originals_prefer_local_files_when_present(patched, tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize(
-    "output_mode, expected_ui, other_ui",
-    [("plain", "plain_ui", "live_ui"), ("rich", "live_ui", "plain_ui")],
+    "output_mode, expected_ui, other_ui", [("plain", "plain_ui", "live_ui"), ("rich", "live_ui", "plain_ui")]
 )
 def test_handler_picks_ui_for_output_mode(patched, output_mode, expected_ui, other_ui):
     """Plain mode constructs PlainOptimizationUI, rich mode constructs
@@ -346,9 +324,7 @@ def test_handler_returns_false_when_loop_fails(patched):
     """Failed loop must propagate as ``False`` — the dispatcher relies on
     this to set the process exit code. Loop *success* is covered implicitly
     by every other test in this file (the default fixture exercises it)."""
-    patched.loop.return_value = OptimizationResult(
-        success=False, final_step=3, status="error", reason="submit_failed"
-    )
+    patched.loop.return_value = OptimizationResult(success=False, final_step=3, status="error", reason="submit_failed")
     assert _call_handle() is False
 
 
@@ -379,9 +355,7 @@ def test_plain_mode_skips_unchanged_files_prompt(patched):
 
 
 @pytest.mark.parametrize(
-    "loop_success, expect_apply_called",
-    [(True, True), (False, False)],
-    ids=["success-applies-best", "failure-skips-apply"],
+    "loop_success, expect_apply_called", [(True, True), (False, False)], ids=["success-applies-best", "failure-skips-apply"]
 )
 def test_apply_best_only_after_successful_loop(patched, loop_success, expect_apply_called):
     patched.loop.return_value = OptimizationResult(
@@ -424,11 +398,7 @@ def test_api_errors_exit_cleanly_with_code_1(patched, make_exception):
     assert exc.value.code == 1
 
 
-@pytest.mark.parametrize(
-    "output_mode, expect_json_in_stderr",
-    [("plain", True), ("rich", False)],
-    ids=["plain", "rich"],
-)
+@pytest.mark.parametrize("output_mode, expect_json_in_stderr", [("plain", True), ("rich", False)], ids=["plain", "rich"])
 def test_derive_error_routed_through_correct_channel(patched, capsys, output_mode, expect_json_in_stderr):
     """A DeriveError reaches the user via stderr+JSON in plain mode and
     styled console output in rich mode. Plain mode in particular must never

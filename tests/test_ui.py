@@ -90,12 +90,7 @@ def test_plain_ui_on_init_prints_header():
 def test_plain_ui_on_init_includes_derived_from_line():
     ui, lines = _make_plain_ui_with_capture()
 
-    ui.on_init(derived_from={
-        "run_id": "parent-uuid",
-        "node_id": "node-uuid",
-        "step": 7,
-        "metric_value": 0.842,
-    })
+    ui.on_init(derived_from={"run_id": "parent-uuid", "node_id": "node-uuid", "step": 7, "metric_value": 0.842})
 
     derived_lines = [line for line in lines if "Derived from" in line]
     assert len(derived_lines) == 1
@@ -109,12 +104,7 @@ def test_plain_ui_on_init_handles_derived_from_without_metric():
     the header rendering."""
     ui, lines = _make_plain_ui_with_capture()
 
-    ui.on_init(derived_from={
-        "run_id": "parent-uuid",
-        "node_id": "node-uuid",
-        "step": 0,
-        "metric_value": None,
-    })
+    ui.on_init(derived_from={"run_id": "parent-uuid", "node_id": "node-uuid", "step": 0, "metric_value": None})
 
     derived_lines = [line for line in lines if "Derived from" in line]
     assert len(derived_lines) == 1
@@ -149,12 +139,7 @@ def test_live_ui_on_init_renders_derived_from_row():
         metric_name="accuracy",
     )
 
-    ui.on_init(derived_from={
-        "run_id": "parent-uuid",
-        "node_id": "node-uuid",
-        "step": 4,
-        "metric_value": 0.91,
-    })
+    ui.on_init(derived_from={"run_id": "parent-uuid", "node_id": "node-uuid", "step": 4, "metric_value": 0.91})
 
     text = _render_to_text(ui._render())
     assert "parent-uuid" in text
