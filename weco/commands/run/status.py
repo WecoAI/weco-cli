@@ -4,7 +4,7 @@ import json
 
 from rich.console import Console
 
-from .. import make_client, fetch_nodes
+from .. import make_client, fetch_nodes, fetch_run
 
 
 def handle(run_id: str, console: Console) -> None:
@@ -30,5 +30,15 @@ def handle(run_id: str, console: Console) -> None:
         "require_review": run_meta.get("require_review", False),
         "pending_nodes": pending_nodes,
     }
+
+    # Add lineage info if present (requires full run status fetch)
+    try:
+        full_status = fetch_run(client, run_id, include_history=False)
+        if full_status.get("lineage_id"):
+            output["lineage_id"] = full_status["lineage_id"]
+        if full_status.get("derived_from"):
+            output["derived_from"] = full_status["derived_from"]
+    except SystemExit:
+        pass  # Non-critical — lineage info is supplementary
 
     print(json.dumps(output, indent=2))

@@ -71,7 +71,7 @@ class HeartbeatSender(threading.Thread):
             traceback.print_exc(file=sys.stderr)
 
 
-def _run_optimization_loop(
+def run_optimization_loop(
     ui: OptimizationUI,
     run_id: str,
     auth_headers: dict,
@@ -242,7 +242,7 @@ def _run_optimization_loop(
         return OptimizationResult(success=False, final_step=step, status="error", reason="unknown", details=str(e))
 
 
-def _offer_apply_best_solution(
+def offer_apply_best_solution(
     console: Console,
     run_id: str,
     source_code: dict[str, str],
@@ -446,11 +446,12 @@ def resume_optimization(
             )
 
         with ui_instance as ui:
+            ui.on_init()
             # Populate UI with best solution from previous run if available
             if best_metric_value is not None and best_step is not None:
                 ui.on_metric(best_step, best_metric_value)
 
-            result = _run_optimization_loop(
+            result = run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
@@ -477,7 +478,7 @@ def resume_optimization(
                 console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
-        _offer_apply_best_solution(
+        offer_apply_best_solution(
             console=console,
             run_id=run_id,
             source_code=source_code,
@@ -636,7 +637,8 @@ def optimize(
             )
 
         with ui_instance as ui:
-            result = _run_optimization_loop(
+            ui.on_init()
+            result = run_optimization_loop(
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
@@ -663,7 +665,7 @@ def optimize(
                 console.print(f"\n[cyan]To resume this run, use:[/] [bold]weco resume {run_id}[/]\n")
 
         # Offer to apply best solution
-        _offer_apply_best_solution(
+        offer_apply_best_solution(
             console=console,
             run_id=run_id,
             source_code=source_code,

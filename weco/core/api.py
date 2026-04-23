@@ -295,6 +295,52 @@ class WecoClient:
         resp.raise_for_status()
         return resp.json()
 
+    def derive_run(
+        self,
+        run_id: str,
+        *,
+        derive_from: str = "lineage_best",
+        additional_instructions: str | None = None,
+        stop_parent: bool = True,
+        steps: int | None = None,
+        eval_timeout: int | None = None,
+        require_review: bool | None = None,
+        api_keys: dict[str, str] | None = None,
+    ) -> dict:
+        """``POST /runs/{run_id}/derive`` — create a derived run.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        body: dict[str, Any] = {
+            "derive_from": derive_from,
+            "stop_parent": stop_parent,
+            "metadata": {"client_name": "cli", "client_version": __pkg_version__},
+        }
+        if additional_instructions is not None:
+            body["additional_instructions"] = additional_instructions
+        if steps is not None:
+            body["steps"] = steps
+        if eval_timeout is not None:
+            body["eval_timeout"] = eval_timeout
+        if require_review is not None:
+            body["require_review"] = require_review
+        if api_keys:
+            body["api_keys"] = api_keys
+        resp = self._post(f"/runs/{run_id}/derive", json=body, timeout=(10, 3650))
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_lineage(self, lineage_id: str) -> dict:
+        """``GET /lineages/{lineage_id}``
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        resp = self._get(f"/lineages/{lineage_id}")
+        resp.raise_for_status()
+        return resp.json()
+
     def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None) -> dict:
         """``POST /runs/{run_id}/resume`` — resume an interrupted run.
 

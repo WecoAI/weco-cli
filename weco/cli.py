@@ -226,6 +226,30 @@ def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     revise_source.add_argument("-s", "--source", type=str, help="Path to a single source file")
     revise_source.add_argument("--sources", nargs="+", type=str, help="Paths to multiple source files")
 
+    # weco run derive <run-id>
+    p = subs.add_parser("derive", help="Create a new run derived from an existing run's step")
+    p.add_argument("run_id", type=str, help="Parent run UUID")
+    p.add_argument(
+        "--from-step", type=str, default="best", help="'best' (lineage-best, default), 'run-best', or a step number"
+    )
+    p.add_argument("-n", "--steps", type=int, default=None, help="Override step count for the derived run")
+    p.add_argument(
+        "-i",
+        "--additional-instructions",
+        type=str,
+        default=None,
+        help="Steering instructions for the new run (inline text or path to a file). "
+        "If omitted, the parent run's instructions are inherited.",
+    )
+    p.add_argument("--api-key", nargs="+", type=str, default=None, help="API keys in provider=key format")
+    p.add_argument(
+        "--output",
+        type=str,
+        choices=["rich", "plain"],
+        default="rich",
+        help="Output mode: 'rich' for interactive UI, 'plain' for machine-readable output",
+    )
+
     # weco run submit <run-id> --node <id>
     p = subs.add_parser("submit", help="Submit a pending node for evaluation (review mode)")
     p.add_argument("run_id", type=str, help="Run UUID")
@@ -350,7 +374,7 @@ Supported provider names: {supported_providers}.
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
     """Dispatch ``weco run <subcommand>`` to the appropriate handler."""
-    from .commands.run import status, results, show, diff, stop, instruct, review, revise, submit
+    from .commands.run import status, results, show, diff, stop, instruct, review, revise, submit, derive
 
     def _collect_source_paths() -> list[str] | None:
         if getattr(args, "sources", None):
@@ -371,6 +395,15 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
         ),
         "show": lambda: show.handle(run_id=args.run_id, step=args.step, console=console),
         "diff": lambda: diff.handle(run_id=args.run_id, step=args.step, against=args.against, console=console),
+        "derive": lambda: derive.handle(
+            run_id=args.run_id,
+            from_step=args.from_step,
+            steps=args.steps,
+            additional_instructions=args.additional_instructions,
+            api_keys=parse_api_keys(args.api_key),
+            output_mode=args.output,
+            console=console,
+        ),
         "stop": lambda: stop.handle(run_id=args.run_id, console=console),
         "instruct": lambda: instruct.handle(run_id=args.run_id, instructions=args.instructions, console=console),
         "review": lambda: review.handle(run_id=args.run_id, console=console),
@@ -390,8 +423,10 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
     if handler is None:
         console.print(f"[bold red]Unknown run subcommand: {sub}[/]")
         sys.exit(1)
-    handler()
-    sys.exit(0)
+    # Handlers that drive an optimization loop (e.g. derive) return a bool to
+    # signal success/failure. Read-only handlers return None and exit cleanly.
+    result = handler()
+    sys.exit(0 if result is not False else 1)
 
 
 def execute_run_command(args: argparse.Namespace) -> None:
@@ -526,7 +561,7 @@ def main() -> None:
 def _main() -> None:
     """Internal main function containing the CLI logic."""
     parser = argparse.ArgumentParser(
-        description="[bold cyan]Weco CLI[/]\nEnhance your code with AI-driven optimization.",
+        description="Weco CLI\nEnhance your code with AI-driven optimization.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
