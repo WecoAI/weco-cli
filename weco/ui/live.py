@@ -27,12 +27,13 @@ class LiveOptimizationUI:
     SPARKLINE_CHARS = "▁▂▃▄▅▆▇█"
     SPINNER_FRAMES = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"]
     # Statuses that show the spinner animation
-    ACTIVE_STATUSES = {"initializing", "polling", "executing", "submitting"}
+    ACTIVE_STATUSES = {"initializing", "polling", "executing", "submitting", "reconnecting"}
     STATUS_INDICATORS = {
         "initializing": ("⏳", "dim"),
         "polling": ("🔄", "cyan"),
         "executing": ("⚡", "yellow"),
         "submitting": ("🧠", "blue"),
+        "reconnecting": ("📡", "yellow"),
         "complete": ("✅", "green"),
         "stopped": ("⏹", "yellow"),
         "interrupted": ("⚠", "yellow"),
@@ -120,6 +121,12 @@ class LiveOptimizationUI:
         status_text = Text()
         status_text.append(f"{emoji} ", style=style)
         status_text.append(self.state.status.replace("_", " ").title(), style=f"bold {style}")
+        if self.state.status == "reconnecting" and self.state.reconnect_max_attempts > 0:
+            status_text.append(
+                f" (attempt {self.state.reconnect_attempt}/{self.state.reconnect_max_attempts}"
+                f", retry in {self.state.reconnect_backoff_s:.0f}s)",
+                style=f"bold {style}",
+            )
         if self.state.status in self.ACTIVE_STATUSES:
             # Time-based frame calculation: ~10 fps spinner animation
             frame = int(time.time() * 10) % len(self.SPINNER_FRAMES)
@@ -260,4 +267,20 @@ class LiveOptimizationUI:
     def on_error(self, message: str) -> None:
         self.state.error = message
         self.state.status = "error"
+        self._update()
+
+    def on_reconnecting(self, attempt: int, max_attempts: int, backoff_s: float) -> None:
+        self.state.status = "reconnecting"
+        self.state.reconnect_attempt = attempt
+        self.state.reconnect_max_attempts = max_attempts
+        self.state.reconnect_backoff_s = backoff_s
+        self._update()
+
+    def on_reconnected(self) -> None:
+        self.state.reconnect_attempt = 0
+        self.state.reconnect_max_attempts = 0
+        self.state.reconnect_backoff_s = 0.0
+        # Status will be overwritten by the next on_polling call; clear here so
+        # any error/status rendering in between reads a clean slate.
+        self.state.status = "polling"
         self._update()

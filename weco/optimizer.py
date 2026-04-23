@@ -5,9 +5,9 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Optional
+from typing import Callable, Optional
 
-from requests.exceptions import HTTPError
+from requests.exceptions import ConnectionError as RequestsConnectionError, HTTPError, ReadTimeout
 from rich.console import Console
 from rich.prompt import Confirm
 
@@ -23,6 +23,7 @@ from .api import (
     start_optimization_run,
     submit_execution_result,
 )
+from .core.api import WecoClient
 from .artifacts import RunArtifacts
 from .auth import handle_authentication
 from .events import get_event_context
@@ -40,6 +41,85 @@ class OptimizationResult:
     status: str  # "completed", "terminated", "error"
     reason: str  # e.g. "completed_successfully", "user_terminated_sigint"
     details: Optional[str] = None
+
+
+@dataclass
+class AutoResumePolicy:
+    """Policy for auto-resuming a run after transient errors."""
+
+    enabled: bool = True
+    max_attempts: int = 5
+    backoff_initial_s: float = 5.0
+    backoff_max_s: float = 60.0
+    backoff_factor: float = 2.0
+
+
+# Reasons produced by run_optimization_loop that indicate a retryable failure.
+# 5xx bursts imply layer-2 recovery already tried and gave up; waiting and
+# resuming the run is the right response. 4xx (auth, validation, insufficient
+# credits) and user-driven terminations must propagate.
+_TRANSIENT_REASONS = frozenset({"transient_network_error", "http_502", "http_503", "http_504"})
+
+
+def _is_transient(result: OptimizationResult) -> bool:
+    return result.reason in _TRANSIENT_REASONS
+
+
+def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> bool:
+    """Flip a run back to 'running' without emitting any console output."""
+    try:
+        WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
+        return True
+    except Exception:
+        return False
+
+
+def _run_loop_with_auto_resume(
+    loop_factory: Callable[[int], OptimizationResult],
+    *,
+    ui: "OptimizationUI",
+    run_id: str,
+    auth_headers: dict,
+    api_keys: Optional[dict],
+    policy: AutoResumePolicy,
+    initial_start_step: int,
+) -> OptimizationResult:
+    """Invoke the optimization loop; on transient failure, resume and re-enter.
+
+    ``loop_factory(start_step)`` runs one attempt of ``run_optimization_loop``.
+    If the attempt exits with a transient reason and auto-resume is enabled,
+    this sleeps with exponential backoff, calls the backend resume endpoint,
+    and re-enters. Non-transient outcomes (completed, user interrupt, HTTP 4xx)
+    are returned verbatim.
+    """
+    start_step = initial_start_step
+    attempts_used = 0
+
+    while True:
+        result = loop_factory(start_step)
+
+        if not policy.enabled or not _is_transient(result):
+            return result
+
+        resumed = False
+        while attempts_used < policy.max_attempts:
+            attempts_used += 1
+            backoff = min(policy.backoff_initial_s * (policy.backoff_factor ** (attempts_used - 1)), policy.backoff_max_s)
+            ui.on_reconnecting(attempts_used, policy.max_attempts, backoff)
+            time.sleep(backoff)
+
+            if _silent_resume(run_id, auth_headers, api_keys):
+                ui.on_reconnected()
+                start_step = result.final_step
+                resumed = True
+                break
+
+        if not resumed:
+            ui.on_error(
+                f"Auto-resume exhausted after {policy.max_attempts} attempt(s). "
+                f"Use 'weco resume {run_id}' to continue manually."
+            )
+            return result
 
 
 # --- Heartbeat Sender Class ---
@@ -224,6 +304,13 @@ def run_optimization_loop(
     except KeyboardInterrupt:
         ui.on_interrupted()
         return OptimizationResult(success=False, final_step=step, status="terminated", reason="user_terminated_sigint")
+    except (RequestsConnectionError, ReadTimeout) as e:
+        # Tagged separately so the outer auto-resume wrapper can distinguish
+        # transport failures from unrecoverable errors.
+        ui.on_warning(f"Network error during optimization: {e}")
+        return OptimizationResult(
+            success=False, final_step=step, status="error", reason="transient_network_error", details=str(e)
+        )
     except HTTPError as e:
         # Surface structured API error details (insufficient credits, auth failures, candidate
         # generation failures, etc.) through the UI rather than a generic exception string.
@@ -318,6 +405,7 @@ def resume_optimization(
     apply_change: bool = False,
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
+    auto_resume_policy: Optional[AutoResumePolicy] = None,
 ) -> bool:
     """
     Resume an interrupted run using the queue-based optimization loop.
@@ -451,19 +539,30 @@ def resume_optimization(
             if best_metric_value is not None and best_step is not None:
                 ui.on_metric(best_step, best_metric_value)
 
-            result = run_optimization_loop(
+            def _loop(start_step: int) -> OptimizationResult:
+                return run_optimization_loop(
+                    ui=ui,
+                    run_id=run_id,
+                    auth_headers=auth_headers,
+                    source_code=source_code,
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    artifacts=artifacts,
+                    save_logs=save_logs,
+                    start_step=start_step,
+                    poll_interval=poll_interval,
+                    api_keys=api_keys,
+                    submit_timeout=submit_timeout,
+                )
+
+            result = _run_loop_with_auto_resume(
+                _loop,
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
-                source_code=source_code,
-                eval_command=eval_command,
-                eval_timeout=eval_timeout,
-                artifacts=artifacts,
-                save_logs=save_logs,
-                start_step=current_step,
-                poll_interval=poll_interval,
                 api_keys=api_keys,
-                submit_timeout=submit_timeout,
+                policy=auto_resume_policy or AutoResumePolicy(),
+                initial_start_step=current_step,
             )
 
         # Stop heartbeat immediately after loop completes
@@ -524,6 +623,7 @@ def optimize(
     require_review: bool = False,
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
+    auto_resume_policy: Optional[AutoResumePolicy] = None,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -638,19 +738,31 @@ def optimize(
 
         with ui_instance as ui:
             ui.on_init()
-            result = run_optimization_loop(
+
+            def _loop(start_step: int) -> OptimizationResult:
+                return run_optimization_loop(
+                    ui=ui,
+                    run_id=run_id,
+                    auth_headers=auth_headers,
+                    source_code=source_code,
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    artifacts=artifacts,
+                    save_logs=save_logs,
+                    start_step=start_step,
+                    poll_interval=poll_interval,
+                    api_keys=api_keys,
+                    submit_timeout=submit_timeout,
+                )
+
+            result = _run_loop_with_auto_resume(
+                _loop,
                 ui=ui,
                 run_id=run_id,
                 auth_headers=auth_headers,
-                source_code=source_code,
-                eval_command=eval_command,
-                eval_timeout=eval_timeout,
-                artifacts=artifacts,
-                save_logs=save_logs,
-                start_step=0,
-                poll_interval=poll_interval,
                 api_keys=api_keys,
-                submit_timeout=submit_timeout,
+                policy=auto_resume_policy or AutoResumePolicy(),
+                initial_start_step=0,
             )
 
         # Stop heartbeat immediately after loop completes

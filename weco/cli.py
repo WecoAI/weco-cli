@@ -165,6 +165,17 @@ Default models for providers:
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
     run_parser.add_argument("--submit-timeout", type=int, default=None, help=argparse.SUPPRESS)
+    run_parser.add_argument(
+        "--no-auto-resume",
+        action="store_true",
+        help="Disable automatic reconnection/resume on transient network errors (default: enabled).",
+    )
+    run_parser.add_argument(
+        "--auto-resume-max-attempts",
+        type=int,
+        default=5,
+        help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
+    )
 
     # --- Eval backend integration ---
     run_parser.add_argument(
@@ -370,6 +381,17 @@ Supported provider names: {supported_providers}.
         help="Output mode: 'rich' for interactive terminal UI (default), 'plain' for machine-readable text output suitable for LLM agents.",
     )
     resume_parser.add_argument("--submit-timeout", type=int, default=None, help=argparse.SUPPRESS)
+    resume_parser.add_argument(
+        "--no-auto-resume",
+        action="store_true",
+        help="Disable automatic reconnection/resume on transient network errors (default: enabled).",
+    )
+    resume_parser.add_argument(
+        "--auto-resume-max-attempts",
+        type=int,
+        default=5,
+        help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
+    )
 
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
@@ -431,7 +453,7 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
 
 def execute_run_command(args: argparse.Namespace) -> None:
     """Execute the 'weco run' command with all its logic."""
-    from .optimizer import optimize
+    from .optimizer import AutoResumePolicy, optimize
 
     ctx = get_event_context()
 
@@ -505,6 +527,10 @@ def execute_run_command(args: argparse.Namespace) -> None:
         ctx,
     )
 
+    auto_resume_policy = AutoResumePolicy(
+        enabled=not getattr(args, "no_auto_resume", False), max_attempts=getattr(args, "auto_resume_max_attempts", 5)
+    )
+
     success = optimize(
         source=source_arg,
         eval_command=args.eval_command,
@@ -521,6 +547,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         require_review=args.require_review,
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
+        auto_resume_policy=auto_resume_policy,
     )
 
     exit_code = 0 if success else 1
@@ -529,7 +556,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
 
 def execute_resume_command(args: argparse.Namespace) -> None:
     """Execute the 'weco resume' command with all its logic."""
-    from .optimizer import resume_optimization
+    from .optimizer import AutoResumePolicy, resume_optimization
 
     try:
         api_keys = parse_api_keys(args.api_key)
@@ -537,12 +564,17 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         console.print(f"[bold red]Error parsing API keys: {e}[/]")
         sys.exit(1)
 
+    auto_resume_policy = AutoResumePolicy(
+        enabled=not getattr(args, "no_auto_resume", False), max_attempts=getattr(args, "auto_resume_max_attempts", 5)
+    )
+
     success = resume_optimization(
         run_id=args.run_id,
         api_keys=api_keys,
         apply_change=args.apply_change,
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
+        auto_resume_policy=auto_resume_policy,
     )
 
     sys.exit(0 if success else 1)

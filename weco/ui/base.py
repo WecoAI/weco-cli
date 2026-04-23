@@ -60,6 +60,14 @@ class OptimizationUI(Protocol):
         """Called for errors."""
         ...
 
+    def on_reconnecting(self, attempt: int, max_attempts: int, backoff_s: float) -> None:
+        """Called when the client is waiting to auto-resume after a transient error."""
+        ...
+
+    def on_reconnected(self) -> None:
+        """Called after a successful auto-resume, before the loop resumes polling."""
+        ...
+
 
 @dataclass
 class UIState:
@@ -67,8 +75,11 @@ class UIState:
 
     step: int = 0
     total_steps: int = 0
-    status: str = "initializing"  # polling, executing, submitting, complete, stopped, error
+    status: str = "initializing"  # polling, executing, submitting, reconnecting, complete, stopped, error
     plan_preview: str = ""
     output_preview: str = ""
     metrics: List[tuple] = field(default_factory=list)  # (step, value)
     error: Optional[str] = None
+    reconnect_attempt: int = 0
+    reconnect_max_attempts: int = 0
+    reconnect_backoff_s: float = 0.0
