@@ -128,3 +128,9 @@ class PlainOptimizationUI:
 
     def on_error(self, message: str) -> None:
         self._print(f"[ERROR] {message}")
+
+    def on_reconnecting(self, attempt: int, max_attempts: int, backoff_s: float) -> None:
+        self._print(f"[RECONNECTING] attempt {attempt}/{max_attempts}, retry in {backoff_s:.0f}s")
+
+    def on_reconnected(self) -> None:
+        self._print("[RECONNECTED] Auto-resume succeeded; continuing optimization.")
