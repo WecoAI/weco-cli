@@ -9,11 +9,12 @@ held-out, time-based validation split.
 This example reproduces the setup from Weco's fraud-detection case study
 ([blog post](https://weco.ai/blog/framing-the-problem),
 [code](https://github.com/WecoAI/fraud-detection-case-study)). The example's
-baseline is **AUC ≈ 0.910** — a few points below the 0.914 reported in the
-case study because this example fits all encoders on `train_df` only
-(no time-leakage into val features). With the bundled `instructions.md`
-and 200 steps of `gemini-3.1-pro-preview`, expect AUC in the **0.928–0.933**
-range, consistent with the case study trajectory on a clean baseline.
+baseline is **AUC ≈ 0.9102** (deterministic; verifiable via the SHA-256s
+in `prepare_data.py`). The case study reported 0.914, which used a slightly
+leaky `build_features` (concat-then-groupby on train+val); this example's
+`train.py` fits all encoders on `train_df` only — no time-leakage. With the
+bundled `instructions.md` and 200 steps of `gemini-3.1-pro-preview`, expect
+AUC in the **0.928–0.933** range.
 
 ## Prerequisites
 
@@ -64,7 +65,7 @@ Run the baseline once to confirm everything loads:
 
 ```bash
 python evaluate.py
-# → auc_roc: 0.910xxx   (takes ~30s)
+# → auc_roc: 0.910171   (deterministic, takes ~30s)
 ```
 
 If you see an AUC in the 0.90-0.92 range, you're ready.

@@ -1,9 +1,8 @@
-"""Download IEEE-CIS data, build base features, subsample to a small split.
+"""Download IEEE-CIS data and build the fixed train/val parquets used by train.py.
 
-Produces `data/base_train_small.parquet` and `data/base_val_small.parquet` that
-`train.py` loads. The split is time-based (the last 20% of transactions by
-TransactionDT are held out for validation), which mirrors production fraud
-detection: you never train on future data.
+Produces `data/base_train_small.parquet` (100K rows, stratified by fraud) and
+`data/base_val_small.parquet` (25K rows, time-later subsample). Identical SHA-256
+to the parquets used in the published case study.
 
 Usage:
     # 1. Put your Kaggle API token at ~/.kaggle/kaggle.json
@@ -13,6 +12,24 @@ Usage:
     python prepare_data.py
 
 Runtime: ~2-3 minutes on a modern laptop. Produces ~150MB of parquet files.
+
+Pipeline (must stay byte-identical to the originals — see SHAs in the README):
+1. Merge `train_transaction.csv` + `train_identity.csv` on TransactionID.
+2. Time-based 80/20 split on TransactionDT (last 20% by time = validation).
+3. V-feature correlation pruning: sample 10_000 rows from the FULL merged df with
+   `random_state=42`, drop V-cols whose pairwise |corr| > 0.95.
+4. Label-encode all `object`/`string` columns using categories from the
+   `concat(train, val)` dtype, so the same string maps to the same int in both
+   splits.
+5. **Stratified** subsample to 100K train via global `np.random.seed(42)` +
+   `np.random.choice` over fraud/legit indices (preserves the 3.5% fraud rate
+   exactly), and a uniform 25K val subsample drawn from the same RNG state.
+
+Each of these details matters for reproducing the published baseline AUC of
+0.910171. In particular:
+- "object" alone misses pandas-3 string-dtype columns; include "string" too.
+- pandas `df.sample()` and `np.random.seed`+`np.random.choice` give DIFFERENT
+  rows even with the same seed — the original used the latter.
 """
 
 from __future__ import annotations
@@ -28,8 +45,10 @@ import pandas as pd
 DATA_DIR = Path(__file__).parent / "data"
 TRAIN_SIZE = 100_000
 VAL_SIZE = 25_000
-TIME_SPLIT_FRAC = 0.8  # first 80% of transactions by time = train candidates
+TIME_SPLIT_FRAC = 0.8
 SEED = 42
+V_CORR_SAMPLE = 10_000
+V_CORR_THRESHOLD = 0.95
 
 
 def download_kaggle() -> None:
@@ -68,47 +87,71 @@ def download_kaggle() -> None:
     zip_path.unlink()
 
 
-def build_base_features(df: pd.DataFrame) -> pd.DataFrame:
-    """Minimal, leakage-safe preprocessing so train.py has a clean starting point.
-
-    - Drop test-specific columns
-    - Label-encode object columns (LightGBM doesn't take strings)
-    - Reduce highly correlated V-features (drop one per cluster with r > 0.95)
-      to keep train.py's input dimensionality manageable
-    """
-    # Label-encode all object columns. Keep isFraud/TransactionID/TransactionDT intact.
-    obj_cols = df.select_dtypes(include=["object"]).columns.tolist()
-    for col in obj_cols:
-        df[col] = df[col].astype("category").cat.codes.astype(np.int32)
-
-    # Reduce V-features by correlation clustering (done on a sample for speed).
-    v_cols = [c for c in df.columns if c.startswith("V")]
-    if v_cols:
-        sample = df[v_cols].sample(n=min(10_000, len(df)), random_state=SEED)
-        corr = sample.corr().abs()
-        upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
-        to_drop = [c for c in upper.columns if (upper[c] > 0.95).any()]
-        df = df.drop(columns=to_drop)
-        print(f"[v-reduce] dropped {len(to_drop)}/{len(v_cols)} correlated V-features")
-
-    return df
-
-
 def time_based_split(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    df = df.sort_values("TransactionDT").reset_index(drop=True)
     split_point = df["TransactionDT"].quantile(TIME_SPLIT_FRAC)
     train = df[df["TransactionDT"] <= split_point].copy()
     val = df[df["TransactionDT"] > split_point].copy()
     return train, val
 
 
-def subsample(df: pd.DataFrame, n: int, label: str) -> pd.DataFrame:
-    if len(df) <= n:
-        return df
-    sampled = df.sample(n=n, random_state=SEED).sort_values("TransactionDT").reset_index(drop=True)
-    fraud_rate = sampled["isFraud"].mean()
-    print(f"[subsample] {label}: {len(df)} -> {len(sampled)} (fraud rate {fraud_rate:.3%})")
-    return sampled
+def reduce_v_features(
+    df_full: pd.DataFrame, train: pd.DataFrame, val: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
+    """Drop V-cols whose pairwise |corr| > threshold, sampled from FULL merged df."""
+    v_cols = [c for c in df_full.columns if c.startswith("V")]
+    if not v_cols:
+        return train, val, []
+    sample = df_full[v_cols].sample(n=min(V_CORR_SAMPLE, len(df_full)), random_state=SEED)
+    corr = sample.corr().abs()
+    upper = corr.where(np.triu(np.ones(corr.shape), k=1).astype(bool))
+    to_drop = [c for c in upper.columns if (upper[c] > V_CORR_THRESHOLD).any()]
+    return train.drop(columns=to_drop), val.drop(columns=to_drop), to_drop
+
+
+def label_encode_with_combined_categories(
+    train: pd.DataFrame, val: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Encode all object/string cols using categories from concat(train, val).
+
+    Important: include both "object" AND "string" — pandas 3 strings have
+    StringDtype and aren't picked up by `include=["object"]` alone.
+    """
+    obj_cols = train.select_dtypes(include=["object", "string"]).columns
+    obj_cols = [c for c in obj_cols if c not in ("TransactionID", "isFraud")]
+    for col in obj_cols:
+        combined = pd.concat([train[col], val[col]]).astype("category")
+        cats = combined.cat.categories
+        train[col] = train[col].astype("category").cat.set_categories(cats).cat.codes
+        val[col] = val[col].astype("category").cat.set_categories(cats).cat.codes
+    return train, val
+
+
+def stratified_subsample(
+    train: pd.DataFrame, val: pd.DataFrame
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Stratified train subsample preserving fraud rate; uniform val subsample.
+
+    Uses ONE global `np.random.seed(42)` then sequential `np.random.choice`
+    calls — the val subsample inherits the RNG state advanced by the train
+    subsample. This sequential coupling matters for reproducibility.
+    """
+    np.random.seed(SEED)
+    fraud_idx = train[train["isFraud"] == 1].index
+    legit_idx = train[train["isFraud"] == 0].index
+    fraud_rate = len(fraud_idx) / len(train)
+    n_fraud = int(TRAIN_SIZE * fraud_rate)
+    n_legit = TRAIN_SIZE - n_fraud
+    si = np.sort(
+        np.concatenate([
+            np.random.choice(fraud_idx, n_fraud, replace=False),
+            np.random.choice(legit_idx, n_legit, replace=False),
+        ])
+    )
+    train_small = train.loc[si].reset_index(drop=True)
+    val_small = val.iloc[
+        np.random.choice(len(val), VAL_SIZE, replace=False)
+    ].reset_index(drop=True)
+    return train_small, val_small
 
 
 def main() -> None:
@@ -126,19 +169,30 @@ def main() -> None:
     df = txn.merge(ident, on="TransactionID", how="left")
     print(f"[load] shape={df.shape}, fraud rate {df['isFraud'].mean():.3%}")
 
-    df = build_base_features(df)
-
     print("[split] time-based 80/20")
-    train_df, val_df = time_based_split(df)
-    print(f"[split] train={len(train_df)} val={len(val_df)}")
+    train, val = time_based_split(df)
+    print(f"[split] train={len(train)} val={len(val)}")
 
-    train_small = subsample(train_df, TRAIN_SIZE, "train")
-    val_small = subsample(val_df, VAL_SIZE, "val")
+    print("[v-reduce] correlation pruning over full merged df")
+    train, val, dropped = reduce_v_features(df, train, val)
+    print(f"[v-reduce] dropped {len(dropped)} V cols (threshold {V_CORR_THRESHOLD})")
+
+    print("[encode] label-encode object/string cols using combined categories")
+    train, val = label_encode_with_combined_categories(train, val)
+
+    print("[subsample] stratified train, uniform val (np.random.seed=42)")
+    train_small, val_small = stratified_subsample(train, val)
+    print(f"[subsample] train={len(train_small)} (fraud {train_small['isFraud'].mean():.3%}), "
+          f"val={len(val_small)} (fraud {val_small['isFraud'].mean():.3%})")
 
     train_small.to_parquet(train_out, index=False)
     val_small.to_parquet(val_out, index=False)
     print(f"[write] {train_out}")
     print(f"[write] {val_out}")
+    print()
+    print("Expected SHA-256 (matches the published case study parquets):")
+    print("  train: a2d7a6740559975b8e6d89bd605f1e29791dd7d3fee8abc6449552bbc18d29ae")
+    print("  val:   8b426c8bf7fa845bc234dbce304b1107fd295143fac2398bab97b78805f50753")
 
 
 if __name__ == "__main__":
