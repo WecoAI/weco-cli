@@ -42,7 +42,11 @@ python3 -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 # After activation, `python` resolves to the venv's interpreter.
 
-pip install -r requirements.txt
+pip install --upgrade -r requirements.txt
+# Always pull the latest weco-cli — never pin. Recent versions ship important
+# fixes (e.g. 0.3.31 added queue-mode submit recovery that prevents transient
+# network errors from prematurely terminating runs). `--upgrade` ensures you
+# pick those up even if an older weco is already installed in the venv.
 
 # Downloads ~120MB of CSVs, builds a small 100K/25K parquet split.
 # Time-based split: last 20% of transactions by TransactionDT = validation.
