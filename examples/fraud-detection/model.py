@@ -3,7 +3,7 @@ scope. Features arrive pre-built; labels arrive separately.
 
 Interface:
 - train_and_evaluate(X_train, y_train, X_val, y_val) -> float (val AUC)
-- X_* are float32 ndarrays of identical shape; y_* are int32 arrays of labels.
+- X_* are float32 ndarrays of identical shape; y_* are pd.Series of int32 labels.
 - Return validation AUC-ROC. Print a final `auc_roc: 0.xxxxxx` line in
   evaluate.py (this file just returns the float).
 

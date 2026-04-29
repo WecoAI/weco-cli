@@ -19,12 +19,19 @@ import pandas as pd
 
 
 def main() -> int:
-    here = Path(__file__).resolve().parent
+    # IMPORTANT: use os.getcwd() (the process cwd Weco invoked us in), NOT
+    # Path(__file__).resolve() which follows symlinks back to the template
+    # directory. Weco lays down per-seed copies of features.py / model.py and
+    # invokes the evaluator with cwd = the per-seed dir; that's the
+    # authoritative anchor for finding the proposed code.
+    import os
+    here = Path(os.getcwd())
     train_df = pd.read_parquet(here / "data" / "base_train_small.parquet")
     val_df = pd.read_parquet(here / "data" / "base_val_small.parquet")
 
-    y_train = train_df["isFraud"].values.astype("int32")
-    y_val = val_df["isFraud"].values.astype("int32")
+    # Pass y as a pd.Series so .values, .map, .to_dict, etc. all work.
+    y_train = train_df["isFraud"].astype("int32")
+    y_val = val_df["isFraud"].astype("int32")
 
     # Strip target and ID before either file's code can see them.
     X_train = train_df.drop(columns=["isFraud", "TransactionID"])
