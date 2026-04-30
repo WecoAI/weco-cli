@@ -35,6 +35,7 @@ def perform_login(console: Console):
         console.print(f"[link={verification_uri}]{verification_uri}[/link]")
         console.print(f"This request will expire in {expires_in // 60} minutes.")
         console.print("Attempting to open the authentication page in your default browser...")  # Notify user
+        console.print("[dim]If you are an agent: surface the authentication link to the user so they can click it.[/]")
 
         # Automatically open the browser
         try:
