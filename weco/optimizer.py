@@ -437,14 +437,6 @@ def resume_optimization(
         console.print(f"[bold red]Error fetching run status: {e}[/]")
         return False
 
-    run_status_val = status.get("status")
-    if run_status_val not in ("error", "terminated"):
-        console.print(
-            f"[yellow]Run {run_id} cannot be resumed (status: {run_status_val}). "
-            f"Only 'error' or 'terminated' runs can be resumed.[/]"
-        )
-        return False
-
     objective = status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
     maximize = bool(objective.get("maximize", True))
@@ -454,6 +446,28 @@ def resume_optimization(
     total_steps = optimizer.get("steps", 0)
     current_step = int(status.get("current_step", 0))
     steps_remaining = int(total_steps) - current_step
+
+    run_status_val = status.get("status")
+    # Allow resume for runs prematurely marked "completed" with current_step <
+    # total_steps. This happens when a transient `Failed to submit result` on
+    # the CLI side races with a successful backend ack — backend records the
+    # result and marks the run completed, but the CLI exits with submit_failed
+    # well short of the configured step budget. Treat these as resumable so
+    # users can pick up where they left off without losing their step history.
+    short_completed = run_status_val == "completed" and steps_remaining > 0
+    if run_status_val not in ("error", "terminated") and not short_completed:
+        console.print(
+            f"[yellow]Run {run_id} cannot be resumed (status: {run_status_val}, "
+            f"current_step={current_step}/{total_steps}). "
+            f"Resumable when status in (error, terminated) or "
+            f"completed with current_step < total_steps.[/]"
+        )
+        return False
+    if short_completed:
+        console.print(
+            f"[cyan]Run is marked completed at step {current_step}/{total_steps}. "
+            f"Resuming the remaining {steps_remaining} step(s).[/]"
+        )
 
     model_name = (
         (optimizer.get("code_generator") or {}).get("model") or (optimizer.get("evaluator") or {}).get("model") or "unknown"
