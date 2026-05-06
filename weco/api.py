@@ -90,12 +90,17 @@ def resume_optimization_run(
     run_id: str,
     auth_headers: dict = {},
     api_keys: Optional[Dict[str, str]] = None,
+    steps: Optional[int] = None,
     timeout: Union[int, Tuple[int, int]] = (5, 10),
 ) -> Optional[Dict[str, Any]]:
-    """Request the backend to resume an interrupted run."""
+    """Request the backend to resume an interrupted or completed run.
+
+    When ``steps`` is provided, the backend resets the run's budget to
+    ``last_step + steps``. Required for runs already in the ``completed`` state.
+    """
     with console.status("[bold green]Resuming run..."):
         try:
-            return WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
+            return WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys, steps=steps)
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
             return None

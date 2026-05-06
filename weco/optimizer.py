@@ -406,9 +406,10 @@ def resume_optimization(
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
+    additional_steps: Optional[int] = None,
 ) -> bool:
     """
-    Resume an interrupted run using the queue-based optimization loop.
+    Resume an interrupted or completed run using the queue-based optimization loop.
 
     Polls for execution tasks, executes locally, and submits results.
     Uses the execution queue flow instead of the legacy direct flow.
@@ -419,6 +420,8 @@ def resume_optimization(
         poll_interval: Seconds between polling attempts.
         apply_change: If True, automatically apply best solution; if False, prompt user.
         output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
+        additional_steps: If set, run this many more evaluations from the last node.
+            Required when resuming a completed run; optional for terminated/error.
 
     Returns:
         True if optimization completed successfully, False otherwise.
@@ -438,10 +441,14 @@ def resume_optimization(
         return False
 
     run_status_val = status.get("status")
-    if run_status_val not in ("error", "terminated"):
+    if run_status_val == "completed":
+        if additional_steps is None:
+            console.print(f"[yellow]Run {run_id} is already complete. Pass --steps N to resume with N more evaluations.[/]")
+            return False
+    elif run_status_val not in ("error", "terminated"):
         console.print(
             f"[yellow]Run {run_id} cannot be resumed (status: {run_status_val}). "
-            f"Only 'error' or 'terminated' runs can be resumed.[/]"
+            f"Only 'error', 'terminated', or 'completed' runs can be resumed.[/]"
         )
         return False
 
@@ -467,7 +474,17 @@ def resume_optimization(
     console.print(f"  Objective: {metric_name} ({'maximize' if maximize else 'minimize'})")
     console.print(f"  Model: {model_name}")
     console.print(f"  Eval Command: {eval_command}")
-    console.print(f"  Total Steps: {total_steps} | Current Step: {current_step} | Steps Remaining: {steps_remaining}")
+    if additional_steps is not None:
+        new_total = current_step + additional_steps
+        plural = "s" if additional_steps != 1 else ""
+        console.print(
+            f"  Total Steps: {total_steps} -> [bold]{new_total}[/] | Current Step: {current_step} | "
+            f"Will run: [bold]{additional_steps}[/] more evaluation{plural} (--steps)"
+        )
+        if new_total < total_steps:
+            console.print(f"  [yellow]Note: this shrinks the original budget ({total_steps}) to {new_total}.[/]")
+    else:
+        console.print(f"  Total Steps: {total_steps} | Current Step: {current_step} | Steps Remaining: {steps_remaining}")
     console.print(f"  Last Updated: {status.get('updated_at', 'N/A')}")
 
     unchanged = Confirm.ask(
@@ -477,10 +494,19 @@ def resume_optimization(
         console.print("[yellow]Resume cancelled. Please start a new run if the environment changed.[/]")
         return False
 
-    # Call backend to prepare resume (this sets status to 'running')
-    resume_resp = resume_optimization_run(console=console, run_id=run_id, auth_headers=auth_headers, api_keys=api_keys)
+    # Call backend to prepare resume (this sets status to 'running' and, when
+    # additional_steps is provided, resets run.steps to last_step + additional_steps)
+    resume_resp = resume_optimization_run(
+        console=console, run_id=run_id, auth_headers=auth_headers, api_keys=api_keys, steps=additional_steps
+    )
     if resume_resp is None:
         return False
+
+    # Refresh total_steps from the resume response — when the budget was
+    # extended, the response carries the new total.
+    response_steps = resume_resp.get("steps")
+    if response_steps is not None:
+        total_steps = int(response_steps)
 
     log_dir = resume_resp.get("log_dir", ".runs")
     save_logs = bool(resume_resp.get("save_logs", False))
