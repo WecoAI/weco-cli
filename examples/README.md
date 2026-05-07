@@ -14,6 +14,7 @@ Explore runnable examples that show how to use Weco to optimize ML models, promp
   - [⚡ Triton Optimization](#-triton-optimization)
   - [🚀 CUDA Optimization](#-cuda-optimization)
   - [🧠 Prompt Engineering](#-prompt-engineering)
+  - [🗜️ Prompt Compression](#-prompt-compression)
   - [📊 Extract Line Plot — Chart to CSV](#-extract-line-plot--chart-to-csv)
   - [🛰️ Model Development — Spaceship Titanic](#️-model-development--spaceship-titanic)
 
@@ -33,6 +34,7 @@ pip install weco
 | ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
 | 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
+| 🗜️ Prompt Compression | Shrink a 65K-char classifier prompt by ~95% on BANKING77 while holding accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt-compression/README.md) |
 | 📊 Agentic Scaffolding | Optimize agentic scaffolding for chart-to-CSV extraction | `openai`, `huggingface_hub`, `uv`, OpenAI API key | [README](extract-line-plot/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
 
@@ -128,6 +130,26 @@ weco run --source optimize.py \
      --model o4-mini \
      --additional-instructions "Improve the prompt to get better scores. Focus on clarity, specificity, and effective prompt engineering techniques."
 ```
+
+### 🗜️ Prompt Compression
+
+- **Requirements**: OpenAI API key (create [here](https://platform.openai.com/api-keys))
+- **Install Dependencies**: `pip install openai "datasets<4.0"`
+- **Run**:
+```bash
+cd examples/prompt-compression
+export OPENAI_API_KEY="your_key_here"
+python bake_optimize.py            # one-shot: writes the bloated 65,887-char baseline into optimize.py
+weco run --source optimize.py \
+     --eval-command "python eval.py" \
+     --metric metric \
+     --goal minimize \
+     --steps 50 \
+     --model claude-opus-4-7 \
+     --additional-instructions prompt_guide.md \
+     --apply-change
+```
+- **What you'll see**: Weco shrinks the BANKING77 classifier system prompt by ~95% (65,887 → ~3,200 chars) while holding accuracy at the baseline-minus-2pp threshold. See [the share link](https://weco.ai/share/XSRQdS7vfMdt9beD3KR1tlhg7By-FFIo) for the trajectory of one full run.
 
 ### 📊 Extract Line Plot — Chart to CSV
 
