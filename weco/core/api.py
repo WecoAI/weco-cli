@@ -193,6 +193,7 @@ class WecoClient:
         installation_id: str | None = None,
         invocation_id: str | None = None,
         invoked_via: str | None = None,
+        beta: bool = False,
     ) -> dict:
         """``POST /runs/`` — start a new optimization run.
 
@@ -205,17 +206,21 @@ class WecoClient:
         if invocation_id:
             metadata["invocation_id"] = invocation_id
 
+        optimizer_body: dict[str, Any] = {
+            "steps": steps,
+            "code_generator": code_generator_config,
+            "evaluator": evaluator_config,
+            "search_policy": search_policy_config,
+        }
+        if beta:
+            optimizer_body["beta"] = True
+
         body: dict[str, Any] = {
             "source_code": source_code,
             "source_path": source_path,
             "additional_instructions": additional_instructions,
             "objective": {"evaluation_command": evaluation_command, "metric_name": metric_name, "maximize": maximize},
-            "optimizer": {
-                "steps": steps,
-                "code_generator": code_generator_config,
-                "evaluator": evaluator_config,
-                "search_policy": search_policy_config,
-            },
+            "optimizer": optimizer_body,
             "eval_timeout": eval_timeout,
             "save_logs": save_logs,
             "log_dir": log_dir,
