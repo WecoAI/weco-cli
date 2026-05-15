@@ -1,4 +1,5 @@
 import math
+import os
 import pathlib
 import sys
 import threading
@@ -677,6 +678,12 @@ def optimize(
         "debug_prob": 0.5,
         "max_debug_depth": max(1, math.ceil(0.1 * steps)),
     }
+    # Opt into experimental backend behaviors. Hidden behind an env var rather
+    # than a CLI flag so the Claude skill prompt doesn't need to surface it.
+    # The exact set of behaviors enabled is the backend's call — today it
+    # turns on SEARCH/REPLACE diff generation, tomorrow it may include more.
+    # Truthy values mirror WECO_DISABLE_EVENTS.
+    beta = os.environ.get("WECO_BETA", "").lower() in ("1", "true", "yes")
     processed_instructions = read_additional_instructions(additional_instructions)
 
     # Get event context for tracking
@@ -704,6 +711,7 @@ def optimize(
         installation_id=event_ctx.installation_id,
         invocation_id=event_ctx.invocation_id,
         invoked_via=event_ctx.invoked_via,
+        beta=beta,
     )
 
     if run_response is None:

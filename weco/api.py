@@ -53,6 +53,7 @@ def start_optimization_run(
     installation_id: Optional[str] = None,
     invocation_id: Optional[str] = None,
     invoked_via: Optional[str] = None,
+    beta: bool = False,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -76,6 +77,7 @@ def start_optimization_run(
                 installation_id=installation_id,
                 invocation_id=invocation_id,
                 invoked_via=invoked_via,
+                beta=beta,
             )
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
