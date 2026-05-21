@@ -353,6 +353,17 @@ def configure_resume_parser(resume_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Automatically apply the best solution to the source file without prompting",
     )
+    resume_parser.add_argument(
+        "-n",
+        "--steps",
+        type=int,
+        default=None,
+        help=(
+            "Run this many more evaluations from the last node. "
+            "Required when resuming a completed run; optional for terminated/error runs "
+            "(omit to keep the original budget)."
+        ),
+    )
 
     default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
     supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
@@ -575,6 +586,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
+        additional_steps=args.steps,
     )
 
     sys.exit(0 if success else 1)

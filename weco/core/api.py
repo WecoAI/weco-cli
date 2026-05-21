@@ -346,8 +346,12 @@ class WecoClient:
         resp.raise_for_status()
         return resp.json()
 
-    def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None) -> dict:
-        """``POST /runs/{run_id}/resume`` — resume an interrupted run.
+    def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None, steps: int | None = None) -> dict:
+        """``POST /runs/{run_id}/resume`` — resume an interrupted or completed run.
+
+        When ``steps`` is provided, the backend resets the run's budget to
+        ``last_step + steps`` and produces the next candidate. Required for
+        runs already in the ``completed`` state.
 
         Raises:
             requests.exceptions.HTTPError: On non-2xx responses.
@@ -355,6 +359,8 @@ class WecoClient:
         body: dict[str, Any] = {"metadata": {"client_name": "cli", "client_version": __pkg_version__}}
         if api_keys:
             body["api_keys"] = api_keys
+        if steps is not None:
+            body["steps"] = steps
         resp = self._post(f"/runs/{run_id}/resume", json=body, timeout=(5, 10))
         resp.raise_for_status()
         return resp.json()
