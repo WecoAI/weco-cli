@@ -1,3 +1,4 @@
+import hashlib
 import math
 import os
 import pathlib
@@ -6,7 +7,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, List, Optional
 
 from requests.exceptions import ConnectionError as RequestsConnectionError, HTTPError, ReadTimeout
 from rich.console import Console
@@ -64,6 +65,55 @@ _TRANSIENT_REASONS = frozenset({"transient_network_error", "http_502", "http_503
 
 def _is_transient(result: OptimizationResult) -> bool:
     return result.reason in _TRANSIENT_REASONS
+
+
+# Substrings that indicate the eval output contains a hard error rather than a
+# legitimate (low) metric value. Detection is intentionally lenient — any one of
+# these in the last few lines is enough.
+_ERROR_INDICATORS = (
+    "Traceback",
+    "Error:",
+    "Exception:",
+    "FATAL",
+    "ModuleNotFoundError",
+    "ImportError",
+    "SyntaxError",
+    "command not found",
+    "No such file or directory",
+)
+
+
+def _extract_error_signature(term_out: str) -> Optional[str]:
+    """Hash a stable signature of the error in eval output, or return None if no error.
+
+    Strategy: look at the last few non-empty lines (where most error messages land)
+    and hash them. Returns None when the output looks healthy (no error markers in
+    the trailing lines), which prevents the streak check from triggering on
+    successful-but-flat runs.
+    """
+    if not term_out:
+        return None
+    lines = [line.rstrip() for line in term_out.splitlines() if line.strip()]
+    if not lines:
+        return None
+    tail = lines[-5:]
+    tail_text = "\n".join(tail)
+    has_error = any(indicator in tail_text for indicator in _ERROR_INDICATORS)
+    if not has_error:
+        return None
+    # Hash the last 3 lines — robust to small variations like tracebacks with
+    # different intermediate frames, while still distinguishing different errors.
+    signature_lines = lines[-3:] if len(lines) >= 3 else lines
+    digest_input = "\n".join(signature_lines).encode("utf-8", errors="replace")
+    return hashlib.sha1(digest_input).hexdigest()
+
+
+def _extract_error_tail(term_out: str, max_lines: int = 5) -> str:
+    """Return the trailing lines of eval output for surfacing in error messages."""
+    if not term_out:
+        return ""
+    lines = [line.rstrip() for line in term_out.splitlines() if line.strip()]
+    return "\n".join(lines[-max_lines:])
 
 
 def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> bool:
@@ -166,6 +216,7 @@ def run_optimization_loop(
     max_poll_attempts: int = 300,
     api_keys: Optional[dict] = None,
     submit_timeout: Optional[int] = None,
+    max_identical_failures: int = 3,
 ) -> OptimizationResult:
     """
     Shared queue-based execution loop for optimize and resume.
@@ -190,11 +241,17 @@ def run_optimization_loop(
         submit_timeout: Optional read-timeout override (seconds) for the
             ``/suggest`` call made when submitting a step's result. ``None``
             preserves the existing ~61-minute default.
+        max_identical_failures: Halt the run when this many consecutive steps
+            produce the same error signature in their eval output. Catches stuck
+            runs like environment misconfigurations where every step fails with
+            the same ``ModuleNotFoundError`` and the optimizer keeps proposing
+            variants that can't possibly succeed. ``0`` disables the check.
 
     Returns:
         OptimizationResult with success status and termination info.
     """
     step = start_step
+    recent_error_signatures: List[str] = []
 
     try:
         while True:
@@ -275,6 +332,39 @@ def run_optimization_loop(
                 artifacts.save_execution_output(step=step, output=term_out)
 
             ui.on_output(term_out)
+
+            # Track consecutive identical error signatures. When the eval output
+            # keeps reproducing the same hard error (environment misconfig, missing
+            # module, etc.), the optimizer's hypothesis space is irrelevant — halt
+            # rather than burn more credits on impossible-to-validate variants.
+            if max_identical_failures > 0:
+                signature = _extract_error_signature(term_out)
+                if signature is None:
+                    recent_error_signatures = []
+                else:
+                    recent_error_signatures.append(signature)
+                    if (
+                        len(recent_error_signatures) >= max_identical_failures
+                        and len(set(recent_error_signatures[-max_identical_failures:])) == 1
+                    ):
+                        error_tail = _extract_error_tail(term_out)
+                        ui.on_error(
+                            f"Halted: {max_identical_failures} consecutive steps failed with the same error. "
+                            f"Last error excerpt:\n{error_tail}\n\n"
+                            f"This usually means the eval command can't run in the current environment. "
+                            f"Common causes: missing dependencies, wrong Python interpreter, or a path issue. "
+                            f"Re-run with --max-identical-failures 0 to override this check."
+                        )
+                        return OptimizationResult(
+                            success=False,
+                            final_step=step + 1,
+                            status="error",
+                            reason="identical_failure_streak",
+                            details=(
+                                f"Halted after {max_identical_failures} consecutive identical "
+                                f"evaluation failures. Last error excerpt:\n{error_tail}"
+                            ),
+                        )
 
             # Submit result. HTTP errors (insufficient credits, candidate generation
             # failures, etc.) propagate and are handled centrally below so the real
@@ -408,6 +498,7 @@ def resume_optimization(
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
     additional_steps: Optional[int] = None,
+    max_identical_failures: int = 3,
 ) -> bool:
     """
     Resume an interrupted or completed run using the queue-based optimization loop.
@@ -580,6 +671,7 @@ def resume_optimization(
                     poll_interval=poll_interval,
                     api_keys=api_keys,
                     submit_timeout=submit_timeout,
+                    max_identical_failures=max_identical_failures,
                 )
 
             result = _run_loop_with_auto_resume(
@@ -651,6 +743,7 @@ def optimize(
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
+    max_identical_failures: int = 3,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -783,6 +876,7 @@ def optimize(
                     poll_interval=poll_interval,
                     api_keys=api_keys,
                     submit_timeout=submit_timeout,
+                    max_identical_failures=max_identical_failures,
                 )
 
             result = _run_loop_with_auto_resume(

@@ -176,6 +176,17 @@ Default models for providers:
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    run_parser.add_argument(
+        "--max-identical-failures",
+        type=int,
+        default=3,
+        help=(
+            "Halt the run when this many consecutive steps fail with the same error "
+            "signature (e.g. the same ModuleNotFoundError repeating). Catches stuck "
+            "runs where the optimizer keeps proposing variants that can't possibly "
+            "succeed in the current environment. Default: 3. Set to 0 to disable."
+        ),
+    )
 
     # --- Eval backend integration ---
     run_parser.add_argument(
@@ -403,6 +414,15 @@ Supported provider names: {supported_providers}.
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    resume_parser.add_argument(
+        "--max-identical-failures",
+        type=int,
+        default=3,
+        help=(
+            "Halt the run when this many consecutive steps fail with the same error "
+            "signature. Default: 3. Set to 0 to disable."
+        ),
+    )
 
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
@@ -559,6 +579,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
+        max_identical_failures=getattr(args, "max_identical_failures", 3),
     )
 
     exit_code = 0 if success else 1
@@ -587,6 +608,7 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
         additional_steps=args.steps,
+        max_identical_failures=getattr(args, "max_identical_failures", 3),
     )
 
     sys.exit(0 if success else 1)
