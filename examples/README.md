@@ -16,6 +16,7 @@ Explore runnable examples that show how to use Weco to optimize ML models, promp
   - [🧠 Prompt Engineering](#-prompt-engineering)
   - [📊 Extract Line Plot — Chart to CSV](#-extract-line-plot--chart-to-csv)
   - [🛰️ Model Development — Spaceship Titanic](#️-model-development--spaceship-titanic)
+  - [🕵️ Fraud Detection — IEEE-CIS](#️-fraud-detection--ieee-cis)
 
 ### Prerequisites
 
@@ -35,6 +36,7 @@ pip install weco
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
 | 📊 Agentic Scaffolding | Optimize agentic scaffolding for chart-to-CSV extraction | `openai`, `huggingface_hub`, `uv`, OpenAI API key | [README](extract-line-plot/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
+| 🕵️ Fraud Detection | Optimize a fraud pipeline on IEEE-CIS (real Vesta transactions) | `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `pyarrow`, `kaggle` | [README](fraud-detection/README.md) |
 
 ---
 
@@ -162,8 +164,33 @@ weco run --source train.py \
      --log-dir .runs/spaceship-titanic
 ```
 
+### 🕵️ Fraud Detection — IEEE-CIS
+
+Optimize a tabular fraud-detection pipeline on real Vesta payment data.
+Reproduces Weco's
+[fraud-detection case study](https://weco.ai/blog/framing-the-problem)
+(baseline AUC 0.914 → pooled 6-seed mean 0.9305 ± 0.0035 with full
+instructions at 200 steps).
+
+- **Prereqs**: Kaggle API token + [join the competition](https://www.kaggle.com/c/ieee-fraud-detection)
+- **Install Dependencies**: `pip install -r requirements.txt`
+- **Prepare data** (once, ~2-3 min): `python prepare_data.py`
+- **Run**:
+```bash
+cd examples/fraud-detection
+weco run --source train.py \
+     --eval-command "python evaluate.py" \
+     --metric auc_roc \
+     --goal maximize \
+     --steps 50 \
+     --model gemini-3.1-pro-preview \
+     --additional-instructions instructions.md \
+     --eval-timeout 300 \
+     --log-dir .runs/fraud-detection
+```
+
 ---
 
-If you're new to Weco, start with **Hello World**, then try **LangSmith ZephHR QA** for a realistic LangSmith optimization workflow, explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, or **Spaceship Titanic** for model development.
+If you're new to Weco, start with **Hello World**, then try **LangSmith ZephHR QA** for a realistic LangSmith optimization workflow, explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, **Spaceship Titanic** for model development, or **Fraud Detection** for a production-scale tabular ML case study.
 
 
