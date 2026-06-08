@@ -25,6 +25,7 @@ def main() -> int:
     # invokes the evaluator with cwd = the per-seed dir; that's the
     # authoritative anchor for finding the proposed code.
     import os
+
     here = Path(os.getcwd())
     train_df = pd.read_parquet(here / "data" / "base_train_small.parquet")
     val_df = pd.read_parquet(here / "data" / "base_val_small.parquet")

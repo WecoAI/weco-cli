@@ -24,16 +24,12 @@ def _add_row_features(df: pd.DataFrame) -> pd.DataFrame:
     df["hour_cos"] = np.cos(2 * np.pi * df["hour"] / 24)
 
     df["TransactionAmt_log"] = np.log1p(df["TransactionAmt"])
-    df["TransactionAmt_decimal"] = (
-        df["TransactionAmt"] - df["TransactionAmt"].astype(int)
-    ).round(2)
+    df["TransactionAmt_decimal"] = (df["TransactionAmt"] - df["TransactionAmt"].astype(int)).round(2)
     df["TransactionAmt_is_round"] = (df["TransactionAmt_decimal"] == 0).astype(np.int8)
     return df
 
 
-def build_features(
-    train_df: pd.DataFrame, val_df: pd.DataFrame
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def build_features(train_df: pd.DataFrame, val_df: pd.DataFrame) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     """Build features from the base data. Returns (X_train, y_train, X_val, y_val).
 
     Any aggregation or encoding (groupby stats, frequency, target encoding, ...)
@@ -63,9 +59,7 @@ def build_features(
     for key in ["card1", "addr1"]:
         grp = train.groupby(key)["TransactionAmt"]
         stats = grp.agg(["mean", "std", "count"]).rename(
-            columns={"mean": f"{key}_amt_mean",
-                     "std": f"{key}_amt_std",
-                     "count": f"{key}_amt_count"}
+            columns={"mean": f"{key}_amt_mean", "std": f"{key}_amt_std", "count": f"{key}_amt_count"}
         )
         # Unseen keys in val: fall back to train-global mean/std and count=0.
         defaults = {
@@ -97,12 +91,7 @@ def build_features(
     return X_train, y_train, X_val, y_val
 
 
-def train_and_evaluate(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_val: np.ndarray,
-    y_val: np.ndarray,
-) -> float:
+def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> float:
     """Train LightGBM and return AUC-ROC on the validation set.
 
     Reasonable-but-not-heavily-tuned hyperparameters. A fraud team would

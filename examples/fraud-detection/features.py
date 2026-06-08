@@ -71,9 +71,7 @@ class FeatureBuilder:
         # Per-row amount features.
         out["TransactionAmt"] = X["TransactionAmt"].astype(np.float32)
         out["TransactionAmt_log"] = np.log1p(X["TransactionAmt"])
-        out["TransactionAmt_decimal"] = (
-            X["TransactionAmt"] - X["TransactionAmt"].astype(int)
-        ).round(2)
+        out["TransactionAmt_decimal"] = (X["TransactionAmt"] - X["TransactionAmt"].astype(int)).round(2)
         out["TransactionAmt_is_round"] = (out["TransactionAmt_decimal"] == 0).astype(np.int8)
 
         # Frequency lookups (unseen keys → 0).

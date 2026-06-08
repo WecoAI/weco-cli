@@ -27,12 +27,7 @@ import lightgbm as lgb
 from sklearn.metrics import roc_auc_score
 
 
-def train_and_evaluate(
-    X_train: np.ndarray,
-    y_train: np.ndarray,
-    X_val: np.ndarray,
-    y_val: np.ndarray,
-) -> float:
+def train_and_evaluate(X_train: np.ndarray, y_train: np.ndarray, X_val: np.ndarray, y_val: np.ndarray) -> float:
     """Train a model on (X_train, y_train); return AUC-ROC on (X_val, y_val).
 
     Reasonable-but-not-heavily-tuned LightGBM defaults. There is real headroom

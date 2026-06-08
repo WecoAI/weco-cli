@@ -66,8 +66,7 @@ def download_kaggle() -> None:
     # `python -m kaggle` fails. kaggle.cli is the canonical entry point.
     try:
         subprocess.check_call(
-            [sys.executable, "-m", "kaggle.cli", "competitions", "download",
-             "-c", "ieee-fraud-detection", "-p", str(DATA_DIR)]
+            [sys.executable, "-m", "kaggle.cli", "competitions", "download", "-c", "ieee-fraud-detection", "-p", str(DATA_DIR)]
         )
     except subprocess.CalledProcessError as e:
         print(
@@ -108,9 +107,7 @@ def reduce_v_features(
     return train.drop(columns=to_drop), val.drop(columns=to_drop), to_drop
 
 
-def label_encode_with_combined_categories(
-    train: pd.DataFrame, val: pd.DataFrame
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def label_encode_with_combined_categories(train: pd.DataFrame, val: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Encode all object/string cols using categories from concat(train, val).
 
     Important: include both "object" AND "string" — pandas 3 strings have
@@ -126,9 +123,7 @@ def label_encode_with_combined_categories(
     return train, val
 
 
-def stratified_subsample(
-    train: pd.DataFrame, val: pd.DataFrame
-) -> tuple[pd.DataFrame, pd.DataFrame]:
+def stratified_subsample(train: pd.DataFrame, val: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Stratified train subsample preserving fraud rate; uniform val subsample.
 
     Uses ONE global `np.random.seed(42)` then sequential `np.random.choice`
@@ -142,15 +137,12 @@ def stratified_subsample(
     n_fraud = int(TRAIN_SIZE * fraud_rate)
     n_legit = TRAIN_SIZE - n_fraud
     si = np.sort(
-        np.concatenate([
-            np.random.choice(fraud_idx, n_fraud, replace=False),
-            np.random.choice(legit_idx, n_legit, replace=False),
-        ])
+        np.concatenate(
+            [np.random.choice(fraud_idx, n_fraud, replace=False), np.random.choice(legit_idx, n_legit, replace=False)]
+        )
     )
     train_small = train.loc[si].reset_index(drop=True)
-    val_small = val.iloc[
-        np.random.choice(len(val), VAL_SIZE, replace=False)
-    ].reset_index(drop=True)
+    val_small = val.iloc[np.random.choice(len(val), VAL_SIZE, replace=False)].reset_index(drop=True)
     return train_small, val_small
 
 
@@ -182,8 +174,10 @@ def main() -> None:
 
     print("[subsample] stratified train, uniform val (np.random.seed=42)")
     train_small, val_small = stratified_subsample(train, val)
-    print(f"[subsample] train={len(train_small)} (fraud {train_small['isFraud'].mean():.3%}), "
-          f"val={len(val_small)} (fraud {val_small['isFraud'].mean():.3%})")
+    print(
+        f"[subsample] train={len(train_small)} (fraud {train_small['isFraud'].mean():.3%}), "
+        f"val={len(val_small)} (fraud {val_small['isFraud'].mean():.3%})"
+    )
 
     train_small.to_parquet(train_out, index=False)
     val_small.to_parquet(val_out, index=False)
