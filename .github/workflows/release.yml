@@ -1,0 +1,151 @@
+name: Release
+
+on:
+  # Fires when the *Lint and Format Code* workflow that was
+  # started by a push to main has finished (any conclusion)
+  workflow_run:
+    workflows: ["Lint and Format Code"]
+    branches:   [main]
+    types:      [completed]
+
+jobs:
+# ────────────────────────────────────────────────────────────────────
+# 1) Pre-check — decide whether we really need to release
+# ────────────────────────────────────────────────────────────────────
+  pre-check:
+    name: Detect new version
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}   # gate #1
+    runs-on: ubuntu-latest
+    outputs:
+      release_needed: ${{ steps.version_diff.outputs.release_needed }}
+      version:        ${{ steps.version_diff.outputs.version }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref:          ${{ github.event.workflow_run.head_sha }}
+          fetch-depth:  0        # we need history to read the previous commit
+
+      - name: Compare versions
+        id: version_diff
+        shell: bash
+        # gate #2 happens here → sets release_needed=true/false
+        run: |
+          # version in current pyproject.toml
+          NEW_VERSION=$(grep -Po '(?<=^version = ")[^"]+' pyproject.toml)
+          # version in the previous commit's pyproject.toml (if the file existed)
+          BASE_COMMIT=$(git rev-parse "$GITHUB_SHA"^)
+          if git cat-file -e "$BASE_COMMIT":pyproject.toml 2>/dev/null; then
+            OLD_VERSION=$(git show "$BASE_COMMIT":pyproject.toml \
+                          | grep -Po '(?<=^version = ")[^"]+' || true)
+          else
+            OLD_VERSION=""
+          fi
+
+          echo "Previous version: $OLD_VERSION"
+          echo "Current  version: $NEW_VERSION"
+
+          if [[ "$NEW_VERSION" != "$OLD_VERSION" ]]; then
+            echo "release_needed=true"  >>"$GITHUB_OUTPUT"
+          else
+            echo "release_needed=false" >>"$GITHUB_OUTPUT"
+          fi
+          echo "version=$NEW_VERSION"   >>"$GITHUB_OUTPUT"
+
+# ────────────────────────────────────────────────────────────────────
+# 2) Build
+# ────────────────────────────────────────────────────────────────────
+  build:
+    name: Build distribution 📦
+    needs: pre-check
+    if: ${{ needs.pre-check.outputs.release_needed == 'true' }}     # gate #3
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        run: python3 -m pip install --user build
+
+      - name: Build sdist & wheel
+        run: python3 -m build
+
+      - name: Store the distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+# ────────────────────────────────────────────────────────────────────
+# 3) Publish to PyPI
+# ────────────────────────────────────────────────────────────────────
+  publish-to-pypi:
+    name: Publish Python 🐍 distribution to PyPI
+    needs: [pre-check, build]
+    if: ${{ needs.pre-check.outputs.release_needed == 'true' }}
+    runs-on: ubuntu-latest
+    environment:
+      name: release
+      url: https://pypi.org/p/weco
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+# ────────────────────────────────────────────────────────────────────
+# 4) GitHub Release
+# ────────────────────────────────────────────────────────────────────
+  github-release:
+    name: Create GitHub Release
+    needs: [pre-check, publish-to-pypi]
+    if: ${{ needs.pre-check.outputs.release_needed == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+
+    steps:
+      - name: Download the dists
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Sign dists with Sigstore
+        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        with:
+          inputs: |
+            ./dist/*.tar.gz
+            ./dist/*.whl
+
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ needs.pre-check.outputs.version }}" \
+            --repo "${{ github.repository }}" \
+            --notes ""
+
+      - name: Upload artefacts to Release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "v${{ needs.pre-check.outputs.version }}" dist/** \
+            --repo "${{ github.repository }}"

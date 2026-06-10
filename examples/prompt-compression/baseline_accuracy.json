@@ -1,0 +1,9 @@
+{
+  "accuracy": 0.77,
+  "n_samples": 200,
+  "model": "gpt-5-mini",
+  "seed": 0,
+  "chars": 65887,
+  "parse_rate": 1.0,
+  "elapsed_seconds": 21.617523908615112
+}

@@ -1,0 +1,4 @@
+ninja
+numpy
+torch
+triton

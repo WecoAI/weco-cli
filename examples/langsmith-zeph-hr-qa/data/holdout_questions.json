@@ -1,0 +1,52 @@
+[
+  {
+    "id": "hold-001",
+    "question": "A new employee started 45 days ago and works full-time. Can they enroll in medical benefits yet?",
+    "expected_answer": "Not yet. Full-time employees become eligible for benefits on the first day of the month following 60 days of employment. At 45 days, the employee has not yet reached the 60-day threshold, so they must wait."
+  },
+  {
+    "id": "hold-002",
+    "question": "Can the support team's geofencing feature be used on the Professional plan?",
+    "expected_answer": "No. Geofencing for time and attendance is available only on the Enterprise plan."
+  },
+  {
+    "id": "hold-003",
+    "question": "An employee got married last month. Can they add their spouse to benefits outside of open enrollment?",
+    "expected_answer": "Yes. Marriage is a qualifying life event that allows benefits changes outside of open enrollment. The employee must submit a qualifying life event request within 30 days of the marriage."
+  },
+  {
+    "id": "hold-004",
+    "question": "What's the maximum number of PTO days a 7-year employee can accumulate before accrual stops?",
+    "expected_answer": "An employee with 6+ years of tenure earns 25 days per year. PTO accrual is capped at 1.5x the annual entitlement, which means the cap is 37.5 days. Once this balance is reached, accrual pauses until the balance drops below the cap."
+  },
+  {
+    "id": "hold-005",
+    "question": "Can a System Admin grant themselves the System Admin role?",
+    "expected_answer": "No. System admins cannot grant the System Admin role to themselves. Another System Admin must make this change. All permission changes are recorded in the audit log and retained for 7 years."
+  },
+  {
+    "id": "hold-006",
+    "question": "When is open enrollment and when do changes take effect?",
+    "expected_answer": "Open enrollment runs annually from November 1\u201315. Changes made during open enrollment take effect on January 1 of the following year."
+  },
+  {
+    "id": "hold-007",
+    "question": "We're on Enterprise. What integrations do we get that Professional doesn't have?",
+    "expected_answer": "Enterprise includes everything in Professional plus REST API access, custom webhooks, and HRIS data sync with Workday/SAP SuccessFactors. Enterprise also has a higher API rate limit of 500 requests per minute compared to Professional's 100 requests per minute."
+  },
+  {
+    "id": "hold-008",
+    "question": "If payroll is due on Saturday the 15th, when does the payment actually go out?",
+    "expected_answer": "If a payday falls on a weekend or public holiday, payment is issued on the preceding business day. So if the 15th is a Saturday, payment would be issued on Friday the 14th."
+  },
+  {
+    "id": "hold-009",
+    "question": "How many sick days does a part-time employee get and do they carry over?",
+    "expected_answer": "Part-time employees receive 5 sick days per year. Sick days reset on January 1 and do not roll over to the next year."
+  },
+  {
+    "id": "hold-010",
+    "question": "An employee has been on sick leave for 4 consecutive days. Is there anything extra they need to do?",
+    "expected_answer": "Yes. Sick leave beyond 3 consecutive days requires a doctor's note uploaded through the portal."
+  }
+]
