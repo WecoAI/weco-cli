@@ -8,7 +8,7 @@ Kaggle dataset (real Vesta payment transactions). Weco rewrites two files —
 to maximize AUC-ROC on a held-out time-based validation split.
 
 This example reproduces Weco's fraud-detection case study
-([blog post](https://weco.ai/blog/framing-the-problem),
+([blog post](https://weco.ai/blog/framing-the-puzzle-for-autoresearch),
 [code](https://github.com/WecoAI/fraud-detection-case-study)) with an
 **API that makes train/val leakage impossible by construction** — see the
 "Why this design" section below.

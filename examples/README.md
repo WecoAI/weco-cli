@@ -190,7 +190,7 @@ weco run --source train.py \
 
 Optimize a tabular fraud-detection pipeline on real Vesta payment data.
 Reproduces Weco's
-[fraud-detection case study](https://weco.ai/blog/framing-the-problem)
+[fraud-detection case study](https://weco.ai/blog/framing-the-puzzle-for-autoresearch)
 (baseline AUC 0.914 → pooled 6-seed mean 0.9305 ± 0.0035 with full
 instructions at 200 steps).
 

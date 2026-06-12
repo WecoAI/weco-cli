@@ -7,10 +7,10 @@ feature engineering and the LightGBM configuration — to maximize AUC-ROC on a
 held-out, time-based validation split.
 
 This example reproduces the setup from Weco's fraud-detection case study
-([blog post](https://weco.ai/blog/framing-the-problem),
+([blog post](https://weco.ai/blog/framing-the-puzzle-for-autoresearch),
 [code](https://github.com/WecoAI/fraud-detection-case-study)). The example's
-baseline is **AUC ≈ 0.9102** (deterministic; verifiable via the SHA-256s
-in `prepare_data.py`). The case study reported 0.914, which used a slightly
+baseline is **AUC ≈ 0.9102** (deterministic; verify by running
+`python evaluate.py`, which should print `auc_roc: 0.910171`). The case study reported 0.914, which used a slightly
 leaky `build_features` (concat-then-groupby on train+val); this example's
 `train.py` fits all encoders on `train_df` only — no time-leakage. With the
 bundled `instructions.md` and 200 steps of `gemini-3.1-pro-preview`, expect
@@ -144,7 +144,7 @@ different count than non-fraud rows. The baseline `build_features` drops
 aggregations on a dataframe that still has the label. The case study walks
 through a real instance where this bug reported AUC 0.9591 that dropped to
 0.9154 after a one-line fix — see
-<https://weco.ai/blog/framing-the-problem>.
+<https://weco.ai/blog/framing-the-puzzle-for-autoresearch>.
 
 **Time leakage** — validation-period statistics leak into train features.
 This is a time-based split; at serving time you don't have the val period.
