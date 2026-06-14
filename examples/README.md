@@ -126,7 +126,7 @@ cd examples/prompt
 export OPENAI_API_KEY="your_key_here"
 weco run --source optimize.py \
      --eval-command "python eval.py" \
-     --metric score \
+     --metric accuracy \
      --goal maximize \
      --steps 20 \
      --model o4-mini \
