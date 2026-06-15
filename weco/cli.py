@@ -176,6 +176,25 @@ Default models for providers:
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    run_parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the run after creating it. Prints the run id and exits, leaving the eval loop "
+            "running in the background. Stdout/stderr of the detached process go to "
+            "/tmp/weco-run-<run-id>.log. Pass this when launching from inside `weco start <agent>` so "
+            "the wrapper can attach a watcher and the run survives agent subprocess lifecycle."
+        ),
+    )
+    run_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help=(
+            "Don't auto-open the run's dashboard URL in a browser tab. Implicit when launched from "
+            "inside `weco start <agent>` (the attached dashboard updates in-place via a session-scoped "
+            "toast instead)."
+        ),
+    )
 
     # --- Eval backend integration ---
     run_parser.add_argument(
@@ -259,6 +278,20 @@ def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
         choices=["rich", "plain"],
         default="rich",
         help="Output mode: 'rich' for interactive UI, 'plain' for machine-readable output",
+    )
+    p.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the derived run after creating it. Prints the run id and exits, leaving the eval "
+            "loop in the background; stdout/stderr go to /tmp/weco-run-<run-id>.log. Pass when "
+            "launching from inside `weco start <agent>` so the wrapper can attach a watcher."
+        ),
+    )
+    p.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't auto-open the derived run in a browser tab. Implicit when launched from `weco start`.",
     )
 
     # weco run submit <run-id> --node <id>
@@ -403,6 +436,19 @@ Supported provider names: {supported_providers}.
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    resume_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't auto-open the run in a browser tab. Implicit when launched from `weco start`.",
+    )
+    resume_parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the resumed run. Prints the run id and exits, leaving the eval loop in the "
+            "background; stdout/stderr go to /tmp/weco-run-<run-id>.log."
+        ),
+    )
 
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
@@ -436,6 +482,8 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
             api_keys=parse_api_keys(args.api_key),
             output_mode=args.output,
             console=console,
+            daemon=getattr(args, "daemon", False),
+            no_open=getattr(args, "no_open", False),
         ),
         "stop": lambda: stop.handle(run_id=args.run_id, console=console),
         "instruct": lambda: instruct.handle(run_id=args.run_id, instructions=args.instructions, console=console),
@@ -559,6 +607,8 @@ def execute_run_command(args: argparse.Namespace) -> None:
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
+        daemon=getattr(args, "daemon", False),
+        no_open=getattr(args, "no_open", False),
     )
 
     exit_code = 0 if success else 1
@@ -587,6 +637,8 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
         additional_steps=args.steps,
+        daemon=getattr(args, "daemon", False),
+        no_open=getattr(args, "no_open", False),
     )
 
     sys.exit(0 if success else 1)
@@ -673,6 +725,16 @@ def _main() -> None:
     )
     configure_observe_parser(observe_parser)
 
+    # --- Start Command Parser Setup ---
+    from .commands.start import configure_start_parser
+
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Launch tools bridged to the Weco dashboard (e.g., 'weco start claude')",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    configure_start_parser(start_parser)
+
     args = parser.parse_args()
 
     # Initialize environment
@@ -728,6 +790,11 @@ def _main() -> None:
         sys.exit(0)
     elif args.command == "observe":
         execute_observe_command(args)
+        sys.exit(0)
+    elif args.command == "start":
+        from .commands.start import handle_start_command
+
+        handle_start_command(args, console)
         sys.exit(0)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,
