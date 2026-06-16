@@ -135,6 +135,10 @@ class ExecutionTasksResult:
 
     tasks: list
     run: Optional[RunSummary] = None
+    # Lineage mode only: number of runs in the lineage still active
+    # (running/stopping). Meaningful when ``tasks`` is empty; lets the lineage
+    # consumer decide wait-vs-done from a single read. None in run_id mode.
+    active_run_count: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +171,34 @@ class WecoClient:
 
     def _put(self, path: str, *, timeout=(5, 10)) -> requests.Response:
         return self._session.put(self._url(path), timeout=timeout)
+
+    def _patch(self, path: str, *, json: dict | None = None, timeout=(5, 10)) -> requests.Response:
+        return self._session.patch(self._url(path), json=json, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Dashboard sessions (`weco start` agent bridges)
+    # ------------------------------------------------------------------
+
+    def create_session(self, agent_type: str) -> dict:
+        """Create a dashboard session and return its Realtime credentials:
+        ``{session, dashboard_url, realtime}``. Raises on HTTP/network error."""
+        resp = self._post("/sessions", json={"agent_type": agent_type}, timeout=(5, 30))
+        resp.raise_for_status()
+        return resp.json()
+
+    def refresh_realtime_token(self, session_id: str) -> dict:
+        """Mint a fresh Realtime JWT for an existing session."""
+        resp = self._post(f"/sessions/{session_id}/realtime-token", timeout=(5, 30))
+        resp.raise_for_status()
+        return resp.json()
+
+    def session_heartbeat(self, session_id: str) -> None:
+        """Roll the session's `expires_at` forward. Best-effort — caller swallows."""
+        self._post(f"/sessions/{session_id}/heartbeat", timeout=(5, 10))
+
+    def close_session(self, session_id: str) -> None:
+        """Mark the session closed so the dashboard updates without waiting for TTL."""
+        self._patch(f"/sessions/{session_id}", json={"status": "closed"}, timeout=(5, 10))
 
     # ------------------------------------------------------------------
     # Runs
@@ -505,6 +537,35 @@ class WecoClient:
             return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
         except Exception:
             return None
+
+    def get_lineage_execution_tasks(self, lineage_id: str) -> ExecutionTasksResult | None:
+        """``GET /execution-tasks/?lineage_id=`` — poll for ready tasks across an
+        entire lineage. Used by the single lineage consumer that serializes evals
+        over parallel derived runs. Top-level ``run`` is None in this mode; each
+        task carries its own ``run`` summary (read as ``task["run"]``)."""
+        try:
+            resp = self._get("/execution-tasks/", params={"lineage_id": lineage_id}, timeout=(5, 30))
+            resp.raise_for_status()
+            data = resp.json()
+            return ExecutionTasksResult(tasks=data.get("tasks", []), run=None, active_run_count=data.get("active_run_count"))
+        except Exception:
+            return None
+
+    def heartbeat_lineage(self, lineage_id: str) -> bool:
+        """``POST /lineages/{lineage_id}/heartbeat`` — keep every running member
+        of the lineage alive in one call. One live consumer owns the lineage and
+        serializes its evals; members awaiting their turn must not be reaped."""
+        try:
+            resp = self._post(f"/lineages/{lineage_id}/heartbeat", timeout=(5, 10))
+            resp.raise_for_status()
+            return True
+        except requests.exceptions.HTTPError as e:
+            code = getattr(e.response, "status_code", None)
+            print(f"Lineage heartbeat failed for {lineage_id}: HTTP {code}", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"Error sending lineage heartbeat for {lineage_id}: {e}", file=sys.stderr)
+            return False
 
     def claim_task(self, task_id: str) -> dict | None:
         """``POST /execution-tasks/{task_id}/claim`` — claim a task for evaluation."""

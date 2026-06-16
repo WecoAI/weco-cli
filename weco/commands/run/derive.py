@@ -1,6 +1,7 @@
 """``weco run derive <run-id>`` — create a derived run from an existing run's step."""
 
 import json
+import os
 import pathlib
 import sys
 
@@ -8,13 +9,11 @@ import requests
 from rich.console import Console
 from rich.prompt import Confirm
 
-from ...api import report_termination
-from ...artifacts import RunArtifacts
 from ...auth import handle_authentication
+from ...browser import open_browser
+from ...consumer_lock import consumer_lock
 from ...core.api import WecoClient, handle_api_error
-from ...heartbeat import heartbeat
-from ...optimizer import OptimizationResult, offer_apply_best_solution, run_optimization_loop
-from ...ui import LiveOptimizationUI, PlainOptimizationUI
+from ...optimizer import _daemonize_to_log, _should_auto_open_browser, run_lineage_loop
 from ...utils import read_additional_instructions, read_from_path
 from ... import __dashboard_url__
 
@@ -118,126 +117,51 @@ def _resolve_originals(inherited_source: dict[str, str]) -> dict[str, str]:
     return originals
 
 
-def _print_resume_hint(console: Console, output_mode: str, run_id: str) -> None:
-    """Tell the user how to resume an interrupted run."""
-    hint = f"To resume this run, use: weco resume {run_id}"
-    if output_mode == "plain":
-        print(f"\n{hint}\n", flush=True)
-    else:
-        console.print(f"\n[cyan]{hint}[/]\n")
-
-
-def _drive_optimization(
+def _attach_or_consume(
     *,
     console: Console,
     auth_headers: dict[str, str],
     run_info: dict,
-    artifacts: RunArtifacts,
+    lineage_id: str,
     originals: dict[str, str],
-    dashboard_url: str,
-    output_mode: str,
-    api_keys: dict[str, str] | None,
-) -> OptimizationResult:
-    """Run the optimization loop within heartbeat + UI contexts.
-
-    Always returns an :class:`OptimizationResult` — the loop catches its own
-    exceptions and reports failure rather than raising. Termination is
-    reported to the backend on the way out.
-    """
-    new_run_id = run_info["id"]
-    ui_kwargs = dict(
-        run_id=new_run_id,
-        run_name=run_info["name"],
-        total_steps=run_info["steps"],
-        dashboard_url=dashboard_url,
-        model=run_info["model"],
-        metric_name=run_info["metric_name"],
-        maximize=run_info["maximize"],
-    )
-    if output_mode == "plain":
-        ui_instance = PlainOptimizationUI(**ui_kwargs)
-    else:
-        ui_instance = LiveOptimizationUI(console, **ui_kwargs)
-
-    result: OptimizationResult | None = None
-    try:
-        with heartbeat(new_run_id, auth_headers), ui_instance as ui:
-            # The UI's standard run header (printed by on_init) is the single
-            # source of truth for "what run we just created". The parent
-            # reference is surfaced via the derived_from payload.
-            ui.on_init(derived_from=run_info["derived_from"])
-
-            # The backend has already created the inherited step-0 baseline
-            # and generated the step-1 candidate; the loop picks up step 1.
-            result = run_optimization_loop(
-                ui=ui,
-                run_id=new_run_id,
-                auth_headers=auth_headers,
-                source_code=originals,
-                eval_command=run_info["evaluation_command"],
-                eval_timeout=run_info["eval_timeout"],
-                artifacts=artifacts,
-                save_logs=run_info["save_logs"],
-                start_step=1,
-                api_keys=api_keys,
-            )
-        return result
-    finally:
-        if result is not None:
-            try:
-                report_termination(
-                    run_id=new_run_id,
-                    status_update=result.status,
-                    reason=result.reason,
-                    details=result.details,
-                    auth_headers=auth_headers,
-                )
-            except Exception:
-                pass
-
-
-def _run_derived_loop(
-    *,
-    console: Console,
-    auth_headers: dict[str, str],
-    run_info: dict,
-    originals: dict[str, str],
-    dashboard_url: str,
     output_mode: str,
     api_keys: dict[str, str] | None,
 ) -> bool:
-    """Drive the optimization loop and react to its outcome.
+    """Feed the new derived run to the single lineage consumer.
 
-    Returns ``True`` iff the loop completed successfully.
+    Deriving never spawns its own optimization loop — that's what caused
+    parallel derived runs to evaluate concurrently in one working tree and
+    clobber each other. Instead we try to acquire the working-tree consumer
+    lock:
+
+    * lock **held** — a consumer is already draining this lineage in this tree;
+      it will pick up the new run on its next poll. Print the run id and return.
+    * lock **free** — become the lineage consumer and drain the lineage (this
+      run plus any other active members), one eval at a time.
     """
     new_run_id = run_info["id"]
-    artifacts = RunArtifacts(log_dir=run_info["log_dir"], run_id=new_run_id)
 
-    result = _drive_optimization(
-        console=console,
-        auth_headers=auth_headers,
-        run_info=run_info,
-        artifacts=artifacts,
-        originals=originals,
-        dashboard_url=dashboard_url,
-        output_mode=output_mode,
-        api_keys=api_keys,
-    )
+    with consumer_lock() as acquired:
+        if not acquired:
+            if output_mode == "plain":
+                print(json.dumps({"run_id": new_run_id, "lineage_id": lineage_id, "attached": True}), flush=True)
+            else:
+                console.print(
+                    f"[green]Derived run {new_run_id} created.[/] An active consumer in this directory will evaluate it."
+                )
+            return True
 
-    if result.status == "terminated":
-        _print_resume_hint(console, output_mode, new_run_id)
-
-    if result.success:
-        offer_apply_best_solution(
-            console=console,
-            run_id=new_run_id,
-            source_code=originals,
-            artifacts=artifacts,
+        return run_lineage_loop(
+            lineage_id=lineage_id,
             auth_headers=auth_headers,
-            apply_change=False,
+            originals=originals,
+            eval_command=run_info["evaluation_command"],
+            eval_timeout=run_info["eval_timeout"],
+            save_logs=run_info["save_logs"],
+            log_dir=run_info["log_dir"],
+            dashboard_base=__dashboard_url__,
+            api_keys=api_keys,
         )
-
-    return result.success
 
 
 # ---------------------------------------------------------------------------
@@ -253,12 +177,15 @@ def handle(
     api_keys: dict[str, str] | None,
     output_mode: str,
     console: Console,
+    daemon: bool = False,
+    no_open: bool = False,
 ) -> bool:
-    """Create a derived run and run the local optimization loop against it.
+    """Create a derived run and feed it to the single lineage consumer.
 
-    Returns ``True`` on successful completion, ``False`` if the loop failed,
-    was terminated, or errored out. The dispatcher uses this to set the
-    process exit code.
+    Never spawns its own optimization loop — if a consumer is already draining
+    this lineage in the working tree, the new run is picked up by it; otherwise
+    this process becomes that consumer. Returns ``True`` on success, ``False``
+    on failure. The dispatcher uses this to set the process exit code.
     """
     weco_api_key, auth_headers = handle_authentication(console)
     if weco_api_key is None:
@@ -290,24 +217,62 @@ def handle(
 
     run_info = response["run"]
     new_run_id = run_info["id"]
-    dashboard_url = f"{__dashboard_url__}/runs/{new_run_id}"
+    # A derived run is never its own dashboard page — it lives inside its
+    # root run's lineage tree. Point the dashboard link at the lineage root
+    # (the derived run's `lineage_id`) so we don't open a dead-end tab for
+    # the sub-run; it surfaces under the root instead. Falls back to the
+    # run's own id for the (non-derived) safety case where lineage_id is
+    # absent.
+    lineage_id = run_info.get("lineage_id") or new_run_id
+    dashboard_url = f"{__dashboard_url__}/runs/{lineage_id}"
 
     originals = _resolve_originals(run_info["source_code"])
 
-    if output_mode != "plain" and not Confirm.ask(
-        "Have the source files in your working directory been kept consistent with "
-        "the parent run? Local edits will override the inherited baseline.",
-        default=True,
+    # Skip the interactive confirm when there's no human at the terminal:
+    #   * daemon mode — we've forked, no stdin;
+    #   * plain output — non-interactive caller;
+    #   * agent session — the derive was driven by the agent in `weco start`
+    #     (signalled by WECO_CC_SESSION_ID), where the dashboard already
+    #     confirmed intent and blocking on stdin would hang the agent.
+    in_agent_session = bool(os.environ.get("WECO_CC_SESSION_ID"))
+    if (
+        not daemon
+        and output_mode != "plain"
+        and not in_agent_session
+        and not Confirm.ask(
+            "Have the source files in your working directory been kept consistent with "
+            "the parent run? Local edits will override the inherited baseline.",
+            default=True,
+        )
     ):
         console.print("[yellow]Derive cancelled. Adjust your working directory and re-run.[/]")
         return False
 
-    return _run_derived_loop(
+    if daemon:
+        # Print everything stdout-watchers (claude, cursor, the wrapper's
+        # find_run_ids) care about BEFORE forking — once we're detached,
+        # stdout is the log file.
+        print(f"Run ID: {new_run_id}", flush=True)
+        print(f"Run name: {run_info['name']}", flush=True)
+        print(f"Dashboard: {dashboard_url}", flush=True)
+        log_path = _daemonize_to_log(new_run_id)
+        if log_path is None:
+            console.print("[yellow]--daemon not supported on this platform; running in foreground.[/]")
+        else:
+            # Force plain UI in the daemonized child — Rich's ANSI escapes
+            # would pollute the log file and serve no purpose without a TTY.
+            output_mode = "plain"
+            console = Console(force_terminal=False)
+            print(f"weco run derive daemon started; log: {log_path}", flush=True)
+    elif _should_auto_open_browser(no_open):
+        open_browser(dashboard_url)
+
+    return _attach_or_consume(
         console=console,
         auth_headers=auth_headers,
         run_info=run_info,
+        lineage_id=lineage_id,
         originals=originals,
-        dashboard_url=dashboard_url,
         output_mode=output_mode,
         api_keys=api_keys,
     )

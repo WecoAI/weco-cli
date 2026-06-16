@@ -16,6 +16,7 @@ Usage::
 """
 
 import pathlib
+import sys
 import time
 from dataclasses import dataclass
 
@@ -174,6 +175,14 @@ class WecoEnv:
 
 
 def _print_update_warning(message: str) -> None:
-    """Print a yellow warning and pause briefly so the user sees it."""
-    print(f"\033[93m{message}\033[0m")
+    """Print a yellow warning and pause briefly so the user sees it.
+
+    Suppressed when stdout isn't a TTY — that means the caller is piping or
+    capturing our output (e.g. the wrapper's RunWatcher polling
+    ``weco run status <id>``). In that case the banner would pollute stdout
+    JSON and the 2-second sleep would slow down every poll.
+    """
+    if not sys.stdout.isatty():
+        return
+    print(f"\033[93m{message}\033[0m", file=sys.stderr)
     time.sleep(2)

@@ -185,6 +185,18 @@ def get_execution_tasks(
     return WecoClient(auth_headers).get_execution_tasks(run_id)
 
 
+def get_lineage_execution_tasks(
+    lineage_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
+) -> Optional[ExecutionTasksResult]:
+    """Poll for ready execution tasks across an entire lineage."""
+    return WecoClient(auth_headers).get_lineage_execution_tasks(lineage_id)
+
+
+def send_lineage_heartbeat(lineage_id: str, auth_headers: dict = {}) -> bool:
+    """Heartbeat every running member of a lineage in one call."""
+    return WecoClient(auth_headers).heartbeat_lineage(lineage_id)
+
+
 def claim_execution_task(
     task_id: str, auth_headers: dict = {}, timeout: Union[int, Tuple[int, int]] = (5, 30)
 ) -> Optional[Dict[str, Any]]:

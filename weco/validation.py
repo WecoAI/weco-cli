@@ -54,7 +54,7 @@ def validate_source_file(source: str) -> None:
         raise ValidationError(f"Cannot read '{source}': {e}")
 
 
-# Multi-file safeguard limits (must match meta-agent API limits)
+# Multi-file safeguard limits (must match the Weco API limits)
 MAX_SCOPED_FILES = 10
 MAX_PER_FILE_BYTES = 200 * 1024  # 200 KB
 MAX_TOTAL_BYTES = 500 * 1024  # 500 KB
