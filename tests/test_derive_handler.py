@@ -1,11 +1,14 @@
 """Unit tests for the ``weco run derive`` command handler.
 
-Mocks every external boundary the handler touches (auth, HTTP client,
-optimization loop, heartbeat thread, browser, artifacts, prompts, UI
-classes) so the handler can be exercised end-to-end with no network, no
-auth, no LLM, and no real threads.
+Mocks every external boundary the handler touches (auth, HTTP client, the
+lineage consumer, the working-tree lock, browser, prompts) so the handler can
+be exercised end-to-end with no network, no auth, no LLM, and no real threads.
 
-Tests are organized by *what they verify*, not by historical bug reference.
+Deriving no longer drives its own optimization loop: it creates the run and
+hands it to the single lineage consumer (``run_lineage_loop``) behind the
+working-tree ``consumer_lock``. If a consumer already holds the lock, derive
+just enqueues the new run and returns. These tests verify that wiring.
+
 ``_resolve_step_to_node_id`` is unit-tested directly; the rest exercise
 ``derive.handle`` end-to-end via the ``patched`` fixture.
 """
@@ -19,7 +22,6 @@ import requests
 from rich.console import Console
 
 from weco.commands.run import derive
-from weco.optimizer import OptimizationResult
 
 
 # ---------------------------------------------------------------------------
@@ -92,50 +94,39 @@ def _call_handle(**overrides):
 def patched():
     """Patch every external boundary derive.handle touches.
 
-    Yields a ``SimpleNamespace`` of the most useful mock handles. Both UI
-    classes are configured so that ``with ui_instance as ui:`` yields the
-    same mock instance — that way ``ui.on_init(...)`` lands directly on
-    ``patched.plain_ui.on_init`` (or ``live_ui.on_init``) for inspection.
+    ``consumer_lock`` is patched to a context manager that yields ``True``
+    (lock acquired → this process consumes) by default; flip
+    ``patched.lock.return_value.__enter__.return_value = False`` to simulate a
+    consumer already draining the lineage. ``run_lineage_loop`` is patched and
+    returns ``True`` (success) by default.
     """
     with (
         patch("weco.commands.run.derive.handle_authentication", return_value=("api-key", {"Authorization": "Bearer t"})),
         patch("weco.commands.run.derive.WecoClient") as MockClient,
-        patch("weco.commands.run.derive.run_optimization_loop") as mock_loop,
-        patch("weco.heartbeat.HeartbeatSender"),
-        patch("weco.commands.run.derive.RunArtifacts") as mock_artifacts,
-        patch("weco.commands.run.derive.report_termination"),
-        patch("weco.commands.run.derive.offer_apply_best_solution") as mock_apply,
+        patch("weco.commands.run.derive.run_lineage_loop") as mock_loop,
+        patch("weco.commands.run.derive.consumer_lock") as MockLock,
+        # Without this the success path calls open_browser(dashboard_url) for
+        # real, popping a tab per test run. Bound so tests can assert which
+        # URL the tab would have opened.
+        patch("weco.commands.run.derive.open_browser") as mock_open_browser,
         patch("weco.commands.run.derive.Confirm") as MockConfirm,
-        patch("weco.commands.run.derive.LiveOptimizationUI") as MockLiveUI,
-        patch("weco.commands.run.derive.PlainOptimizationUI") as MockPlainUI,
     ):
-        # Defaults: loop succeeds, prompts say yes.
-        mock_loop.return_value = OptimizationResult(
-            success=True, final_step=2, status="completed", reason="completed_successfully"
-        )
+        # Defaults: lock free, consumer succeeds, prompts say yes.
+        mock_loop.return_value = True
         MockConfirm.ask.return_value = True
-
-        # Make `with ui as x:` yield the outer mock so ui.on_init calls land
-        # on the same object the test inspects.
-        for mock_ui_cls in (MockLiveUI, MockPlainUI):
-            mock_ui_cls.return_value.__enter__.return_value = mock_ui_cls.return_value
+        MockLock.return_value.__enter__.return_value = True
+        MockLock.return_value.__exit__.return_value = False
 
         client = MockClient.return_value
         client.derive_run.return_value = _fake_derive_response()
 
         yield SimpleNamespace(
-            client=client,
-            loop=mock_loop,
-            artifacts=mock_artifacts,
-            apply_best=mock_apply,
-            confirm=MockConfirm,
-            live_ui=MockLiveUI.return_value,
-            plain_ui=MockPlainUI.return_value,
+            client=client, loop=mock_loop, lock=MockLock, confirm=MockConfirm, open_browser=mock_open_browser
         )
 
 
 def _loop_kwargs(patched) -> dict:
-    """Pull the kwargs ``run_optimization_loop`` was called with."""
+    """Pull the kwargs ``run_lineage_loop`` was called with."""
     return patched.loop.call_args.kwargs
 
 
@@ -219,16 +210,17 @@ def test_from_step_wiring(patched, from_step, expected_derive_from, expects_look
 
 
 # ---------------------------------------------------------------------------
-# Loop configuration plumbing — values flow from response into the loop
+# Consumer configuration plumbing — values flow from response into the loop
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
-    "loop_kwarg, expected", [("eval_command", "python test.py"), ("save_logs", True), ("eval_timeout", 600)]
+    "loop_kwarg, expected",
+    [("eval_command", "python test.py"), ("save_logs", True), ("eval_timeout", 600), ("log_dir", ".weco-runs")],
 )
-def test_loop_config_inherited_from_response(patched, loop_kwarg, expected):
-    """The loop receives its config from the derive response, not from
-    defaults or a follow-up GET."""
+def test_consumer_config_inherited_from_response(patched, loop_kwarg, expected):
+    """The lineage consumer receives its config from the derive response, not
+    from defaults or a follow-up GET."""
     _call_handle()
     assert _loop_kwargs(patched)[loop_kwarg] == expected
 
@@ -240,11 +232,11 @@ def test_eval_timeout_none_passes_through(patched):
     assert _loop_kwargs(patched)["eval_timeout"] is None
 
 
-def test_log_dir_inherited_from_response_into_artifacts(patched):
-    """log_dir doesn't go to the loop directly — it goes to RunArtifacts."""
+def test_consumer_scoped_to_lineage_not_run(patched):
+    """The consumer drains the whole lineage, so it is seeded with the
+    lineage_id — not the new run's id."""
     _call_handle()
-    patched.artifacts.assert_called_once()
-    assert patched.artifacts.call_args.kwargs["log_dir"] == ".weco-runs"
+    assert _loop_kwargs(patched)["lineage_id"] == "parent-id"
 
 
 def test_additional_instructions_flow_through_to_derive_run(patched):
@@ -260,7 +252,7 @@ def test_additional_instructions_flow_through_to_derive_run(patched):
 
 
 def test_originals_use_inherited_source_when_local_files_missing(patched, tmp_path, monkeypatch):
-    """If a file doesn't exist locally, the originals fed to the loop must
+    """If a file doesn't exist locally, the originals fed to the consumer must
     come from the inherited baseline — NEVER the candidate, which would
     pollute the working directory with generated code on every eval cycle."""
     monkeypatch.chdir(tmp_path)  # empty directory: no local files
@@ -270,8 +262,7 @@ def test_originals_use_inherited_source_when_local_files_missing(patched, tmp_pa
 
     _call_handle()
 
-    source_code = _loop_kwargs(patched)["source_code"]
-    assert source_code == {"main.py": "INHERITED"}
+    assert _loop_kwargs(patched)["originals"] == {"main.py": "INHERITED"}
 
 
 def test_originals_prefer_local_files_when_present(patched, tmp_path, monkeypatch):
@@ -283,59 +274,46 @@ def test_originals_prefer_local_files_when_present(patched, tmp_path, monkeypatc
 
     _call_handle()
 
-    assert _loop_kwargs(patched)["source_code"] == {"main.py": "LOCAL_EDITED"}
+    assert _loop_kwargs(patched)["originals"] == {"main.py": "LOCAL_EDITED"}
 
 
 # ---------------------------------------------------------------------------
-# UI dispatch: handler picks the right UI and routes derived_from via on_init
+# Attach-or-consume: a derive never starts a second consumer in one tree
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "output_mode, expected_ui, other_ui", [("plain", "plain_ui", "live_ui"), ("rich", "live_ui", "plain_ui")]
-)
-def test_handler_picks_ui_for_output_mode(patched, output_mode, expected_ui, other_ui):
-    """Plain mode constructs PlainOptimizationUI, rich mode constructs
-    LiveOptimizationUI. Each gets exactly one on_init call."""
-    _call_handle(output_mode=output_mode)
-    getattr(patched, expected_ui).on_init.assert_called_once()
-    getattr(patched, other_ui).on_init.assert_not_called()
+def test_consumes_when_lock_free(patched):
+    """With the working-tree lock free, derive becomes the lineage consumer."""
+    assert _call_handle() is True
+    patched.loop.assert_called_once()
 
 
-def test_on_init_receives_derived_from_payload(patched):
-    """The parent reference flows through on_init's payload unchanged — not
-    via a side-channel print or constructor argument.
+def test_attaches_without_consuming_when_lock_held(patched, capsys):
+    """If a consumer already holds the lock, derive must NOT start a second
+    loop (that would evaluate two candidates in one tree at once). It creates
+    the run, reports the attach, and returns True."""
+    patched.lock.return_value.__enter__.return_value = False  # held by another consumer
 
-    This is a *flow* test, not a value test: the assertion compares against
-    the same fixture constant (``_FAKE_DERIVED_FROM``) deliberately, to
-    verify pass-through of whatever the response contained. The specific
-    field values are an implementation detail of the fixture.
-    """
-    _call_handle()
-    assert patched.plain_ui.on_init.call_args.kwargs["derived_from"] == _FAKE_DERIVED_FROM
+    assert _call_handle() is True
 
-
-# ---------------------------------------------------------------------------
-# Exit code dispatch: handler return value reflects loop result
-# ---------------------------------------------------------------------------
+    patched.loop.assert_not_called()
+    payload = json.loads(capsys.readouterr().out.strip())
+    assert payload["run_id"] == "new-run-id"
+    assert payload["lineage_id"] == "parent-id"
+    assert payload["attached"] is True
 
 
-def test_handler_returns_false_when_loop_fails(patched):
-    """Failed loop must propagate as ``False`` — the dispatcher relies on
-    this to set the process exit code. Loop *success* is covered implicitly
-    by every other test in this file (the default fixture exercises it)."""
-    patched.loop.return_value = OptimizationResult(success=False, final_step=3, status="error", reason="submit_failed")
+def test_handler_returns_false_when_consumer_fails(patched):
+    """A failing consumer propagates as ``False`` — the dispatcher relies on
+    this to set the process exit code."""
+    patched.loop.return_value = False
     assert _call_handle() is False
 
 
 def test_handler_aborts_when_user_cancels_unchanged_files_prompt(patched):
-    """Rich mode prompts the user to confirm working-directory state. If
-    they say no, the handler aborts before starting the loop and returns
-    False without ever calling run_optimization_loop.
-
-    Verifies both that the prompt fired (so a future refactor that drops
-    the prompt entirely fails this test) and that the abort happens.
-    """
+    """Rich mode prompts the user to confirm working-directory state. If they
+    say no, the handler aborts before consuming and returns False without ever
+    acquiring the lock or starting the consumer."""
     patched.confirm.ask.return_value = False
     assert _call_handle(output_mode="rich") is False
     patched.confirm.ask.assert_called_once()
@@ -347,28 +325,6 @@ def test_plain_mode_skips_unchanged_files_prompt(patched):
     called. This is the positive form of the cancellation test above."""
     _call_handle(output_mode="plain")
     patched.confirm.ask.assert_not_called()
-
-
-# ---------------------------------------------------------------------------
-# Apply-best lifecycle: only after a successful loop
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    "loop_success, expect_apply_called", [(True, True), (False, False)], ids=["success-applies-best", "failure-skips-apply"]
-)
-def test_apply_best_only_after_successful_loop(patched, loop_success, expect_apply_called):
-    patched.loop.return_value = OptimizationResult(
-        success=loop_success,
-        final_step=2,
-        status="completed" if loop_success else "error",
-        reason="completed_successfully" if loop_success else "submit_failed",
-    )
-    _call_handle()
-    if expect_apply_called:
-        patched.apply_best.assert_called_once()
-    else:
-        patched.apply_best.assert_not_called()
 
 
 # ---------------------------------------------------------------------------
@@ -444,3 +400,28 @@ def test_handler_makes_one_derive_call_and_no_get_run_status(patched):
     _call_handle()
     patched.client.derive_run.assert_called_once()
     patched.client.get_run_status.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Dashboard URL points at the lineage root, not the derived run
+# ---------------------------------------------------------------------------
+
+
+def test_dashboard_url_targets_lineage_root_not_derived_run(patched):
+    # Derived runs aren't standalone dashboard pages — the opened tab must
+    # be the lineage root (`lineage_id`), so the sub-run shows up under the
+    # root instead of as a dead-end tab on its own id.
+    _call_handle()
+    patched.open_browser.assert_called_once()
+    opened_url = patched.open_browser.call_args.args[0]
+    assert opened_url.endswith("/runs/parent-id")
+    assert "new-run-id" not in opened_url
+
+
+def test_dashboard_url_falls_back_to_run_id_without_lineage(patched):
+    # Defensive: if the response carries no lineage_id, fall back to the
+    # run's own id rather than producing a broken `/runs/None` link.
+    patched.client.derive_run.return_value = _fake_derive_response(lineage_id=None)
+    _call_handle()
+    opened_url = patched.open_browser.call_args.args[0]
+    assert opened_url.endswith("/runs/new-run-id")

@@ -6,6 +6,7 @@ import threading
 import time
 import traceback
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, Optional
 
 from requests.exceptions import ConnectionError as RequestsConnectionError, HTTPError, ReadTimeout
@@ -17,20 +18,41 @@ from .api import (
     claim_execution_task,
     format_api_error,
     get_execution_tasks,
+    get_lineage_execution_tasks,
     get_optimization_run_status,
     report_termination,
     resume_optimization_run,
     send_heartbeat,
+    send_lineage_heartbeat,
     start_optimization_run,
     submit_execution_result,
 )
 from .core.api import WecoClient
 from .artifacts import RunArtifacts
+from .consumer_lock import try_acquire, release
 from .auth import handle_authentication
 from .events import get_event_context
 from .browser import open_browser
 from .ui import OptimizationUI, LiveOptimizationUI, PlainOptimizationUI
 from .utils import read_additional_instructions, read_from_path, write_to_path, run_evaluation_with_files_swap
+
+
+def _should_auto_open_browser(no_open: bool) -> bool:
+    """Whether the CLI should pop the run's dashboard URL in a new tab.
+
+    Suppressed when:
+      * `--no-open` was passed explicitly, or
+      * the CLI is running inside a `weco start <agent>` session (signalled
+        by `WECO_CC_SESSION_ID` in the env). In that case the attached
+        dashboard receives the new run via the session's Realtime channel
+        and surfaces it with an in-page toast instead — popping a separate
+        tab on top of an already-open dashboard would be noise.
+    """
+    if no_open:
+        return False
+    if os.environ.get("WECO_CC_SESSION_ID"):
+        return False
+    return True
 
 
 @dataclass
@@ -64,6 +86,36 @@ _TRANSIENT_REASONS = frozenset({"transient_network_error", "http_502", "http_503
 
 def _is_transient(result: OptimizationResult) -> bool:
     return result.reason in _TRANSIENT_REASONS
+
+
+class _PollAction(Enum):
+    """What a single lineage-queue poll tells the consumer to do next."""
+
+    PROCESS = "process"  # ready work exists — claim and evaluate it
+    WAIT = "wait"  # uncertain, or runs active but no ready task — keep polling
+    DONE = "done"  # confirmed: read succeeded, no ready work, no active runs
+
+
+def _classify_lineage_poll(read_ok: bool, has_ready: bool, active_run_count: Optional[int]) -> _PollAction:
+    """Decide what one lineage-queue poll means. Pure — no I/O, no state.
+
+    The single rule that prevents orphaning: only a *confirmed* read showing no
+    ready work AND no active runs is ``DONE``. A failed read, or an active run
+    with no ready task yet (between candidates, or freshly derived), is ``WAIT``
+    — never mistaken for "the lineage is finished".
+
+    ``active_run_count`` is authoritative only when ``has_ready`` is False (the
+    backend omits it when tasks are present, since the consumer processes those
+    regardless). ``None`` there means the backend didn't report it (e.g. version
+    skew) — treated as ``WAIT`` rather than guessing ``DONE``.
+    """
+    if not read_ok:
+        return _PollAction.WAIT
+    if has_ready:
+        return _PollAction.PROCESS
+    if active_run_count is None or active_run_count > 0:
+        return _PollAction.WAIT
+    return _PollAction.DONE
 
 
 def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> bool:
@@ -149,6 +201,34 @@ class HeartbeatSender(threading.Thread):
         except Exception as e:
             # Avoid silent heartbeat thread failures during long runs.
             print(f"[ERROR HeartbeatSender] Unexpected error in heartbeat thread for run {self.run_id}: {e}", file=sys.stderr)
+            traceback.print_exc(file=sys.stderr)
+
+
+class LineageHeartbeatSender(threading.Thread):
+    """Heartbeat every ``running`` member of a lineage on a fixed cadence.
+
+    One call (``POST /lineages/{id}/heartbeat``) keeps all running members alive
+    — including derived runs queued behind the one currently being evaluated.
+    The single lineage consumer owns liveness for the whole lineage, so a member
+    waiting its turn isn't reaped by the heartbeat-timeout cron.
+    """
+
+    def __init__(self, lineage_id: str, auth_headers: dict, stop_event: threading.Event, interval: int = 30):
+        super().__init__(daemon=True)
+        self.lineage_id = lineage_id
+        self.auth_headers = auth_headers
+        self.interval = interval
+        self.stop_event = stop_event
+
+    def run(self):
+        try:
+            while not self.stop_event.is_set():
+                send_lineage_heartbeat(self.lineage_id, self.auth_headers)
+                if self.stop_event.is_set():
+                    break
+                self.stop_event.wait(self.interval)
+        except Exception as e:
+            print(f"[ERROR LineageHeartbeatSender] Unexpected error for lineage {self.lineage_id}: {e}", file=sys.stderr)
             traceback.print_exc(file=sys.stderr)
 
 
@@ -330,6 +410,246 @@ def run_optimization_loop(
         return OptimizationResult(success=False, final_step=step, status="error", reason="unknown", details=str(e))
 
 
+class _TaggedPlainUI(PlainOptimizationUI):
+    """Plain UI whose every line is prefixed with the run name, so a single
+    lineage consumer's interleaved per-run output stays readable."""
+
+    def _print(self, message: str) -> None:
+        print(f"[{self.run_name}] {message}", flush=True)
+
+
+def _build_run_state(run_id: str, auth_headers: dict, log_dir: str, dashboard_base: str) -> dict:
+    """Lazily construct per-run UI + artifacts for a run discovered in the queue.
+
+    Eval config (command/timeout/save_logs) is lineage-invariant and supplied to
+    the loop once; here we only fetch the per-run *display* fields (name, model,
+    step target, metric) for the run's UI header.
+    """
+    run_name = run_id
+    metric_name = "metric"
+    maximize = True
+    total_steps = 0
+    model = ""
+    current_step = 0
+    lineage_id = run_id
+    try:
+        status = get_optimization_run_status(console=None, run_id=run_id, include_history=False, auth_headers=auth_headers)
+        run_name = status.get("run_name", run_id)
+        objective = status.get("objective", {}) or {}
+        metric_name = objective.get("metric_name", "metric")
+        maximize = bool(objective.get("maximize", True))
+        optimizer = status.get("optimizer", {}) or {}
+        total_steps = optimizer.get("steps", 0) or 0
+        model = (optimizer.get("code_generator") or {}).get("model") or ""
+        current_step = int(status.get("current_step", 0) or 0)
+        lineage_id = status.get("lineage_id") or run_id
+    except Exception:
+        pass  # Display-only; fall back to ids if status is unavailable.
+
+    ui = _TaggedPlainUI(
+        run_id,
+        run_name,
+        total_steps,
+        f"{dashboard_base}/runs/{lineage_id}",
+        model=model,
+        metric_name=metric_name,
+        maximize=maximize,
+    )
+    ui.on_init()
+    return {"ui": ui, "artifacts": RunArtifacts(log_dir=log_dir, run_id=run_id), "step": max(current_step, 1), "done": False}
+
+
+def run_lineage_loop(
+    lineage_id: str,
+    auth_headers: dict,
+    originals: dict[str, str],
+    eval_command: str,
+    eval_timeout: Optional[int],
+    save_logs: bool,
+    log_dir: str,
+    dashboard_base: str,
+    *,
+    api_keys: Optional[dict] = None,
+    submit_timeout: Optional[int] = None,
+    poll_interval: float = 2.0,
+    max_idle_polls: int = 300,
+) -> bool:
+    """Single consumer that drains every active run in a lineage, one eval at a time.
+
+    The collision-safe generalization of :func:`run_optimization_loop`: instead of
+    one run, it polls the lineage-wide ready queue, claims one task at a time,
+    evaluates it via the shared working tree (serially — never two at once), and
+    submits. It keeps every running member alive with a single lineage heartbeat,
+    and exits only when no member is running and the queue is empty.
+
+    The caller MUST hold the working-tree consumer lock for the duration. Eval
+    config (``eval_command``/``eval_timeout``/``save_logs``/``originals``) is
+    lineage-invariant; only per-run display state is fetched lazily.
+
+    Returns ``True`` unless an account-level failure (auth / insufficient credits)
+    aborted the consumer.
+    """
+    states: dict[str, dict] = {}
+    fatal = False
+    # Consecutive non-PROCESS polls since work last flowed. Bounds the wait when
+    # the backend is wedged (active runs that never produce a task) or the queue
+    # read keeps failing — the only ways the loop can spin without progress.
+    idle_polls = 0
+
+    stop_event = threading.Event()
+    heartbeat_thread = LineageHeartbeatSender(lineage_id, auth_headers, stop_event)
+    heartbeat_thread.start()
+
+    print(f"[lineage {lineage_id}] consumer started; draining ready evaluations across the lineage.", flush=True)
+
+    try:
+        while True:
+            # One authoritative read per poll: ready tasks across the lineage,
+            # plus active_run_count (how many members are still running/stopping)
+            # when the queue is empty. _classify_lineage_poll turns it into an
+            # action — never declaring "done" on an unconfirmed read.
+            tasks_result = get_lineage_execution_tasks(lineage_id, auth_headers)
+            read_ok = tasks_result is not None  # None == read failed, NOT "empty"
+            ready = (tasks_result.tasks if tasks_result else []) or []
+            active_run_count = tasks_result.active_run_count if tasks_result else None
+
+            action = _classify_lineage_poll(read_ok, bool(ready), active_run_count)
+
+            if action is _PollAction.DONE:
+                break
+            if action is _PollAction.WAIT:
+                idle_polls += 1
+                if idle_polls >= max_idle_polls:
+                    print(f"[lineage {lineage_id}] no progress after {max_idle_polls} polls; stopping consumer.", flush=True)
+                    break
+                time.sleep(poll_interval)
+                continue
+            idle_polls = 0
+
+            task = ready[0]
+            run_id = task["run_id"]
+            task_run = task.get("run") or {}
+            if task_run.get("status") not in (None, "running"):
+                # Stale task for a run that's winding down; let the backend settle it.
+                time.sleep(poll_interval)
+                continue
+
+            st = states.get(run_id) or states.setdefault(
+                run_id, _build_run_state(run_id, auth_headers, log_dir, dashboard_base)
+            )
+            ui = st["ui"]
+            artifacts = st["artifacts"]
+            step = st["step"]
+
+            claimed = claim_execution_task(task["id"], auth_headers)
+            if claimed is None:
+                # No competing consumer should exist (we hold the lock); the task
+                # was likely cancelled as its run wound down. Skip it.
+                continue
+
+            code = claimed["revision"]["code"]
+            plan = claimed["revision"].get("plan")
+            ui.on_executing(step)
+            ui.on_task_claimed(task["id"], plan)
+
+            artifacts.save_step_code(step, code)
+            term_out = run_evaluation_with_files_swap(
+                file_map=code, originals=originals, eval_command=eval_command, timeout=eval_timeout
+            )
+            if save_logs:
+                artifacts.save_execution_output(step=step, output=term_out)
+            ui.on_output(term_out)
+
+            ui.on_submitting()
+            submit_timeout_tuple = (10, submit_timeout) if submit_timeout is not None else None
+            try:
+                result = submit_execution_result(
+                    run_id=run_id,
+                    task_id=task["id"],
+                    execution_output=term_out,
+                    auth_headers=auth_headers,
+                    api_keys=api_keys,
+                    timeout=submit_timeout_tuple,
+                )
+            except HTTPError as e:
+                msg = format_api_error(e)
+                ui.on_error(msg)
+                status_code = getattr(e.response, "status_code", None)
+                if status_code in (401, 402):
+                    # Account-level (auth / insufficient credits): affects every
+                    # member — stop the whole consumer.
+                    fatal = True
+                    break
+                # Per-run failure (e.g. 409: the run was finalized under us while
+                # winding down). Retire this run and keep draining the others.
+                st["done"] = True
+                st["step"] = step + 1
+                continue
+            except (RequestsConnectionError, ReadTimeout) as e:
+                ui.on_warning(f"Network error during evaluation submit: {e}")
+                time.sleep(poll_interval)
+                continue
+
+            is_done = result.get("is_done", False)
+            prev_metric = result.get("previous_solution_metric_value")
+            if prev_metric is not None:
+                ui.on_metric(step, prev_metric)
+            st["step"] = step + 1
+            if is_done:
+                ui.on_complete(st["step"])
+                st["done"] = True
+
+    except KeyboardInterrupt:
+        for st in states.values():
+            st["ui"].on_interrupted()
+    finally:
+        stop_event.set()
+        heartbeat_thread.join(timeout=2)
+
+    print(f"[lineage {lineage_id}] consumer finished.", flush=True)
+    return not fatal
+
+
+def _drain_lineage_remainder(
+    lineage_id: str,
+    auth_headers: dict,
+    originals: dict[str, str],
+    eval_command: str,
+    eval_timeout: Optional[int],
+    save_logs: bool,
+    log_dir: str,
+    *,
+    api_keys: Optional[dict] = None,
+    submit_timeout: Optional[int] = None,
+) -> None:
+    """After a single-run loop ends, drain any still-active siblings in its lineage.
+
+    Covers the case where runs were derived from this one while it was running:
+    the seed run's loop exits (completed, or stopped by the derive), and this
+    same process — still holding the working-tree consumer lock — keeps
+    evaluating the rest of the lineage. No-op when the lineage is quiet.
+    """
+    # One probe of the lineage queue: skip the drain only when we're certain the
+    # lineage is quiescent (read succeeded, no ready work, no active runs).
+    probe = get_lineage_execution_tasks(lineage_id, auth_headers)
+    has_ready = bool(probe.tasks) if probe else False
+    active_run_count = probe.active_run_count if probe else None
+    if _classify_lineage_poll(probe is not None, has_ready, active_run_count) is _PollAction.DONE:
+        return
+    run_lineage_loop(
+        lineage_id=lineage_id,
+        auth_headers=auth_headers,
+        originals=originals,
+        eval_command=eval_command,
+        eval_timeout=eval_timeout,
+        save_logs=save_logs,
+        log_dir=log_dir,
+        dashboard_base=__dashboard_url__,
+        api_keys=api_keys,
+        submit_timeout=submit_timeout,
+    )
+
+
 def offer_apply_best_solution(
     console: Console,
     run_id: str,
@@ -399,6 +719,67 @@ def offer_apply_best_solution(
         console.print(f"[yellow]Could not fetch best solution: {e}[/]")
 
 
+def _daemonize_to_log(run_id: str) -> Optional[pathlib.Path]:
+    """Fork + setsid + redirect FDs so the eval loop survives our agent's process tree.
+
+    POSIX-only. On platforms without ``os.fork`` (Windows), returns ``None`` and the
+    caller falls through to foreground execution. On success, the parent process
+    exits via ``os._exit(0)`` (skipping atexit handlers so it doesn't disturb global
+    state) — only the child returns from this function. The child's stdin is closed,
+    stdout/stderr are redirected to ``/tmp/weco-run-<run-id>.log``.
+
+    Call AFTER the create-run/auth POSTs (so the parent has a run_id to print) and
+    BEFORE starting any threads or async loops (which can't be safely forked).
+    """
+    if not hasattr(os, "fork"):
+        return None
+
+    log_path = pathlib.Path(f"/tmp/weco-run-{run_id}.log")
+
+    # Flush before fork so buffered output isn't duplicated by both processes.
+    try:
+        sys.stdout.flush()
+        sys.stderr.flush()
+    except Exception:
+        pass
+
+    try:
+        pid = os.fork()
+    except OSError:
+        return None
+
+    if pid > 0:
+        # Parent: exit immediately, skipping Python finalizers. The child carries on.
+        os._exit(0)
+
+    # --- Child only past this point ---
+
+    # Detach from controlling terminal: become session + process-group leader.
+    try:
+        os.setsid()
+    except OSError:
+        pass
+
+    # Replace stdin with /dev/null so any blocking reads return EOF.
+    try:
+        devnull_fd = os.open(os.devnull, os.O_RDONLY)
+        os.dup2(devnull_fd, sys.stdin.fileno())
+        os.close(devnull_fd)
+    except OSError:
+        pass
+
+    # Redirect stdout/stderr to the log file. Anyone tailing it sees the full eval log.
+    try:
+        log_fd = os.open(str(log_path), os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o644)
+        os.dup2(log_fd, sys.stdout.fileno())
+        os.dup2(log_fd, sys.stderr.fileno())
+        os.close(log_fd)
+    except OSError:
+        pass
+
+    return log_path
+
+
 def resume_optimization(
     run_id: str,
     api_keys: Optional[dict] = None,
@@ -408,6 +789,8 @@ def resume_optimization(
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
     additional_steps: Optional[int] = None,
+    daemon: bool = False,
+    no_open: bool = False,
 ) -> bool:
     """
     Resume an interrupted or completed run using the queue-based optimization loop.
@@ -526,15 +909,45 @@ def resume_optimization(
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
 
-    # Open dashboard in the user's browser
-    open_browser(dashboard_url)
+    if daemon:
+        # Print everything stdout-watchers (claude, cursor, the wrapper's find_run_ids)
+        # care about BEFORE forking — once we're detached, stdout is the log file.
+        print(f"Run ID: {run_id}", flush=True)
+        print(f"Run name: {run_name}", flush=True)
+        print(f"Dashboard: {dashboard_url}", flush=True)
+        log_path = _daemonize_to_log(run_id)
+        if log_path is None:
+            console.print("[yellow]--daemon not supported on this platform; running in foreground.[/]")
+        else:
+            # Force plain UI in the daemonized child — Rich's ANSI escapes
+            # would pollute the log file and serve no purpose without a TTY.
+            output_mode = "plain"
+            console = Console(force_terminal=False)
+            print(f"weco resume daemon started; log: {log_path}", flush=True)
+    elif _should_auto_open_browser(no_open):
+        open_browser(dashboard_url)
 
     # Setup artifacts manager
     artifacts = RunArtifacts(log_dir=log_dir, run_id=run_id)
 
-    # Start heartbeat thread
+    # Acquire the working-tree consumer lock so no derive starts a competing
+    # evaluation loop in this directory while we run. Released on the way out.
+    lock_handle = try_acquire()
+    if lock_handle is None:
+        console.print(
+            "[yellow]Another Weco optimization is already evaluating in this directory; "
+            "not starting a second consumer here.[/]"
+        )
+        return False
+
+    lineage_id = status.get("lineage_id") or run_id
+
+    # Start heartbeat thread. Heartbeat the whole lineage (not just this run) so
+    # that a run derived from this one mid-flight stays alive until our loop
+    # exits and we drain it — for a lone run, lineage_id == run_id, so this is
+    # identical to a single-run heartbeat.
     stop_heartbeat_event = threading.Event()
-    heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
+    heartbeat_thread = LineageHeartbeatSender(lineage_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
     # Extract best solution info from resume response (if available)
@@ -596,6 +1009,20 @@ def resume_optimization(
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
 
+        # Drain any runs derived from this one while it was running (still under
+        # the consumer lock). No-op when the lineage is quiet.
+        _drain_lineage_remainder(
+            lineage_id,
+            auth_headers,
+            source_code,
+            eval_command,
+            eval_timeout,
+            save_logs,
+            log_dir,
+            api_keys=api_keys,
+            submit_timeout=submit_timeout,
+        )
+
         # Show resume message if interrupted
         if result.status == "terminated":
             if output_mode == "plain":
@@ -613,11 +1040,16 @@ def resume_optimization(
             apply_change=apply_change,
         )
 
+        release(lock_handle)
         return result.success
     finally:
         # Ensure heartbeat is stopped (in case of early exit/exception)
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
+
+        # Release the working-tree consumer lock (idempotent if already released
+        # on the success path; OS would also release it on process exit).
+        release(lock_handle)
 
         # Report termination to backend
         if result is not None:
@@ -651,6 +1083,8 @@ def optimize(
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
+    daemon: bool = False,
+    no_open: bool = False,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -743,15 +1177,47 @@ def optimize(
     run_name = run_response["run_name"]
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
 
-    # Open dashboard in the user's browser
-    open_browser(dashboard_url)
+    if daemon:
+        # Print everything stdout-watchers (claude, cursor, the wrapper's find_run_ids)
+        # care about BEFORE forking — once we're detached, stdout is the log file.
+        print(f"Run ID: {run_id}", flush=True)
+        print(f"Run name: {run_name}", flush=True)
+        print(f"Dashboard: {dashboard_url}", flush=True)
+        log_path = _daemonize_to_log(run_id)
+        if log_path is None:
+            console.print("[yellow]--daemon not supported on this platform; running in foreground.[/]")
+        else:
+            # Force plain UI in the daemonized child — Rich's ANSI escapes
+            # would pollute the log file and serve no purpose without a TTY.
+            output_mode = "plain"
+            console = Console(force_terminal=False)
+            print(f"weco run daemon started; log: {log_path}", flush=True)
+    elif _should_auto_open_browser(no_open):
+        open_browser(dashboard_url)
 
     # Setup artifacts manager
     artifacts = RunArtifacts(log_dir=log_dir, run_id=run_id)
 
-    # Start heartbeat thread
+    # Acquire the working-tree consumer lock so no derive starts a competing
+    # evaluation loop in this directory while we run. Released on the way out.
+    lock_handle = try_acquire()
+    if lock_handle is None:
+        console.print(
+            "[yellow]Another Weco optimization is already evaluating in this directory; "
+            "not starting a second consumer here.[/]"
+        )
+        return False
+
+    # A fresh run is its own lineage (lineage_id == run_id); runs derived from it
+    # while it runs share this id and are drained by this same process on exit.
+    lineage_id = run_id
+
+    # Start heartbeat thread. Heartbeat the whole lineage (not just this run) so
+    # that a run derived from this one mid-flight stays alive until our loop
+    # exits and we drain it — for a lone run, lineage_id == run_id, so this is
+    # identical to a single-run heartbeat.
     stop_heartbeat_event = threading.Event()
-    heartbeat_thread = HeartbeatSender(run_id, auth_headers, stop_heartbeat_event)
+    heartbeat_thread = LineageHeartbeatSender(lineage_id, auth_headers, stop_heartbeat_event)
     heartbeat_thread.start()
 
     result: Optional[OptimizationResult] = None
@@ -799,6 +1265,20 @@ def optimize(
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
 
+        # Drain any runs derived from this one while it was running (still under
+        # the consumer lock). No-op when the lineage is quiet.
+        _drain_lineage_remainder(
+            lineage_id,
+            auth_headers,
+            source_code,
+            eval_command,
+            eval_timeout,
+            save_logs,
+            log_dir,
+            api_keys=api_keys,
+            submit_timeout=submit_timeout,
+        )
+
         # Show resume message if interrupted
         if result.status == "terminated":
             if output_mode == "plain":
@@ -816,11 +1296,16 @@ def optimize(
             apply_change=apply_change,
         )
 
+        release(lock_handle)
         return result.success
     finally:
         # Ensure heartbeat is stopped (in case of early exit/exception)
         stop_heartbeat_event.set()
         heartbeat_thread.join(timeout=2)
+
+        # Release the working-tree consumer lock (idempotent if already released
+        # on the success path; OS would also release it on process exit).
+        release(lock_handle)
 
         # Report termination to backend
         if result is not None:

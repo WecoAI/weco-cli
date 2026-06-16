@@ -31,6 +31,19 @@ def handle(run_id: str, console: Console) -> None:
         "pending_nodes": pending_nodes,
     }
 
+    # Just-in-time operating contract for an agent driving this run. Surfaced
+    # on the canonical progress check (not buried in a doc read once at the
+    # start) so it lands at the decision point every monitoring cycle: the run
+    # is self-driving, so stay responsive to the user and act via derive/stop.
+    if run_meta.get("status") in ("running", "pending_approval", "pending_evaluation"):
+        output["agent_guidance"] = (
+            "This run is self-driving — do NOT tail logs or use any blocking/streaming watch; "
+            "just poll this command (it returns immediately). Between polls you remain available "
+            "to the user: if they send a message, acknowledge and act on it before polling again — "
+            'steer with `weco run derive <run-id> --from-step best -i "<direction>"` (works mid-run, '
+            "no need to stop first), or abort with `weco run stop <run-id>`."
+        )
+
     # Add lineage info if present (requires full run status fetch)
     try:
         full_status = fetch_run(client, run_id, include_history=False)
