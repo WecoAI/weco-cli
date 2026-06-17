@@ -83,9 +83,13 @@ def install_target(target: SetupTarget, console: Console, source_path: pathlib.P
 
 
 def _shorten(path: pathlib.Path) -> str:
-    """Return a ``~``-abbreviated path string, or the absolute path if not under home."""
+    """Return a ``~``-abbreviated path string, or the absolute path if not under home.
+
+    Uses forward slashes regardless of platform so the displayed path doesn't mix
+    separators (e.g. ``~/.claude\\skills\\weco`` on Windows).
+    """
     home = pathlib.Path.home()
     try:
-        return f"~/{path.relative_to(home)}"
+        return f"~/{path.relative_to(home).as_posix()}"
     except ValueError:
         return str(path)
