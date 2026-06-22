@@ -100,3 +100,21 @@ def test_weco_client_close_session_patches_status():
     url = patch_call.call_args.args[0]
     assert url.endswith("/sessions/sess-1")
     assert patch_call.call_args.kwargs["json"] == {"status": "closed"}
+
+
+def test_refresh_realtime_token_raises_on_409():
+    from weco.core.api import SessionInactiveError, WecoClient
+
+    client = WecoClient({"Authorization": "Bearer weco-k"})
+    with patch.object(client._session, "post", return_value=MagicMock(status_code=409)):
+        with pytest.raises(SessionInactiveError):
+            client.refresh_realtime_token("sess-1")
+
+
+def test_session_heartbeat_raises_on_409():
+    from weco.core.api import SessionInactiveError, WecoClient
+
+    client = WecoClient({"Authorization": "Bearer weco-k"})
+    with patch.object(client._session, "post", return_value=MagicMock(status_code=409)):
+        with pytest.raises(SessionInactiveError):
+            client.session_heartbeat("sess-1")

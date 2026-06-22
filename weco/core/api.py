@@ -15,6 +15,22 @@ from ..constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH
 
 
 # ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+
+class SessionInactiveError(Exception):
+    """A dashboard session is no longer revivable (HTTP 409).
+
+    Raised by the session liveness calls (``session_heartbeat`` /
+    ``refresh_realtime_token``) when the server reports the session is
+    deliberately closed or expired past its revive grace window. It's terminal:
+    the caller should stop the bridge rather than retry, since no amount of
+    retrying will bring the session back.
+    """
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -187,14 +203,26 @@ class WecoClient:
         return resp.json()
 
     def refresh_realtime_token(self, session_id: str) -> dict:
-        """Mint a fresh Realtime JWT for an existing session."""
+        """Mint a fresh Realtime JWT for an existing session.
+
+        Raises ``SessionInactiveError`` on HTTP 409 — the session is no longer
+        revivable (deliberately closed, or expired past the server's grace
+        window) — so the caller stops rather than retrying a dead session.
+        """
         resp = self._post(f"/sessions/{session_id}/realtime-token", timeout=(5, 30))
+        if resp.status_code == 409:
+            raise SessionInactiveError(session_id)
         resp.raise_for_status()
         return resp.json()
 
     def session_heartbeat(self, session_id: str) -> None:
-        """Roll the session's `expires_at` forward. Best-effort — caller swallows."""
-        self._post(f"/sessions/{session_id}/heartbeat", timeout=(5, 10))
+        """Roll the session's `expires_at` forward (reviving it if the server is
+        still within its grace window). Best-effort for transient failures — the
+        caller swallows those — but raises ``SessionInactiveError`` on HTTP 409
+        so a bridge whose session is permanently gone can stop."""
+        resp = self._post(f"/sessions/{session_id}/heartbeat", timeout=(5, 10))
+        if resp.status_code == 409:
+            raise SessionInactiveError(session_id)
 
     def close_session(self, session_id: str) -> None:
         """Mark the session closed so the dashboard updates without waiting for TTL."""
@@ -385,6 +413,14 @@ class WecoClient:
         ``last_step + steps`` and produces the next candidate. Required for
         runs already in the ``completed`` state.
 
+        Uses the long read timeout (``(10, 3650)``, same as ``/suggest`` and
+        run creation) because resume can run server-side LLM candidate
+        generation (``_resume_generate_candidate_if_needed``): for a completed
+        run, or any run with no runnable work, the backend blocks the response
+        on a full generation that routinely exceeds 10s. A short read timeout
+        here makes the CLI abort while the backend keeps going, leaving the run
+        ``running`` with an unclaimed task that then dies of heartbeat timeout.
+
         Raises:
             requests.exceptions.HTTPError: On non-2xx responses.
         """
@@ -393,7 +429,7 @@ class WecoClient:
             body["api_keys"] = api_keys
         if steps is not None:
             body["steps"] = steps
-        resp = self._post(f"/runs/{run_id}/resume", json=body, timeout=(5, 10))
+        resp = self._post(f"/runs/{run_id}/resume", json=body, timeout=(10, 3650))
         resp.raise_for_status()
         return resp.json()
 
