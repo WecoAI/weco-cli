@@ -9,11 +9,13 @@ required.
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
+from rich.console import Console
 
 from weco.commands.start import tui_bridge as bridge, sdk_config, envelopes, approval_router
 
@@ -567,3 +569,49 @@ def test_fan_out_swallows_interrupted_result_and_clears_flag():
     assert fake._interrupting is False  # cleared on the interrupted turn's terminal message
     assert published == []  # not mirrored — turn_interrupted already signalled the end
     assert rendered == []  # not rendered as an error bubble
+
+
+# --- HeadlessUI (no-TTY stand-in) ---------------------------------------------
+
+
+def test_headless_ui_unknown_methods_are_noops():
+    ui = bridge.HeadlessUI(Console(file=io.StringIO()))
+    # The full WecoTUI visual surface the Renderer/Orchestrator may call.
+    ui.show_thinking()
+    ui.hide_thinking()
+    ui.post_assistant_delta("hi")
+    ui.end_assistant_block()
+    ui.post_tool_result("id", "out", is_error=True)
+    ui.exit()
+    assert callable(ui.some_method_added_later)  # __getattr__ keeps it forward-compatible
+
+
+def test_headless_ui_lifecycle_lines_reach_the_console():
+    buf = io.StringIO()
+    ui = bridge.HeadlessUI(Console(file=buf, width=200))
+    ui.post_banner(agent="Claude Code", model="opus", billing="weco", session_id="s1")
+    ui.post_tool_use("t1", "Bash", "weco run ...", {})
+    ui.post_run_update({"run_id": "abcdef123456", "status": "running", "step": 3, "total_steps": 10, "best_metric": 0.9})
+    out = buf.getvalue()
+    assert "model=opus" in out and "Bash" in out and "abcdef12" in out and "step 3/10" in out
+
+
+def test_headless_ui_notice_survives_markup_in_text():
+    buf = io.StringIO()
+    ui = bridge.HeadlessUI(Console(file=buf, width=200))
+    ui.post_system_notice("error [not-markup] {brace}", style="bold red")  # must not raise on stray brackets
+    assert "not-markup" in buf.getvalue()
+
+
+def test_orchestrator_stores_seed_prompt():
+    orch = bridge.Orchestrator(
+        app=bridge.HeadlessUI(Console(file=io.StringIO())),
+        claude_args=[],
+        api_key="k",
+        session=bridge.DashboardSession.offline(),
+        billing="claude",
+        weco_api_base=None,
+        effort=None,
+        seed_prompt="optimize the repo",
+    )
+    assert orch._seed_prompt == "optimize the repo"

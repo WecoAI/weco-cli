@@ -101,6 +101,7 @@ def run_tui_bridge(
     billing: str = "claude",
     weco_api_base: Optional[str] = None,
     effort: Optional[str] = None,
+    seed_prompt: Optional[str] = None,
 ) -> int:
     """Boot the TUI and the SDK-driven orchestrator."""
     try:
@@ -119,6 +120,7 @@ def run_tui_bridge(
         billing=billing,
         weco_api_base=weco_api_base,
         effort=effort,
+        seed_prompt=seed_prompt,
     )
 
     app.set_submit_callback(orchestrator.on_user_submit)
@@ -128,6 +130,138 @@ def run_tui_bridge(
 
     app.run()
     return orchestrator.exit_code
+
+
+def run_headless_bridge(
+    *,
+    claude_args: list[str],
+    api_key: str,
+    console: Console,
+    billing: str = "claude",
+    weco_api_base: Optional[str] = None,
+    effort: Optional[str] = None,
+    seed_prompt: Optional[str] = None,
+) -> int:
+    """Run the SDK-driven orchestrator with NO local TUI — the bridge streams to
+    the dashboard and key lifecycle lines print to the console. This is the mode
+    an agent launches in the background (`weco start claude --headless`): there's
+    no terminal to draw a Textual app into, so the dashboard is the only
+    interactive surface. Pair with `--allow-tools` (no local approval modal) and
+    `--prompt` to seed the first turn."""
+    try:
+        session = DashboardSession.create(api_key=api_key, agent_type=AGENT_TYPE)
+    except SetupError as e:
+        console.print(f"[red]Could not create dashboard session:[/] {e}")
+        console.print(
+            "[yellow]Headless mode relies on the dashboard relay for interactivity — continuing offline; "
+            "the session will only run the seeded prompt.[/]"
+        )
+        session = DashboardSession.offline()
+
+    app = HeadlessUI(console)
+    orchestrator = Orchestrator(
+        app=app,
+        claude_args=claude_args,
+        api_key=api_key,
+        session=session,
+        billing=billing,
+        weco_api_base=weco_api_base,
+        effort=effort,
+        seed_prompt=seed_prompt,
+    )
+
+    if orchestrator.dashboard_url:
+        console.print(f"[green]Bridged session live.[/] Watch and steer at: [bold]{orchestrator.dashboard_url}[/]")
+
+    try:
+        asyncio.run(orchestrator.run_until_stopped())
+    except KeyboardInterrupt:
+        pass
+    return orchestrator.exit_code
+
+
+# ---------------------------------------------------------------------------
+# HeadlessUI — a no-TTY stand-in for WecoTUI used by `--headless`.
+# ---------------------------------------------------------------------------
+
+
+class HeadlessUI:
+    """Duck-typed replacement for ``WecoTUI`` when there's no terminal to draw
+    into. The dashboard relay carries the full interactive transcript; here we
+    just print a readable lifecycle log to the console (banner, system notices,
+    tool calls, run updates) so a backgrounded session leaves a useful trail.
+
+    Everything visual — token-stream deltas, the thinking spinner, inline
+    approval/question cards — is a no-op, supplied by ``__getattr__`` so the
+    Orchestrator and Renderer can call the full WecoTUI surface unchanged. With
+    ``--allow-tools`` the SDK bypasses approvals, so the cards never fire; without
+    it, ``mount_inline_card`` no-ops locally and the dashboard resolves them."""
+
+    def __init__(self, console: Console) -> None:
+        self._console = console
+
+    def post_banner(
+        self,
+        *,
+        agent: str = "Claude Code",
+        model: Optional[str] = None,
+        billing: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> None:
+        bits = [agent]
+        if model:
+            bits.append(f"model={model}")
+        if billing:
+            bits.append(f"billing={billing}")
+        if session_id:
+            bits.append(f"session={session_id}")
+        self._console.print(f"[bold cyan]{' · '.join(bits)}[/]")
+
+    def post_system_notice(self, text: str, *, style: str = "dim italic") -> None:
+        self._console.print(text, style=style, markup=False, highlight=False)
+
+    def post_user_message(self, text: str) -> None:
+        self._console.print(f"› {text}", style="dim", markup=False, highlight=False)
+
+    def post_tool_use(self, tool_id: str, name: str, summary: str, tool_input: dict) -> None:
+        line = f"[tool] {name}" + (f" — {summary}" if summary else "")
+        self._console.print(line, style="dim", markup=False, highlight=False)
+
+    def post_run_update(self, update: dict) -> None:
+        if not isinstance(update, dict):
+            return
+        rid = str(update.get("run_id", "") or "")
+        parts = [f"run {rid[:8]}"] if rid else ["run"]
+        status = update.get("status")
+        if status:
+            parts.append(str(status))
+        step = update.get("step", update.get("current_step"))
+        if step is not None:
+            total = update.get("total_steps")
+            parts.append(f"step {step}" + (f"/{total}" if total else ""))
+        best = update.get("best_metric")
+        if best is not None:
+            parts.append(f"best={best}")
+        self._console.print("● " + " · ".join(parts), style="cyan", markup=False, highlight=False)
+
+    def post_turn_end(self, subtype: str, *, cost: Optional[float] = None, duration_ms: Optional[int] = None) -> None:
+        suffix = f" (${cost:.4f} api equiv)" if isinstance(cost, (int, float)) else ""
+        style = "dim" if subtype == "success" else "bold yellow"
+        self._console.print(f"— {subtype}{suffix} —", style=style, markup=False, highlight=False)
+
+    def mount_inline_card(self, card: Any) -> None:
+        # No local surface — leave the approval/question card unresolved for the
+        # dashboard to answer. (With --allow-tools the SDK never asks.)
+        return
+
+    def exit(self) -> None:
+        return
+
+    def __getattr__(self, _name: str) -> Callable[..., None]:
+        # Everything else WecoTUI exposes (post_assistant_delta, show_thinking,
+        # hide_thinking, end_assistant_block, post_tool_result, …) is a visual
+        # no-op without a terminal.
+        return lambda *a, **k: None
 
 
 # ---------------------------------------------------------------------------
@@ -146,6 +280,7 @@ class Orchestrator:
         billing: str,
         weco_api_base: Optional[str],
         effort: Optional[str],
+        seed_prompt: Optional[str] = None,
     ) -> None:
         self.app = app
         self.claude_args = claude_args
@@ -154,6 +289,10 @@ class Orchestrator:
         self.billing = billing
         self.weco_api_base = weco_api_base
         self.effort = effort
+        # Optional first-turn prompt (from `--prompt`). Enqueued once the SDK
+        # client is connected so it drives the session without a typed input —
+        # required for headless launches, handy for the TUI.
+        self._seed_prompt = seed_prompt
 
         self.session_id: Optional[str] = session.id
         self.dashboard_url: Optional[str] = session.dashboard_url
@@ -209,16 +348,27 @@ class Orchestrator:
 
     # --- App startup callback -------------------------------------------
 
-    def run(self) -> None:
-        """Top-level startup callback. Scheduled by WecoTUI once the app
-        is mounted. Post the banner first so it's visible before any async
-        lifecycle work, then kick off the orchestrator."""
+    def _post_banner(self) -> None:
         self.app.post_banner(
             agent="Claude Code", model=resolve_model(self.claude_args), billing=self.billing, session_id=self.session_id
         )
         if not self.dashboard_url:
             self.app.post_system_notice("Running without dashboard relay.", style="dim yellow")
+
+    def run(self) -> None:
+        """Top-level startup callback. Scheduled by WecoTUI once the app
+        is mounted. Post the banner first so it's visible before any async
+        lifecycle work, then kick off the orchestrator."""
+        self._post_banner()
         asyncio.create_task(self._run())
+
+    async def run_until_stopped(self) -> None:
+        """Headless entry point. Posts the banner, then runs the full lifecycle
+        to completion (blocks until the session stops). The TUI path uses the
+        sync `run()` startup callback instead, which schedules `_run()` as a task
+        inside Textual's own event loop."""
+        self._post_banner()
+        await self._run()
 
     async def _run(self) -> None:
         try:
@@ -284,6 +434,10 @@ class Orchestrator:
         # background-task completions, scheduled wakeups) from being stranded in
         # the transport until the next prompt drains it.
         self._tasks.append(asyncio.create_task(self._consume_messages()))
+        # Seed the first turn (from `--prompt`) now that the consumer is live and
+        # the SDK is connected. The pump drains it on its first iteration.
+        if self._seed_prompt:
+            await self._pending_prompts.put((self._seed_prompt, None, True))
         await self._prompt_pump()
 
     def _build_options(self) -> ClaudeAgentOptions:

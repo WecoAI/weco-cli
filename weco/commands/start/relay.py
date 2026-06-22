@@ -39,6 +39,8 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 from typing import TYPE_CHECKING, Awaitable, Callable, Iterator, Optional, TextIO
 
+from weco.core.api import SessionInactiveError
+
 if TYPE_CHECKING:
     from weco.core.api import WecoClient
 
@@ -331,7 +333,7 @@ async def run_channel(
         return
 
     publisher = asyncio.create_task(_publisher_loop(channel, outbound, scrollback, seq_counter, local_log, stop_event))
-    refresher = asyncio.create_task(_jwt_refresher(client, weco_client, session_id, expiry_state, stop_event))
+    refresher = asyncio.create_task(_jwt_refresher(client, channel, weco_client, session_id, expiry_state, stop_event))
     heartbeater = asyncio.create_task(_heartbeat_loop(weco_client, session_id, stop_event))
 
     try:
@@ -468,12 +470,19 @@ async def _heartbeat_loop(weco_client: "WecoClient", session_id: str, stop_event
 
         try:
             await asyncio.to_thread(weco_client.session_heartbeat, session_id)
+        except SessionInactiveError:
+            # Session is gone for good (closed, or expired past the revive
+            # grace). Tear the bridge down instead of pinging a dead session
+            # forever — the supervisor cancels the sibling loops on stop.
+            logger.info("session %s is no longer active; stopping dashboard bridge", session_id)
+            stop_event.set()
+            return
         except Exception as e:
             logger.info("heartbeat failed for session %s: %s", session_id, e)
 
 
 async def _jwt_refresher(
-    rt_client, weco_client: "WecoClient", session_id: str, expiry_state: dict, stop_event: asyncio.Event
+    rt_client, channel, weco_client: "WecoClient", session_id: str, expiry_state: dict, stop_event: asyncio.Event
 ) -> None:
     """Mint a new JWT before the current one expires; push it into the channel."""
     while not stop_event.is_set():
@@ -487,6 +496,13 @@ async def _jwt_refresher(
 
         try:
             fresh = await asyncio.to_thread(weco_client.refresh_realtime_token, session_id)
+        except SessionInactiveError:
+            # Session is gone for good (closed, or expired past the revive
+            # grace) — minting will never succeed again. Stop the bridge rather
+            # than 409-storm the endpoint every 5s until the user Ctrl-Cs.
+            logger.info("session %s is no longer active; stopping dashboard bridge", session_id)
+            stop_event.set()
+            return
         except Exception as e:
             logger.warning("JWT refresh failed for session %s: %s", session_id, e)
             # Back off and retry; if expiry has passed the channel will drop and
@@ -499,5 +515,24 @@ async def _jwt_refresher(
         except Exception as e:
             logger.warning("set_auth failed for session %s: %s", session_id, e)
             continue
+
+        # Keep the channel's *join* payload token current. realtime-py bakes the
+        # access_token into the join push once at subscribe() time and reuses it
+        # verbatim on every reconnect rejoin (join_push.resend); set_auth updates
+        # live channels but NOT that baked payload. So after a reconnect that
+        # outlives the original 60-min JWT — now common inside the 2h revive
+        # grace — the channel would rejoin with a dead token, authorization
+        # fails, and inbound broadcasts (dashboard -> CLI) silently stop while
+        # outbound still limps through (push() only checks _joined_once, not the
+        # real join state). Re-stamping here means any future rejoin carries a
+        # live token; forcing a rejoin when we're not currently joined recovers a
+        # channel a reconnect already broke, promptly rather than on the rejoin
+        # timer's backoff.
+        try:
+            channel.join_push.update_payload({"access_token": fresh["token"]})
+            if not channel.is_joined:
+                await channel._rejoin()
+        except Exception as e:
+            logger.warning("channel rejoin after token refresh failed for session %s: %s", session_id, e)
 
         expiry_state["unix"] = _parse_iso(fresh["expires_at"])

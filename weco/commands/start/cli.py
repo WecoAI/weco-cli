@@ -42,6 +42,27 @@ def configure_start_parser(start_parser: argparse.ArgumentParser) -> None:
         ),
     )
     claude_parser.add_argument(
+        "--headless",
+        action="store_true",
+        help=(
+            "Run with no local TUI — stream only to the dashboard, printing key "
+            "lifecycle lines to the console. Use when launching in the background "
+            "(no terminal to draw into), e.g. an agent spawning a bridged session. "
+            "Pair with --allow-tools (no local approval modal) and --prompt to seed "
+            "the first turn; the dashboard is the interactive surface."
+        ),
+    )
+    claude_parser.add_argument(
+        "-p",
+        "--prompt",
+        type=str,
+        default=None,
+        help=(
+            "Seed the first turn with this prompt instead of waiting for input. "
+            "Required to make --headless do anything immediately; also works in the TUI."
+        ),
+    )
+    claude_parser.add_argument(
         "--billing",
         type=str,
         choices=["claude", "weco"],
@@ -107,11 +128,20 @@ def _handle_claude(args: argparse.Namespace, console: Console) -> None:
 
     effort = getattr(args, "effort", None)
     billing = getattr(args, "billing", "claude")
+    headless = getattr(args, "headless", False)
+    seed_prompt = getattr(args, "prompt", None)
 
     from weco import __base_url__
-    from .tui_bridge import run_tui_bridge
+    from .tui_bridge import run_headless_bridge, run_tui_bridge
 
-    exit_code = run_tui_bridge(
-        claude_args=forwarded, api_key=api_key, console=console, billing=billing, weco_api_base=__base_url__, effort=effort
+    runner = run_headless_bridge if headless else run_tui_bridge
+    exit_code = runner(
+        claude_args=forwarded,
+        api_key=api_key,
+        console=console,
+        billing=billing,
+        weco_api_base=__base_url__,
+        effort=effort,
+        seed_prompt=seed_prompt,
     )
     sys.exit(exit_code)
