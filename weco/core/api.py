@@ -406,6 +406,35 @@ class WecoClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_lineage_nodes(
+        self, lineage_id: str, *, node_ids: list[str] | None = None, include_details: bool = False, status: str | None = None
+    ) -> dict:
+        """``GET /lineages/{lineage_id}/nodes`` — flat list of nodes across every
+        member of a lineage, each carrying a lineage-global ``global_step``.
+
+        Heavy fields (``plan``, ``analysis``, ``code``, ``execution_output``) are
+        omitted unless ``include_details=True``; keep them off the polling path.
+
+        Args:
+            lineage_id: The lineage UUID (= root run ID).
+            node_ids: Optional subset of node IDs to fetch (also hydrates details).
+            include_details: Include the heavy fields.
+            status: Comma-separated node statuses to filter by.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        params: dict[str, Any] = {}
+        if node_ids:
+            params["node_ids"] = node_ids
+        if include_details:
+            params["include_details"] = True
+        if status:
+            params["status"] = status
+        resp = self._get(f"/lineages/{lineage_id}/nodes", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
     def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None, steps: int | None = None) -> dict:
         """``POST /runs/{run_id}/resume`` — resume an interrupted or completed run.
 
