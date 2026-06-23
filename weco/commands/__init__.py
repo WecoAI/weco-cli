@@ -27,6 +27,36 @@ def fetch_run(client: WecoClient, run_id: str, include_history: bool = True) -> 
         sys.exit(1)
 
 
+def resolve_lineage_id(client: WecoClient, run_id: str) -> str:
+    """Resolve a run ID to its lineage ID (= root run ID).
+
+    A standalone (non-derived) run has no ``lineage_id`` of its own — it *is*
+    the lineage root, so we fall back to the run ID. Exits on fetch error.
+    """
+    run = fetch_run(client, run_id, include_history=False)
+    return run.get("lineage_id") or run_id
+
+
+def fetch_lineage(client: WecoClient, lineage_id: str) -> dict:
+    """Fetch the full lineage tree via ``GET /lineages/{id}``, or exit on error."""
+    try:
+        return client.get_lineage(lineage_id)
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to fetch lineage {lineage_id}: {e}"}))
+        sys.exit(1)
+
+
+def fetch_lineage_nodes(
+    client: WecoClient, lineage_id: str, *, include_details: bool = False, status: str | None = None
+) -> list[dict]:
+    """Fetch all nodes across a lineage via ``GET /lineages/{id}/nodes``, or exit."""
+    try:
+        return client.list_lineage_nodes(lineage_id, include_details=include_details, status=status).get("nodes", [])
+    except Exception as e:
+        print(json.dumps({"error": f"Failed to fetch lineage nodes for {lineage_id}: {e}"}))
+        sys.exit(1)
+
+
 def fetch_nodes(
     client: WecoClient,
     run_id: str,
