@@ -84,7 +84,7 @@ def handle(run_id: str, include_code: bool, plot: bool, console: Console) -> Non
         # Lineage-wide trajectory in global-step order, scored nodes only.
         scored = sorted(
             (n for n in nodes if n.get("metric_value") is not None),
-            key=lambda n: (n.get("global_step") if n.get("global_step") is not None else 0),
+            key=lambda n: n.get("global_step") if n.get("global_step") is not None else 0,
         )
         if scored:
             values = [n["metric_value"] for n in scored]
