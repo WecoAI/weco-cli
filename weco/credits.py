@@ -65,28 +65,58 @@ def check_balance(console: Console, auth_headers: dict) -> None:
 
 
 def check_run_cost(console: Console, auth_headers: dict, run_id: str) -> None:
-    """Check and display credit spend for a specific run."""
+    """Check and display credit spend for a run.
+
+    Always queries the lineage-cost endpoint (a superset of the per-run cost): the
+    view collapses to a single total for a standalone run, and breaks out the
+    queried run's spend versus the whole-lineage total once derived runs exist.
+    """
     try:
-        response = requests.get(f"{__base_url__}/billing/run/{run_id}/cost", headers=auth_headers, timeout=10)
+        response = requests.get(f"{__base_url__}/billing/run/{run_id}/lineage-cost", headers=auth_headers, timeout=10)
         response.raise_for_status()
         data = response.json()
 
-        total = data.get("credits_spent_total", 0)
+        lineage_total = data.get("credits_spent_total", 0)
+        run_total = data.get("run_credits_spent_total")
         steps = data.get("steps", [])
 
+        # A lineage with derived runs spans multiple runs, so a per-run step number
+        # alone is ambiguous — switch to the global-step view (global step + run id
+        # + run step) and split the totals only then.
+        distinct_run_ids = {s.get("run_id") for s in steps if s.get("run_id")}
+        has_derived = len(distinct_run_ids) > 1 or (run_total is not None and lineage_total - float(run_total) > 0.005)
+
         table = Table(title=f"Credit Spend for Run {run_id}", show_header=True, header_style="bold cyan")
-        table.add_column("Step", style="dim", justify="right")
-        table.add_column("Node ID", style="dim")
-        table.add_column("Cost", style="green", justify="right")
-
-        for step in steps:
-            step_num = str(step.get("step", "-"))
-            node_id = step.get("node_id", "-") or "-"
-            credits = step.get("credits_spent", 0)
-            table.add_row(step_num, node_id, f"${credits:.2f}")
-
-        table.add_section()
-        table.add_row("", "[bold]Total[/]", f"[bold]${total:.2f}[/]")
+        if has_derived:
+            # Global step is the unambiguous lineage-wide ordering; run id + run
+            # step show which run's step each cost came from.
+            table.add_column("Global Step", style="dim", justify="right")
+            table.add_column("Run ID", style="dim")
+            table.add_column("Run Step", style="dim", justify="right")
+            table.add_column("Cost", style="green", justify="right")
+            for step in steps:
+                gstep = step.get("global_step")
+                gstep_str = str(gstep) if gstep is not None else "-"
+                run_label = step.get("run_id", "-") or "-"
+                run_step = step.get("step")
+                run_step_str = str(run_step) if run_step is not None else "-"
+                credits = step.get("credits_spent", 0)
+                table.add_row(gstep_str, run_label, run_step_str, f"${credits:.2f}")
+            table.add_section()
+            if run_total is not None:
+                table.add_row("", f"Run total ({run_id})", "", f"${float(run_total):.2f}")
+            table.add_row("", "[bold]Lineage Total[/]", "", f"[bold]${lineage_total:.2f}[/]")
+        else:
+            table.add_column("Step", style="dim", justify="right")
+            table.add_column("Node ID", style="dim")
+            table.add_column("Cost", style="green", justify="right")
+            for step in steps:
+                step_num = str(step.get("step", "-"))
+                node_id = step.get("node_id", "-") or "-"
+                credits = step.get("credits_spent", 0)
+                table.add_row(step_num, node_id, f"${credits:.2f}")
+            table.add_section()
+            table.add_row("", "[bold]Total[/]", f"[bold]${lineage_total:.2f}[/]")
 
         console.print(table)
 
