@@ -9,9 +9,11 @@ the dashboard (``inject_prompt``, ``approval_response``, ``scrollback_request``)
 re-synthesized into JSON-line form for the bridge dispatch code.
 
 Wire format on the channel:
-    event ``transcript``         payload ``{"line": <json-line text>, "seq": <int>}``
-    event ``transcript_chunk``   payload ``{"chunk_id", "seq", "of", "data"}``
-    event ``scrollback_replay``  payload ``{"line": <json-line>, "seq": <int>, "replay": true}``
+    event ``transcript_batch``   payload ``{"lines": [{"line", "seq"}, ...], "replay"?: bool}``
+                                 (rate-limited live path + scrollback replay)
+    event ``transcript_chunk``   payload ``{"chunk_id", "seq", "of", "data"}``  (lines >2.5MB)
+    event ``transcript``         payload ``{"line": <json-line text>, "seq": <int>}``  (legacy/unused)
+    event ``scrollback_replay``  payload ``{"line", "seq", "replay": true}``  (legacy/unused)
     event ``inject_prompt``      payload ``{"text", "id"?}``  (dashboard -> CLI)
     event ``approval_response``  payload ``{"id", "decision", "scope"?}``
     event ``scrollback_request`` payload ``{}``  (dashboard -> CLI)
@@ -52,6 +54,14 @@ OUTBOUND_QUEUE_MAX = 2048
 # Supabase Realtime caps Broadcast payloads at ~3 MB; chunk anything larger.
 # The threshold is in bytes, applied to the UTF-8 encoded JSON-line string.
 MAX_PAYLOAD_BYTES = 2_500_000
+
+# Coalescing publisher: enforce a minimum interval between transcript broadcasts
+# so a single session can never exceed ~`1000 / RELAY_FLUSH_MS` messages/sec on
+# Realtime, regardless of how fast the SDK emits. Lines that arrive within the
+# interval are batched into one `transcript_batch` broadcast — coalesced, never
+# dropped. This is a hard, self-imposed ceiling (the SDK's own ~10/s cadence is
+# undocumented and version-dependent, so we don't rely on it). Override via env.
+RELAY_FLUSH_MS = max(0, int(os.environ.get("WECO_RELAY_FLUSH_MS", "100")))
 
 # JWT refresh: kick a fresh token in this many seconds before the current
 # one would otherwise expire. Set generously so a short-lived expiry stalls
@@ -376,6 +386,48 @@ async def _safe_close(client) -> None:
         pass
 
 
+async def _send_entries(channel, entries: list[tuple[int, str]], *, replay: bool = False) -> None:
+    """Emit ``(seq, line)`` pairs as coalesced ``transcript_batch`` broadcasts.
+
+    Lines are packed into batches kept under ``MAX_PAYLOAD_BYTES`` so a normal
+    flush is a SINGLE broadcast. A lone line larger than the cap falls back to
+    the ``transcript_chunk`` path (reassembled client-side). ``replay=True``
+    marks the batch as historical so the dashboard dedupes it against anything
+    already rendered live (by ``seq``).
+    """
+    group: list[dict] = []
+    group_bytes = 0
+
+    async def flush_group() -> None:
+        nonlocal group, group_bytes
+        if not group:
+            return
+        payload: dict = {"lines": group}
+        if replay:
+            payload["replay"] = True
+        await channel.send_broadcast("transcript_batch", payload)
+        group = []
+        group_bytes = 0
+
+    for seq, line in entries:
+        size = len(line.encode("utf-8"))
+        if size > MAX_PAYLOAD_BYTES:
+            # Oversized single line (rare; never in chat): flush the batch so far,
+            # then chunk this one on its own. Adds frames only for >2.5MB lines.
+            await flush_group()
+            chunk_id = uuid.uuid4().hex
+            pieces = list(_chunk_utf8(line, MAX_PAYLOAD_BYTES))
+            of = len(pieces)
+            for i, piece in enumerate(pieces):
+                await channel.send_broadcast("transcript_chunk", {"chunk_id": chunk_id, "seq": i, "of": of, "data": piece})
+            continue
+        if group and group_bytes + size > MAX_PAYLOAD_BYTES:
+            await flush_group()
+        group.append({"seq": seq, "line": line})
+        group_bytes += size
+    await flush_group()
+
+
 async def _publisher_loop(
     channel,
     outbound: "asyncio.Queue[str]",
@@ -384,67 +436,82 @@ async def _publisher_loop(
     local_log,
     stop_event: asyncio.Event,
 ) -> None:
-    """Drain the outbound queue and publish each line as a broadcast.
+    """Drain the outbound queue and publish lines as rate-limited broadcasts.
 
-    Lines >MAX_PAYLOAD_BYTES are split into ``transcript_chunk`` messages with
-    a shared chunk_id; the dashboard reassembles before parsing as JSON.
-    Each line is also appended to the in-memory ring buffer (for live replay)
-    and to the optional local disk log.
+    Enforces a minimum ``RELAY_FLUSH_MS`` gap between broadcasts: lines that
+    arrive within the gap are coalesced into one ``transcript_batch`` (nothing is
+    dropped), guaranteeing a single session can't exceed ~``1000/RELAY_FLUSH_MS``
+    messages/sec on Realtime — independent of how fast the SDK emits. When
+    traffic is sparse the gap is already satisfied, so a lone line is sent
+    immediately (no added latency); throttling only kicks in under load.
+
+    Each line is appended to the in-memory ring buffer (for live replay) and to
+    the optional local disk log before broadcast.
     """
+    loop = asyncio.get_running_loop()
+    flush_s = RELAY_FLUSH_MS / 1000.0
+    last_send = 0.0
     while not stop_event.is_set():
         try:
-            line = await asyncio.wait_for(outbound.get(), timeout=0.5)
+            first = await asyncio.wait_for(outbound.get(), timeout=0.5)
         except asyncio.TimeoutError:
             continue
 
-        seq_counter["value"] += 1
-        seq = seq_counter["value"]
+        # Throttle: ensure >= flush_s since the last broadcast. While we wait,
+        # more lines pile into `outbound` and get coalesced into this batch.
+        wait = flush_s - (loop.time() - last_send)
+        if wait > 0:
+            await asyncio.sleep(wait)
+
+        batch = [first]
+        while True:
+            try:
+                batch.append(outbound.get_nowait())
+            except asyncio.QueueEmpty:
+                break
 
         # Persist to in-memory buffer + local disk before broadcast — guarantees
         # a tab that joins right after a line is sent will see it on replay,
         # even if the broadcast itself is lost in flight.
-        scrollback.append(seq, line)
-        if local_log is not None:
-            try:
-                local_log.write(json.dumps({"seq": seq, "line": line}) + "\n")
-            except Exception as e:
-                logger.info("local log write failed: %s", e)
+        entries: list[tuple[int, str]] = []
+        for line in batch:
+            seq_counter["value"] += 1
+            seq = seq_counter["value"]
+            scrollback.append(seq, line)
+            if local_log is not None:
+                try:
+                    local_log.write(json.dumps({"seq": seq, "line": line}) + "\n")
+                except Exception as e:
+                    logger.info("local log write failed: %s", e)
+            entries.append((seq, line))
 
-        encoded_len = len(line.encode("utf-8"))
         try:
-            if encoded_len <= MAX_PAYLOAD_BYTES:
-                await channel.send_broadcast("transcript", {"line": line, "seq": seq})
-            else:
-                chunk_id = uuid.uuid4().hex
-                pieces = list(_chunk_utf8(line, MAX_PAYLOAD_BYTES))
-                of = len(pieces)
-                for i, piece in enumerate(pieces):
-                    await channel.send_broadcast("transcript_chunk", {"chunk_id": chunk_id, "seq": i, "of": of, "data": piece})
+            await _send_entries(channel, entries)
+            last_send = loop.time()
         except asyncio.CancelledError:
             raise
         except Exception as e:
-            # Don't crash the publisher on a single bad message — log and move on.
+            # Don't crash the publisher on a single bad batch — log and move on.
             logger.warning("publisher send failed: %s", e)
 
 
 async def _replay_scrollback(channel, scrollback: ScrollbackBuffer) -> None:
-    """Re-broadcast every event in the buffer as ``scrollback_replay``.
+    """Re-broadcast the buffer as ``transcript_batch`` frames marked ``replay``.
 
-    Uses a distinct event name so dashboards know to dedupe against anything
-    they've already rendered live (by ``seq``). Sends sequentially to preserve
-    order; errors on individual sends are logged and skipped so one bad frame
-    can't stall the rest of the replay.
+    Batched (size-partitioned under MAX_PAYLOAD_BYTES) so a reconnect replays the
+    whole history in a handful of broadcasts instead of one-per-line — keeping
+    the per-session message-rate ceiling intact even on takeover bursts. The
+    dashboard dedupes by ``seq`` against anything already rendered live.
     """
     items = scrollback.snapshot()
     if not items:
         return
-    for seq, line in items:
-        try:
-            await channel.send_broadcast("scrollback_replay", {"seq": seq, "line": line, "replay": True})
-        except asyncio.CancelledError:
-            raise
-        except Exception as e:
-            logger.info("scrollback replay frame failed (seq=%d): %s", seq, e)
+    try:
+        await _send_entries(channel, items, replay=True)
+    except asyncio.CancelledError:
+        raise
+    except Exception as e:
+        logger.info("scrollback replay failed: %s", e)
 
 
 HEARTBEAT_INTERVAL_SECONDS = 30.0
