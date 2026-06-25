@@ -1,8 +1,11 @@
 """Download IEEE-CIS data and build the fixed train/val parquets used by train.py.
 
 Produces `data/base_train_small.parquet` (100K rows, stratified by fraud) and
-`data/base_val_small.parquet` (25K rows, time-later subsample). Identical SHA-256
-to the parquets used in the published case study.
+`data/base_val_small.parquet` (25K rows, time-later subsample). Logically
+identical to the parquets used in the published case study; verify by running
+`python evaluate.py`, which should reproduce the baseline AUC stated in this
+example's README. (Parquet byte hashes vary with pandas/pyarrow writer versions,
+so file hashes are not comparable across environments.)
 
 Usage:
     # 1. Put your Kaggle API token at ~/.kaggle/kaggle.json
@@ -13,7 +16,7 @@ Usage:
 
 Runtime: ~2-3 minutes on a modern laptop. Produces ~150MB of parquet files.
 
-Pipeline (must stay byte-identical to the originals — see SHAs in the README):
+Pipeline (must stay faithful to the original case-study recipe):
 1. Merge `train_transaction.csv` + `train_identity.csv` on TransactionID.
 2. Time-based 80/20 split on TransactionDT (last 20% by time = validation).
 3. V-feature correlation pruning: sample 10_000 rows from the FULL merged df with
@@ -184,9 +187,9 @@ def main() -> None:
     print(f"[write] {train_out}")
     print(f"[write] {val_out}")
     print()
-    print("Expected SHA-256 (matches the published case study parquets):")
-    print("  train: a2d7a6740559975b8e6d89bd605f1e29791dd7d3fee8abc6449552bbc18d29ae")
-    print("  val:   8b426c8bf7fa845bc234dbce304b1107fd295143fac2398bab97b78805f50753")
+    print("Sanity check: `python evaluate.py` should print the baseline AUC from this")
+    print("example's README. (Parquet byte hashes vary with pandas/pyarrow writer")
+    print("versions, so don't compare file hashes across environments.)")
 
 
 if __name__ == "__main__":
