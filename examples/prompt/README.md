@@ -8,7 +8,7 @@ The experiment runs locally, requires only two short Python files and a prompt g
 1. Clone the repository:
    ```bash
    git clone https://github.com/WecoAI/weco-cli.git
-   cd examples/prompt
+   cd weco-cli/examples/prompt
    ```
 
 2. Install the CLI and dependencies for the example:
@@ -34,7 +34,7 @@ Now run Weco to optimize your prompt:
 ```bash
 weco run --source optimize.py \
      --eval-command "python eval.py" \
-     --metric score \
+     --metric accuracy \
      --goal maximize \
      --steps 20 \
      --model o4-mini \
@@ -44,19 +44,21 @@ weco run --source optimize.py \
 During each evaluation round, you will see log lines similar to the following:
 
 ```text
-[setup] loading 20 problems from AIME 2024 …
-[progress] 5/20 completed, accuracy: 0.0000, elapsed 7.3 s
-[progress] 10/20 completed, accuracy: 0.1000, elapsed 14.6 s
-[progress] 15/20 completed, accuracy: 0.0667, elapsed 21.8 s
-[progress] 20/20 completed, accuracy: 0.0500, elapsed 28.9 s
-accuracy: 0.0500
+[setup] loading 30 problems from AIME 2024 …
+[progress] 5/30 completed, accuracy: 0.0000, elapsed 7.3 s
+[progress] 10/30 completed, accuracy: 0.1000, elapsed 14.6 s
+[progress] 15/30 completed, accuracy: 0.0667, elapsed 21.8 s
+[progress] 20/30 completed, accuracy: 0.0500, elapsed 28.9 s
+[progress] 25/30 completed, accuracy: 0.0800, elapsed 36.1 s
+[progress] 30/30 completed, accuracy: 0.0667, elapsed 43.4 s
+accuracy: 0.0667
 ```
 
 Weco then mutates the prompt instructions in `optimize.py`, tries again, and gradually pushes the accuracy higher.
 
 ## How it works
 
-*   `eval.py` slices the **Maxwell-Jia/AIME_2024** dataset to twenty problems for fast feedback. You can change the slice in one line within the script.
+*   `eval.py` slices the **Maxwell-Jia/AIME_2024** dataset to thirty problems for fast feedback. You can change the slice in one line within the script.
 *   The script sends model calls in parallel via `ThreadPoolExecutor`, so network latency is hidden.
 *   Every five completed items, the script logs progress and elapsed time.
 *   The final line `accuracy: value` is the only part Weco needs for guidance.

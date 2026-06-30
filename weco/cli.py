@@ -101,7 +101,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `o4-mini`. See full list at https://docs.weco.ai/cli/supported-models",
+        help="Model to use for optimization. Defaults to `gemini-3-flash-preview` (or your provider's default when using --api-key). See full list at https://docs.weco.ai/cli/supported-models",
     )
     run_parser.add_argument(
         "-l", "--log-dir", type=str, default=".runs", help="Directory to store logs and results. Defaults to `.runs`."
@@ -176,6 +176,25 @@ Default models for providers:
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    run_parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the run after creating it. Prints the run id and exits, leaving the eval loop "
+            "running in the background. Stdout/stderr of the detached process go to "
+            "/tmp/weco-run-<run-id>.log. Pass this when launching from inside `weco start <agent>` so "
+            "the wrapper can attach a watcher and the run survives agent subprocess lifecycle."
+        ),
+    )
+    run_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help=(
+            "Don't auto-open the run's dashboard URL in a browser tab. Implicit when launched from "
+            "inside `weco start <agent>` (the attached dashboard updates in-place via a session-scoped "
+            "toast instead)."
+        ),
+    )
 
     # --- Eval backend integration ---
     run_parser.add_argument(
@@ -196,6 +215,19 @@ def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     # weco run status <run-id>
     p = subs.add_parser("status", help="Show run status and progress (JSON)")
     p.add_argument("run_id", type=str, help="Run UUID")
+    p.add_argument(
+        "--lineage",
+        action="store_true",
+        help="Report lineage-wide aggregates (status, best, steps) across all derived runs, not just this run.",
+    )
+
+    # weco run overview <run-id>
+    p = subs.add_parser(
+        "overview", help="Show the full lineage picture (tree, global best, all derived runs) — dashboard parity"
+    )
+    p.add_argument("run_id", type=str, help="Any run UUID in the lineage")
+    p.add_argument("--include-code", action="store_true", help="Include plan and full source code for each node")
+    p.add_argument("--plot", action="store_true", help="Show ASCII metric trajectory across the whole lineage")
 
     # weco run results <run-id>
     p = subs.add_parser("results", help="Show results sorted by metric")
@@ -204,16 +236,26 @@ def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
     p.add_argument("--format", type=str, choices=["json", "table", "csv"], default="json", help="Output format")
     p.add_argument("--plot", action="store_true", help="Show ASCII metric trajectory")
     p.add_argument("--include-code", action="store_true", help="Include full source code")
+    p.add_argument(
+        "--lineage", action="store_true", help="Rank results across all derived runs in the lineage, not just this run."
+    )
 
     # weco run show <run-id> --step N
     p = subs.add_parser("show", help="Show details for a specific step")
     p.add_argument("run_id", type=str, help="Run UUID")
-    p.add_argument("--step", type=str, required=True, help="Step number or 'best'")
+    p.add_argument(
+        "--step",
+        type=str,
+        required=True,
+        help="Step number, 'best' (lineage-best, matches `derive --from-step best`), or 'run-best' (best in this run)",
+    )
 
     # weco run diff <run-id> --step N
     p = subs.add_parser("diff", help="Show code diff between steps")
     p.add_argument("run_id", type=str, help="Run UUID")
-    p.add_argument("--step", type=str, required=True, help="Step number or 'best'")
+    p.add_argument(
+        "--step", type=str, required=True, help="Step number, 'best' (lineage-best), or 'run-best' (best in this run)"
+    )
     p.add_argument("--against", type=str, default="baseline", help="'baseline' (default), 'parent', or step number")
 
     # weco run stop <run-id>
@@ -259,6 +301,20 @@ def _configure_run_subcommands(run_parser: argparse.ArgumentParser) -> None:
         choices=["rich", "plain"],
         default="rich",
         help="Output mode: 'rich' for interactive UI, 'plain' for machine-readable output",
+    )
+    p.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the derived run after creating it. Prints the run id and exits, leaving the eval "
+            "loop in the background; stdout/stderr go to /tmp/weco-run-<run-id>.log. Pass when "
+            "launching from inside `weco start <agent>` so the wrapper can attach a watcher."
+        ),
+    )
+    p.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't auto-open the derived run in a browser tab. Implicit when launched from `weco start`.",
     )
 
     # weco run submit <run-id> --node <id>
@@ -403,11 +459,24 @@ Supported provider names: {supported_providers}.
         default=5,
         help="Max auto-resume attempts before giving up and printing the manual resume command (default: 5).",
     )
+    resume_parser.add_argument(
+        "--no-open",
+        action="store_true",
+        help="Don't auto-open the run in a browser tab. Implicit when launched from `weco start`.",
+    )
+    resume_parser.add_argument(
+        "--daemon",
+        action="store_true",
+        help=(
+            "Detach the resumed run. Prints the run id and exits, leaving the eval loop in the "
+            "background; stdout/stderr go to /tmp/weco-run-<run-id>.log."
+        ),
+    )
 
 
 def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
     """Dispatch ``weco run <subcommand>`` to the appropriate handler."""
-    from .commands.run import status, results, show, diff, stop, instruct, review, revise, submit, derive
+    from .commands.run import status, overview, results, show, diff, stop, instruct, review, revise, submit, derive
 
     def _collect_source_paths() -> list[str] | None:
         if getattr(args, "sources", None):
@@ -417,13 +486,17 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
         return None
 
     handlers = {
-        "status": lambda: status.handle(run_id=args.run_id, console=console),
+        "status": lambda: status.handle(run_id=args.run_id, lineage=args.lineage, console=console),
+        "overview": lambda: overview.handle(
+            run_id=args.run_id, include_code=args.include_code, plot=args.plot, console=console
+        ),
         "results": lambda: results.handle(
             run_id=args.run_id,
             top=args.top,
             format=args.format,
             plot=args.plot,
             include_code=args.include_code,
+            lineage=args.lineage,
             console=console,
         ),
         "show": lambda: show.handle(run_id=args.run_id, step=args.step, console=console),
@@ -436,6 +509,8 @@ def _dispatch_run_subcommand(sub: str, args: argparse.Namespace) -> None:
             api_keys=parse_api_keys(args.api_key),
             output_mode=args.output,
             console=console,
+            daemon=getattr(args, "daemon", False),
+            no_open=getattr(args, "no_open", False),
         ),
         "stop": lambda: stop.handle(run_id=args.run_id, console=console),
         "instruct": lambda: instruct.handle(run_id=args.run_id, instructions=args.instructions, console=console),
@@ -559,6 +634,8 @@ def execute_run_command(args: argparse.Namespace) -> None:
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
+        daemon=getattr(args, "daemon", False),
+        no_open=getattr(args, "no_open", False),
     )
 
     exit_code = 0 if success else 1
@@ -587,6 +664,8 @@ def execute_resume_command(args: argparse.Namespace) -> None:
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
         additional_steps=args.steps,
+        daemon=getattr(args, "daemon", False),
+        no_open=getattr(args, "no_open", False),
     )
 
     sys.exit(0 if success else 1)
@@ -673,6 +752,16 @@ def _main() -> None:
     )
     configure_observe_parser(observe_parser)
 
+    # --- Start Command Parser Setup ---
+    from .commands.start import configure_start_parser
+
+    start_parser = subparsers.add_parser(
+        "start",
+        help="Launch tools bridged to the Weco dashboard (e.g., 'weco start claude')",
+        formatter_class=argparse.RawTextHelpFormatter,
+    )
+    configure_start_parser(start_parser)
+
     args = parser.parse_args()
 
     # Initialize environment
@@ -728,6 +817,11 @@ def _main() -> None:
         sys.exit(0)
     elif args.command == "observe":
         execute_observe_command(args)
+        sys.exit(0)
+    elif args.command == "start":
+        from .commands.start import handle_start_command
+
+        handle_start_command(args, console)
         sys.exit(0)
     else:
         # This case should be hit if 'weco' is run alone and chatbot logic didn't catch it,

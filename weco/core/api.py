@@ -15,6 +15,22 @@ from ..constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH
 
 
 # ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
+
+class SessionInactiveError(Exception):
+    """A dashboard session is no longer revivable (HTTP 409).
+
+    Raised by the session liveness calls (``session_heartbeat`` /
+    ``refresh_realtime_token``) when the server reports the session is
+    deliberately closed or expired past its revive grace window. It's terminal:
+    the caller should stop the bridge rather than retry, since no amount of
+    retrying will bring the session back.
+    """
+
+
+# ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
@@ -135,6 +151,10 @@ class ExecutionTasksResult:
 
     tasks: list
     run: Optional[RunSummary] = None
+    # Lineage mode only: number of runs in the lineage still active
+    # (running/stopping). Meaningful when ``tasks`` is empty; lets the lineage
+    # consumer decide wait-vs-done from a single read. None in run_id mode.
+    active_run_count: Optional[int] = None
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +187,46 @@ class WecoClient:
 
     def _put(self, path: str, *, timeout=(5, 10)) -> requests.Response:
         return self._session.put(self._url(path), timeout=timeout)
+
+    def _patch(self, path: str, *, json: dict | None = None, timeout=(5, 10)) -> requests.Response:
+        return self._session.patch(self._url(path), json=json, timeout=timeout)
+
+    # ------------------------------------------------------------------
+    # Dashboard sessions (`weco start` agent bridges)
+    # ------------------------------------------------------------------
+
+    def create_session(self, agent_type: str) -> dict:
+        """Create a dashboard session and return its Realtime credentials:
+        ``{session, dashboard_url, realtime}``. Raises on HTTP/network error."""
+        resp = self._post("/sessions", json={"agent_type": agent_type}, timeout=(5, 30))
+        resp.raise_for_status()
+        return resp.json()
+
+    def refresh_realtime_token(self, session_id: str) -> dict:
+        """Mint a fresh Realtime JWT for an existing session.
+
+        Raises ``SessionInactiveError`` on HTTP 409 — the session is no longer
+        revivable (deliberately closed, or expired past the server's grace
+        window) — so the caller stops rather than retrying a dead session.
+        """
+        resp = self._post(f"/sessions/{session_id}/realtime-token", timeout=(5, 30))
+        if resp.status_code == 409:
+            raise SessionInactiveError(session_id)
+        resp.raise_for_status()
+        return resp.json()
+
+    def session_heartbeat(self, session_id: str) -> None:
+        """Roll the session's `expires_at` forward (reviving it if the server is
+        still within its grace window). Best-effort for transient failures — the
+        caller swallows those — but raises ``SessionInactiveError`` on HTTP 409
+        so a bridge whose session is permanently gone can stop."""
+        resp = self._post(f"/sessions/{session_id}/heartbeat", timeout=(5, 10))
+        if resp.status_code == 409:
+            raise SessionInactiveError(session_id)
+
+    def close_session(self, session_id: str) -> None:
+        """Mark the session closed so the dashboard updates without waiting for TTL."""
+        self._patch(f"/sessions/{session_id}", json={"status": "closed"}, timeout=(5, 10))
 
     # ------------------------------------------------------------------
     # Runs
@@ -346,12 +406,49 @@ class WecoClient:
         resp.raise_for_status()
         return resp.json()
 
+    def list_lineage_nodes(
+        self, lineage_id: str, *, node_ids: list[str] | None = None, include_details: bool = False, status: str | None = None
+    ) -> dict:
+        """``GET /lineages/{lineage_id}/nodes`` — flat list of nodes across every
+        member of a lineage, each carrying a lineage-global ``global_step``.
+
+        Heavy fields (``plan``, ``analysis``, ``code``, ``execution_output``) are
+        omitted unless ``include_details=True``; keep them off the polling path.
+
+        Args:
+            lineage_id: The lineage UUID (= root run ID).
+            node_ids: Optional subset of node IDs to fetch (also hydrates details).
+            include_details: Include the heavy fields.
+            status: Comma-separated node statuses to filter by.
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        params: dict[str, Any] = {}
+        if node_ids:
+            params["node_ids"] = node_ids
+        if include_details:
+            params["include_details"] = True
+        if status:
+            params["status"] = status
+        resp = self._get(f"/lineages/{lineage_id}/nodes", params=params)
+        resp.raise_for_status()
+        return resp.json()
+
     def resume_run(self, run_id: str, *, api_keys: dict[str, str] | None = None, steps: int | None = None) -> dict:
         """``POST /runs/{run_id}/resume`` — resume an interrupted or completed run.
 
         When ``steps`` is provided, the backend resets the run's budget to
         ``last_step + steps`` and produces the next candidate. Required for
         runs already in the ``completed`` state.
+
+        Uses the long read timeout (``(10, 3650)``, same as ``/suggest`` and
+        run creation) because resume can run server-side LLM candidate
+        generation (``_resume_generate_candidate_if_needed``): for a completed
+        run, or any run with no runnable work, the backend blocks the response
+        on a full generation that routinely exceeds 10s. A short read timeout
+        here makes the CLI abort while the backend keeps going, leaving the run
+        ``running`` with an unclaimed task that then dies of heartbeat timeout.
 
         Raises:
             requests.exceptions.HTTPError: On non-2xx responses.
@@ -361,7 +458,7 @@ class WecoClient:
             body["api_keys"] = api_keys
         if steps is not None:
             body["steps"] = steps
-        resp = self._post(f"/runs/{run_id}/resume", json=body, timeout=(5, 10))
+        resp = self._post(f"/runs/{run_id}/resume", json=body, timeout=(10, 3650))
         resp.raise_for_status()
         return resp.json()
 
@@ -505,6 +602,35 @@ class WecoClient:
             return ExecutionTasksResult(tasks=data.get("tasks", []), run=run_summary)
         except Exception:
             return None
+
+    def get_lineage_execution_tasks(self, lineage_id: str) -> ExecutionTasksResult | None:
+        """``GET /execution-tasks/?lineage_id=`` — poll for ready tasks across an
+        entire lineage. Used by the single lineage consumer that serializes evals
+        over parallel derived runs. Top-level ``run`` is None in this mode; each
+        task carries its own ``run`` summary (read as ``task["run"]``)."""
+        try:
+            resp = self._get("/execution-tasks/", params={"lineage_id": lineage_id}, timeout=(5, 30))
+            resp.raise_for_status()
+            data = resp.json()
+            return ExecutionTasksResult(tasks=data.get("tasks", []), run=None, active_run_count=data.get("active_run_count"))
+        except Exception:
+            return None
+
+    def heartbeat_lineage(self, lineage_id: str) -> bool:
+        """``POST /lineages/{lineage_id}/heartbeat`` — keep every running member
+        of the lineage alive in one call. One live consumer owns the lineage and
+        serializes its evals; members awaiting their turn must not be reaped."""
+        try:
+            resp = self._post(f"/lineages/{lineage_id}/heartbeat", timeout=(5, 10))
+            resp.raise_for_status()
+            return True
+        except requests.exceptions.HTTPError as e:
+            code = getattr(e.response, "status_code", None)
+            print(f"Lineage heartbeat failed for {lineage_id}: HTTP {code}", file=sys.stderr)
+            return False
+        except Exception as e:
+            print(f"Error sending lineage heartbeat for {lineage_id}: {e}", file=sys.stderr)
+            return False
 
     def claim_task(self, task_id: str) -> dict | None:
         """``POST /execution-tasks/{task_id}/claim`` — claim a task for evaluation."""
