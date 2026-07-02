@@ -170,9 +170,6 @@ def run_headless_bridge(
         seed_prompt=seed_prompt,
     )
 
-    if orchestrator.dashboard_url:
-        console.print(f"[green]Bridged session live.[/] Watch and steer at: [bold]{orchestrator.dashboard_url}[/]")
-
     try:
         asyncio.run(orchestrator.run_until_stopped())
     except KeyboardInterrupt:
