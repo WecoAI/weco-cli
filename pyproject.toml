@@ -38,7 +38,7 @@ Homepage = "https://github.com/WecoAI/weco-cli"
 
 [project.optional-dependencies]
 langfuse = ["langfuse>=2.0.0"]
-dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0"]
+dev = ["ruff", "build", "setuptools_scm", "pytest>=7.0.0", "pytest-asyncio>=0.23"]
 
 [tool.setuptools.packages.find]
 include = ["weco*"]
