@@ -118,13 +118,36 @@ def _classify_lineage_poll(read_ok: bool, has_ready: bool, active_run_count: Opt
     return _PollAction.DONE
 
 
-def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> bool:
-    """Flip a run back to 'running' without emitting any console output."""
+class _SilentResumeOutcome(Enum):
+    """Result of a background (no-console-output) resume attempt.
+
+    Distinguishes the three cases the auto-resume wrapper must act on
+    differently: the run was flipped back to ``running`` and has work to do
+    (``RESUMED``); the backend's resume repair pass found no runnable work and
+    already finalized the run ``completed`` (``ALREADY_COMPLETE``, signalled by
+    ``is_done`` in the resume response); or the resume call failed and should be
+    retried (``FAILED``).
+    """
+
+    RESUMED = "resumed"
+    ALREADY_COMPLETE = "already_complete"
+    FAILED = "failed"
+
+
+def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> _SilentResumeOutcome:
+    """Flip a run back to 'running' without emitting any console output.
+
+    Reads ``is_done`` from the resume response defensively (absent → ``False``),
+    so an older backend that never sends the field is treated as a normal
+    ``RESUMED`` and legacy behavior is preserved.
+    """
     try:
-        WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
-        return True
+        resp = WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
     except Exception:
-        return False
+        return _SilentResumeOutcome.FAILED
+    if isinstance(resp, dict) and resp.get("is_done", False):
+        return _SilentResumeOutcome.ALREADY_COMPLETE
+    return _SilentResumeOutcome.RESUMED
 
 
 def _run_loop_with_auto_resume(
@@ -161,7 +184,18 @@ def _run_loop_with_auto_resume(
             ui.on_reconnecting(attempts_used, policy.max_attempts, backoff)
             time.sleep(backoff)
 
-            if _silent_resume(run_id, auth_headers, api_keys):
+            outcome = _silent_resume(run_id, auth_headers, api_keys)
+            if outcome is _SilentResumeOutcome.ALREADY_COMPLETE:
+                # The backend's resume repair pass finalized the run 'completed'
+                # (no runnable work left). Re-entering the loop would only poll,
+                # observe run.status == 'completed', and misreport a stop. Treat
+                # it as terminal success — the same exit a normal is_done takes.
+                ui.on_reconnected()
+                ui.on_complete(result.final_step)
+                return OptimizationResult(
+                    success=True, final_step=result.final_step, status="completed", reason="completed_successfully"
+                )
+            if outcome is _SilentResumeOutcome.RESUMED:
                 ui.on_reconnected()
                 start_step = result.final_step
                 resumed = True
@@ -908,6 +942,60 @@ def resume_optimization(
 
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
+
+    # The backend's resume repair pass may have finalized the run itself: a
+    # scored-but-interrupted node was promoted, the step budget was met, and the
+    # run was flipped to 'completed' with no runnable work. It signals this with
+    # is_done=True (read defensively: an older backend omits the field, yielding
+    # False and the unchanged legacy behavior below). Entering the task-polling
+    # loop here would find no tasks / a completed run and misreport it as
+    # stopped, so short-circuit to a success exit that mirrors normal completion.
+    if bool(resume_resp.get("is_done", False)):
+        if daemon:
+            # Emit the identifiers stdout-watchers (claude, cursor, the wrapper's
+            # find_run_ids) rely on before we return — no fork needed, there is
+            # no long-running work to detach.
+            print(f"Run ID: {run_id}", flush=True)
+            print(f"Run name: {run_name}", flush=True)
+            print(f"Dashboard: {dashboard_url}", flush=True)
+        if output_mode == "plain":
+            print("")
+            print("=" * 60)
+            print("[COMPLETE] Run already complete")
+            print("=" * 60, flush=True)
+        else:
+            console.print("\n[bold green]Run already complete![/]")
+        # Offer/apply the best solution exactly as the normal completion path
+        # does, so a resume that finds the run already done still lands the
+        # winning code in the working tree (or reports where it was saved).
+        #
+        # offer_apply_best_solution writes candidate files into the working tree,
+        # so it MUST hold the consumer lock — same as the normal completion path,
+        # which applies under lock_handle and only releases afterwards. Without it,
+        # a consumer already draining this lineage in the same tree could be
+        # mid-eval (swapping files in/out) when we overwrite its files. If that
+        # consumer holds the lock, skip the apply with the same message the normal
+        # path gives on lock-unavailable; the run is still complete, so report
+        # success either way.
+        lock_handle = try_acquire()
+        if lock_handle is None:
+            console.print(
+                "[yellow]Another Weco optimization is already evaluating in this directory; "
+                "not starting a second consumer here.[/]"
+            )
+            return True
+        try:
+            offer_apply_best_solution(
+                console=console,
+                run_id=run_id,
+                source_code=source_code,
+                artifacts=RunArtifacts(log_dir=log_dir, run_id=run_id),
+                auth_headers=auth_headers,
+                apply_change=apply_change,
+            )
+        finally:
+            release(lock_handle)
+        return True
 
     if daemon:
         # Print everything stdout-watchers (claude, cursor, the wrapper's find_run_ids)
