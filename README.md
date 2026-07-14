@@ -405,6 +405,6 @@ A list of models we support can be found in our documentation [here](https://doc
 
 ## Contributing
 
-We welcome contributions! Please see [contributing.md](contributing.md) for detailed guidelines on how to contribute to this project.
+We welcome contributions! Please see [contributing.md](contributing.md) for detailed guidelines on how to contribute to this project. For larger changes, open an issue first so we can discuss the approach.
 
 ---
