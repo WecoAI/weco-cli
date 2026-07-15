@@ -1,7 +1,7 @@
 """Regression: a /suggest submit that 409s (run terminated mid-race) is an error,
 never a false success.
 
-PR 2's backend converges a raced hard stop to an HTTP 409 on the submit
+Milestone M's backend converges a raced hard stop to an HTTP 409 on the submit
 (``/suggest``) call: if a hard stop wins the completion race, the backend returns
 409 instead of a truthful-looking ``is_done=true`` (which the CLI would otherwise
 map to ``success=True``/``status="completed"``). This test pins that the CLI's

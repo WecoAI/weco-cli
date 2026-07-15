@@ -1,6 +1,6 @@
 """Manual ``weco resume`` handling of the backend's ``is_done`` resume signal.
 
-PR 2's ``/runs/{id}/resume`` endpoint may finalize a run itself: it promotes a
+Milestone M's ``/runs/{id}/resume`` endpoint may finalize a run itself: it promotes a
 scored-but-interrupted node, the step budget is met, and the run flips to
 'completed' with no runnable work. It reports this with ``is_done=True`` in the
 resume response. The CLI must:
