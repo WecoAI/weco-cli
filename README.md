@@ -293,12 +293,27 @@ weco run --model gpt-5 --source optimize.py [other options...]
 - GPT-4 Series: `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`
 
 **Anthropic Claude (via Vertex AI):**
-- `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-opus-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
+- `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-4-6`, `claude-opus-4-5`, `claude-opus-4-1`, `claude-opus-4`, `claude-sonnet-4-5`, `claude-sonnet-4`, `claude-haiku-4-5`
 
 **Google Gemini:**
-- `gemini-3.1-pro-preview`, `gemini-3-flash-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
+- `gemini-3.5-flash`, `gemini-3.1-pro-preview`, `gemini-3.1-flash-lite-preview`, `gemini-3-flash-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
-All models are available through Weco. If no model is specified, Weco automatically selects the best model for your optimization task.
+**Concentrate AI:**
+
+Accessed through the Concentrate gateway with the `concentrate/` prefix. The open-weight models below are also callable by their bare name (without the prefix).
+
+- Open models: `kimi-k2-6`, `kimi-k2-5`, `minimax-m3`, `minimax-m2-7`, `minimax-m2-5`, `glm-5.1`, `glm-5`
+- Via Concentrate: `concentrate/gpt-5.4`, `concentrate/gpt-5.4-mini`, `concentrate/gpt-5.4-nano`, `concentrate/gpt-4.1`, `concentrate/gpt-4.1-mini`, `concentrate/gpt-4o`, `concentrate/gpt-4o-mini`, `concentrate/o1`, `concentrate/claude-opus-4-6`, `concentrate/claude-sonnet-4-6`
+
+**Kimi (Moonshot):**
+
+Accessed through Kimi's official Moonshot API.
+
+- `kimi-k2.7-code` — thinking-only coding model with a 256K context window
+
+All models are available through Weco. If no model is specified, Weco uses the default model `gemini-3-flash-preview`.
+
+The canonical, always-current list lives at [docs.weco.ai/reference/supported-models](https://docs.weco.ai/reference/supported-models) — check there if this section looks out of date.
 
 ---
 
