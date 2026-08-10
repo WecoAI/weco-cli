@@ -1,6 +1,6 @@
 ## Weco Examples
 
-Explore runnable examples that show how to use Weco to optimize ML models, prompts, and GPU kernels. Pick an example and get going in minutes.
+Explore runnable examples that show how to use Weco to optimize agent harnesses, prompts, ML models, and other performance-critical code. Pick an example and get going in minutes.
 
 ### Table of Contents
 
