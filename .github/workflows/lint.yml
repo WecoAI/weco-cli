@@ -1,7 +1,7 @@
-# Check-only lint for the public satellite (WecoAI/weco-cli). This repo's
-# main is a mirror of the weco-platform monorepo: never auto-commit or push
-# fixes here; any commit made on the satellite is overwritten by the next
-# mirror push. Lint failures are fixed in the monorepo.
+# Check-only lint. This repository's main branch is maintained as a mirror
+# of an upstream source of truth: never auto-commit or push fixes here; any
+# commit made directly to main is overwritten by the next mirror sync.
+# Lint failures are fixed upstream.
 #
 # The workflow name is load-bearing: release.yml triggers on the completion
 # of "Lint and Format Code" and only releases when it succeeded.
@@ -27,9 +27,9 @@ jobs:
         python-version: "3.12"
 
     - name: Install dependencies
-      # Pinned to the ruff version the monorepo resolves in uv.lock, so the
-      # satellite can never fail on code the monorepo lints green. Bump this
-      # together with the workspace ruff version.
+      # Pinned to the ruff version upstream CI runs, so this workflow can
+      # never fail on code that upstream lints green. Bump together with
+      # the upstream ruff version.
       run: |
         python -m pip install --upgrade pip
         pip install "ruff==0.11.0"
