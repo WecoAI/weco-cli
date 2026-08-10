@@ -24,9 +24,10 @@ Weco systematically optimizes your code, guided directly by your evaluation metr
 
 Example applications include:
 
-- **GPU Kernel Optimization**: Reimplement PyTorch functions using [CUDA](/examples/cuda/README.md) or [Triton](/examples/triton/README.md), optimizing for `latency`, `throughput`, or `memory_bandwidth`.
+- **Agent & Harness Engineering**: Improve the harness around your LLM agents, from prompts and tools to [agentic scaffolding](/examples/extract-line-plot/README.md), optimizing for `accuracy`, `win_rate`, or `cost`.
+- **Prompt Engineering**: Refine prompts for LLMs (e.g., for [math problems](/examples/prompt/README.md)) or [compress them](/examples/prompt-compression/README.md) while holding accuracy, optimizing for `win_rate`, `relevance`, or `format_adherence`.
 - **Model Development**: Tune feature transformations, architectures or [the whole training pipeline](/examples/spaceship-titanic/README.md), optimizing for `validation_accuracy`, `AUC`, or `Sharpe Ratio`.
-- **Prompt Engineering**: Refine prompts for LLMs (e.g., for [math problems](/examples/prompt/README.md)), optimizing for `win_rate`, `relevance`, or `format_adherence`
+- **General Performance Optimization**: Speed up any code with a measurable objective, including GPU kernels in [CUDA](/examples/cuda/README.md) or [Triton](/examples/triton/README.md), optimizing for `latency`, `throughput`, or `memory_bandwidth`.
 
 ![image](assets/example-optimization.gif)
 
