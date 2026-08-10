@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "weco"
 authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
-description = "Documentation for `weco`, a CLI for using Weco AI's code optimizer."
+description = "Production-grade autoresearch: an automated research loop that improves agent harnesses, prompts, ML models, and other performance-critical code against any metric you can measure."
 readme = "README.md"
 version = "0.3.40"
 license = { file = "LICENSE" }
@@ -23,7 +23,7 @@ dependencies = [
     "realtime>=2.29.0",
     "claude-agent-sdk>=0.2.87",
 ]
-keywords = ["AI", "Code Optimization", "Code Generation"]
+keywords = ["AI", "Autoresearch", "Agent Harness", "Prompt Engineering", "Code Optimization", "Machine Learning", "Code Generation"]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",

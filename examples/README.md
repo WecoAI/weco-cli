@@ -11,13 +11,13 @@ Explore runnable examples that show how to use Weco to optimize agent harnesses,
 - [Quick starts](#quick-starts)
   - [🧭 Hello World](#-hello-world)
   - [📋 LangSmith ZephHR QA](#-langsmith-zephhr-qa)
-  - [⚡ Triton Optimization](#-triton-optimization)
-  - [🚀 CUDA Optimization](#-cuda-optimization)
   - [🧠 Prompt Engineering](#-prompt-engineering)
   - [🗜️ Prompt Compression](#-prompt-compression)
   - [📊 Extract Line Plot — Chart to CSV](#-extract-line-plot--chart-to-csv)
   - [🛰️ Model Development — Spaceship Titanic](#️-model-development--spaceship-titanic)
   - [🕵️ Fraud Detection — IEEE-CIS](#️-fraud-detection--ieee-cis)
+  - [⚡ Triton Optimization](#-triton-optimization)
+  - [🚀 CUDA Optimization](#-cuda-optimization)
 
 ### Prerequisites
 
@@ -32,13 +32,13 @@ pip install weco
 | :-- | :-- | :-- | :-- |
 | 🧭 Hello World | Learn the Weco workflow on a small PyTorch model | `torch` | [README](hello-world/README.md) • [Colab](hello-world/colab_notebook_walkthrough.ipynb) |
 | 📋 LangSmith ZephHR QA | LLM-judge prompt optimization on HR policy QA | `openai`, `langsmith`, OpenAI + LangSmith API keys | [README](langsmith-zephhr-qa/README.md) |
-| ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
-| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 | 🧠 Prompt Engineering | Iteratively refine LLM prompts to improve accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt/README.md) |
 | 🗜️ Prompt Compression | Shrink a 65K-char classifier prompt by ~95% on BANKING77 while holding accuracy | `openai`, `datasets`, OpenAI API key | [README](prompt-compression/README.md) |
 | 📊 Agentic Scaffolding | Optimize agentic scaffolding for chart-to-CSV extraction | `openai`, `huggingface_hub`, `uv`, OpenAI API key | [README](extract-line-plot/README.md) |
 | 🛰️ Spaceship Titanic | Improve a Kaggle model training pipeline | `pandas`, `numpy`, `scikit-learn`, `torch`, `xgboost`, `lightgbm`, `catboost` | [README](spaceship-titanic/README.md) |
 | 🕵️ Fraud Detection | Optimize a fraud pipeline on IEEE-CIS (real Vesta transactions) | `pandas`, `numpy`, `scikit-learn`, `lightgbm`, `pyarrow`, `kaggle` | [README](fraud-detection/README.md) |
+| ⚡ Triton Optimization | Speed up attention with Triton kernels | `numpy`, `torch`, `triton`, NVIDIA GPU | [README](triton/README.md) |
+| 🚀 CUDA Optimization | Generate low-level CUDA kernels for max speed | `ninja`, `numpy`, `torch`, `triton`, NVIDIA GPU, CUDA Toolkit | [README](cuda/README.md) |
 
 ---
 
@@ -79,41 +79,6 @@ weco run --source agent.py \
   --langsmith-metric-function evaluators:qa_score \
   --additional-instructions optimizer_exemplars.md \
   --metric qa_score --goal maximize --steps 30
-```
-
-### ⚡ Triton Optimization
-
-- **Requirements**: NVIDIA GPU
-
-```bash
-cd examples/triton
-pip install -r requirements.txt
-weco run --source module.py \
-     --eval-command "python evaluate.py --path module.py" \
-     --metric speedup \
-     --goal maximize \
-     --steps 15 \
-     --model o4-mini \
-     --additional-instructions "Use a combination of triton and pytorch to optimize the forward pass while ensuring a small max float diff. Maintain the same code interface. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu." \
-     --eval-timeout 120
-```
-
-### 🚀 CUDA Optimization
-
-- **Requirements**: NVIDIA GPU and CUDA Toolkit
-- **Optional**: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
-
-```bash
-cd examples/cuda
-pip install -r requirements.txt
-weco run --source module.py \
-     --eval-command "python evaluate.py --path module.py" \
-     --metric speedup \
-     --goal maximize \
-     --steps 50 \
-     --model gpt-5 \
-     --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code interface. Do not use any fallbacks and never use the build_directory arg for load_inline(). Assume any required dependencies are installed and data is already on the gpu." \
-     --eval-timeout 600
 ```
 
 ### 🧠 Prompt Engineering
@@ -211,8 +176,43 @@ weco run --source train.py \
      --log-dir .runs/fraud-detection
 ```
 
+### ⚡ Triton Optimization
+
+- **Requirements**: NVIDIA GPU
+
+```bash
+cd examples/triton
+pip install -r requirements.txt
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
+     --metric speedup \
+     --goal maximize \
+     --steps 15 \
+     --model o4-mini \
+     --additional-instructions "Use a combination of triton and pytorch to optimize the forward pass while ensuring a small max float diff. Maintain the same code interface. Do not use any fallbacks. Assume any required dependencies are installed and data is already on the gpu." \
+     --eval-timeout 120
+```
+
+### 🚀 CUDA Optimization
+
+- **Requirements**: NVIDIA GPU and CUDA Toolkit
+- **Optional**: If compatible, install [flash attention](https://github.com/Dao-AILab/flash-attention?tab=readme-ov-file#installation-and-features) (`pip install flash-attn --no-build-isolation`)
+
+```bash
+cd examples/cuda
+pip install -r requirements.txt
+weco run --source module.py \
+     --eval-command "python evaluate.py --path module.py" \
+     --metric speedup \
+     --goal maximize \
+     --steps 50 \
+     --model gpt-5 \
+     --additional-instructions "Write in-line CUDA using pytorch's load_inline() to optimize the code while ensuring a small max float diff. Maintain the same code interface. Do not use any fallbacks and never use the build_directory arg for load_inline(). Assume any required dependencies are installed and data is already on the gpu." \
+     --eval-timeout 600
+```
+
 ---
 
-If you're new to Weco, start with **Hello World**, then try **LangSmith ZephHR QA** for a realistic LangSmith optimization workflow, explore **Triton** and **CUDA** for kernel engineering, **Prompt Engineering** for optimzing an LLM's prompt, **Extract Line Plot** for optimzing agentic scaffolds, **Spaceship Titanic** for model development, or **Fraud Detection** for a production-scale tabular ML case study.
+If you're new to Weco, start with **Hello World**, then try **LangSmith ZephHR QA** for a realistic LangSmith optimization workflow, **Extract Line Plot** for optimizing agentic scaffolds, **Prompt Engineering** for optimizing an LLM's prompt, **Spaceship Titanic** for model development, **Fraud Detection** for a production-scale tabular ML case study, or **Triton** and **CUDA** for GPU kernel optimization.
 
 
