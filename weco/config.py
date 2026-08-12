@@ -62,7 +62,9 @@ def load_weco_api_key() -> str | None:
         file_stat = os.stat(CREDENTIALS_FILE)
         if file_stat.st_mode & (stat.S_IRWXG | stat.S_IRWXO):  # Check if group/other have permissions
             # stderr: stdout must stay clean for $(weco observe init ...) capture
-            print(f"Warning: Credentials file {CREDENTIALS_FILE} has insecure permissions. Please set to 600.", file=sys.stderr)
+            print(
+                f"Warning: Credentials file {CREDENTIALS_FILE} has insecure permissions. Please set to 600.", file=sys.stderr
+            )
             # Optionally, refuse to load or try to fix permissions
 
         with open(CREDENTIALS_FILE, "r") as f:
