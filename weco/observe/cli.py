@@ -1,16 +1,24 @@
 """CLI commands for weco observe.
 
-All commands follow the fire-and-forget pattern: they print warnings to
-stderr on failure but always exit 0 so they never crash an agent's loop.
+Exit-code policy follows each command's role in the caller's workflow, not a
+fault taxonomy:
+
+- ``init`` runs once, before the loop being tracked exists. Any failure exits
+  non-zero: nothing is at risk yet, and ``RUN_ID=$(weco observe init ...)``
+  must never capture an empty string from a "polite" exit 0.
+- ``log`` runs inside the tracked loop (often under ``set -e``). Errors the
+  caller must fix (bad ``--metrics`` JSON, unreadable ``--source``, not logged
+  in, a 4xx from the API) exit non-zero; weco-side failures print to stderr
+  and exit 0 so a blip never crashes the tracked loop. ``--strict`` opts into
+  making those fatal as well.
 """
 
 import argparse
 import json
 import sys
-import warnings
 
-from weco.auth import handle_authentication
 from weco.browser import open_browser
+from weco.config import load_weco_api_key
 from weco.events import send_event, ObserveInitEvent, ObserveLogEvent
 from weco.observe import api
 from weco import __dashboard_url__
@@ -58,6 +66,11 @@ def configure_observe_parser(observe_parser: argparse.ArgumentParser) -> None:
         "--sources", nargs="+", type=str, default=None, help="Multiple source code files to snapshot"
     )
     log_parser.add_argument("--parent-step", type=int, default=None, help="Parent step number for tree lineage")
+    log_parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="Exit non-zero when weco itself fails (default: warn on stderr and exit 0 so the tracked loop survives)",
+    )
 
     # --- complete/fail are no longer needed ---
     # External run lifecycle is managed by the dashboard, not the CLI.
@@ -65,34 +78,35 @@ def configure_observe_parser(observe_parser: argparse.ArgumentParser) -> None:
 
 
 def _read_code_files(paths: list[str]) -> dict[str, str]:
-    """Read source code files from disk."""
+    """Read source code files from disk. Exits 1 if any file cannot be read.
+
+    All-or-nothing: silently logging a partial snapshot would show wrong
+    code in the dashboard, so a single unreadable file fails the command.
+    """
     source_code = {}
     for path in paths:
         try:
             with open(path) as f:
                 source_code[path] = f.read()
-        except FileNotFoundError:
-            warnings.warn(f"weco observe: file not found: {path}", stacklevel=2)
-        except Exception as e:
-            warnings.warn(f"weco observe: error reading {path}: {e}", stacklevel=2)
+        except (OSError, UnicodeDecodeError) as e:
+            print(f"weco observe: cannot read {path}: {e}", file=sys.stderr)
+            sys.exit(1)
     return source_code
 
 
 def execute_observe_command(args: argparse.Namespace) -> None:
-    """Execute an observe subcommand. Always exits 0."""
+    """Execute an observe subcommand."""
     if not args.observe_command:
-        print("Usage: weco observe {init,log,complete,fail}", file=sys.stderr)
-        sys.exit(0)
+        print("Usage: weco observe {init,log}", file=sys.stderr)
+        sys.exit(2)
 
-    # Authenticate
-    try:
-        _, auth_headers = handle_authentication(None)
-        if not auth_headers:
-            print("weco observe: not logged in. Run `weco login` first.", file=sys.stderr)
-            sys.exit(0)
-    except Exception as e:
-        print(f"weco observe: authentication failed: {e}", file=sys.stderr)
-        sys.exit(0)
+    # Build headers straight from the stored key: a sidecar embedded in a
+    # scripted loop must never open handle_authentication's interactive prompt.
+    api_key = load_weco_api_key()
+    if not api_key:
+        print("weco observe: not logged in. Run `weco login` first.", file=sys.stderr)
+        sys.exit(1)
+    auth_headers = {"Authorization": f"Bearer {api_key}"}
 
     if args.observe_command == "init":
         _handle_init(args, auth_headers)
@@ -101,12 +115,9 @@ def execute_observe_command(args: argparse.Namespace) -> None:
 
 
 def _handle_init(args: argparse.Namespace, auth_headers: dict) -> None:
-    """Handle `weco observe init`."""
+    """Handle `weco observe init`. Any failure exits non-zero (see module docstring)."""
     source_arg = args.sources if args.sources is not None else [args.source]
     source_code = _read_code_files(source_arg)
-    if not source_code:
-        print("weco observe: no source files could be read", file=sys.stderr)
-        sys.exit(0)
 
     maximize = args.goal in ("maximize", "max")
 
@@ -114,24 +125,29 @@ def _handle_init(args: argparse.Namespace, auth_headers: dict) -> None:
         ObserveInitEvent(metric=args.metric, goal="maximize" if maximize else "minimize", source_count=len(source_code))
     )
 
-    result = api.create_run(
-        source_code=source_code,
-        metric_name=args.metric,
-        maximize=maximize,
-        name=args.name,
-        additional_instructions=args.additional_instructions,
-        auth_headers=auth_headers,
-    )
+    try:
+        result = api.create_run(
+            source_code=source_code,
+            metric_name=args.metric,
+            maximize=maximize,
+            name=args.name,
+            additional_instructions=args.additional_instructions,
+            auth_headers=auth_headers,
+        )
+    except api.ObserveError as e:
+        print(f"weco observe: {e}", file=sys.stderr)
+        sys.exit(1)
 
-    if result and result.get("run_id"):
-        run_id = result["run_id"]
-        # Print only the run_id to stdout so it can be captured by $(...)
-        print(run_id)
-        # Open the dashboard in the user's browser
-        dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
-        open_browser(dashboard_url)
-    else:
-        print("weco observe: failed to create run", file=sys.stderr)
+    run_id = result.get("run_id")
+    if not run_id:
+        print("weco observe: create run response carried no run_id", file=sys.stderr)
+        sys.exit(1)
+
+    # Print only the run_id to stdout so it can be captured by $(...)
+    print(run_id)
+    # Open the dashboard in the user's browser
+    dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
+    open_browser(dashboard_url)
 
 
 def _handle_log(args: argparse.Namespace, auth_headers: dict) -> None:
@@ -143,7 +159,7 @@ def _handle_log(args: argparse.Namespace, auth_headers: dict) -> None:
             metrics = json.loads(args.metrics)
         except json.JSONDecodeError as e:
             print(f"weco observe: invalid metrics JSON: {e}", file=sys.stderr)
-            sys.exit(0)
+            sys.exit(1)
 
     # Read source files if specified
     code = None
@@ -153,13 +169,22 @@ def _handle_log(args: argparse.Namespace, auth_headers: dict) -> None:
 
     send_event(ObserveLogEvent(status=args.status))
 
-    api.log_step(
-        run_id=args.run_id,
-        step=args.step,
-        status=args.status,
-        description=args.description,
-        metrics=metrics,
-        code=code,
-        parent_step=args.parent_step,
-        auth_headers=auth_headers,
-    )
+    try:
+        api.log_step(
+            run_id=args.run_id,
+            step=args.step,
+            status=args.status,
+            description=args.description,
+            metrics=metrics,
+            code=code,
+            parent_step=args.parent_step,
+            auth_headers=auth_headers,
+        )
+    except api.CallerError as e:
+        print(f"weco observe: {e}", file=sys.stderr)
+        sys.exit(1)
+    except api.TransientError as e:
+        print(f"weco observe: {e} (step {args.step} dropped)", file=sys.stderr)
+        if args.strict:
+            sys.exit(1)
+        # Default: a weco-side blip must not crash the loop being tracked.

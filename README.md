@@ -71,7 +71,7 @@ weco observe log --run-id "$WECO_RUN_ID" --step 1 --description "increase batch 
   --metrics '{"val_bpb": 2.26}' --source train.py
 ```
 
-All observe commands are fire-and-forget (always exit 0), so they never crash an agent loop. There is also a [Python SDK](https://docs.weco.ai/observe#python-sdk) for scripts with a Python loop.
+Failures print to stderr. `weco observe init` exits non-zero on any failure, so a captured `WECO_RUN_ID` is always valid. `weco observe log` exits non-zero only for errors you must fix (bad flags, unreadable files, not logged in, a rejected request); Weco-side blips are retried, then reported without failing the command, so they never crash an agent loop (pass `--strict` to make them fatal). There is also a [Python SDK](https://docs.weco.ai/observe#python-sdk) for scripts with a Python loop.
 
 See the full [Observe guide](https://docs.weco.ai/observe) for branching, lifecycle, and more.
 
@@ -250,7 +250,7 @@ weco observe log --run-id "$WECO_RUN_ID" --step 1 --description "increase batch 
 weco observe log --run-id "$WECO_RUN_ID" --step 2 --status failed --description "OOM" --metrics '{"val_bpb": 0.0}'
 ```
 
-All observe commands are fire-and-forget — they always exit 0, so they never crash an agent's loop. For branching, pass `--parent-step` explicitly. See `weco observe init --help` and `weco observe log --help` for all options.
+Failures print to stderr; `init` exits non-zero on any failure, while `log` exits non-zero only for caller errors and shrugs off Weco-side blips (retried, reported, exit 0) so it never crashes an agent's loop — pass `--strict` to change that. For branching, pass `--parent-step` explicitly. See `weco observe init --help` and `weco observe log --help` for all options.
 
 ### Setup Commands (Experimental)
 

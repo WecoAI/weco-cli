@@ -47,6 +47,14 @@ def _truncate_output(output: str) -> str:
     return f"{first}\n ... [{truncated_len} characters truncated] ... \n{last}"
 
 
+_MESSAGE_KEYS = ("message", "error", "msg", "detail")
+
+
+def _first_message(detail_obj: dict) -> Any:
+    """First non-empty conventional message field in an API error detail dict."""
+    return next((detail_obj.get(key) for key in _MESSAGE_KEYS if detail_obj.get(key)), None)
+
+
 def format_api_error(e: requests.exceptions.HTTPError) -> str:
     """Extract API error details as a plain multi-line string.
 
@@ -67,9 +75,7 @@ def format_api_error(e: requests.exceptions.HTTPError) -> str:
             return [detail_obj]
         if isinstance(detail_obj, dict):
             lines: list[str] = []
-            message_keys = ("message", "error", "msg", "detail")
-            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
-            lines.append(message or f"HTTP {status} Error")
+            lines.append(_first_message(detail_obj) or f"HTTP {status} Error")
             suggestion = detail_obj.get("suggestion")
             if suggestion:
                 lines.append(str(suggestion))
@@ -91,21 +97,36 @@ def format_api_error(e: requests.exceptions.HTTPError) -> str:
     return "\n".join(_format(detail))
 
 
-def handle_api_error(e: requests.exceptions.HTTPError, console) -> None:
-    """Extract and display error messages from API responses in a structured format."""
+def extract_api_error_detail(e: requests.exceptions.HTTPError) -> Any:
+    """Best-effort extraction of the API's error ``detail`` payload (str, dict, or list)."""
     status = getattr(e.response, "status_code", None)
     try:
         payload = e.response.json()
-        detail = payload.get("detail", payload)
+        return payload.get("detail", payload)
     except (ValueError, AttributeError):
-        detail = getattr(e.response, "text", "") or f"HTTP {status} Error"
+        return getattr(e.response, "text", "") or f"HTTP {status} Error"
+
+
+def api_error_message(e: requests.exceptions.HTTPError) -> str:
+    """One-line plain-text summary of an API error, for non-rich surfaces (stderr)."""
+    detail = extract_api_error_detail(e)
+    if isinstance(detail, list) and detail:
+        detail = detail[0]
+    if isinstance(detail, dict):
+        detail = _first_message(detail) or detail
+    return f"{e} ({detail})" if detail else str(e)
+
+
+def handle_api_error(e: requests.exceptions.HTTPError, console) -> None:
+    """Extract and display error messages from API responses in a structured format."""
+    status = getattr(e.response, "status_code", None)
+    detail = extract_api_error_detail(e)
 
     def _render(detail_obj: Any) -> None:
         if isinstance(detail_obj, str):
             console.print(f"[bold red]{detail_obj}[/]")
         elif isinstance(detail_obj, dict):
-            message_keys = ("message", "error", "msg", "detail")
-            message = next((detail_obj.get(key) for key in message_keys if detail_obj.get(key)), None)
+            message = _first_message(detail_obj)
             suggestion = detail_obj.get("suggestion")
             if message:
                 console.print(f"[bold red]{message}[/]")

@@ -36,17 +36,20 @@ class ObserveRun:
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Log a step to this run. Never raises."""
-        api.log_step(
-            run_id=self._run_id,
-            step=step,
-            status=status,
-            description=description,
-            metrics=metrics,
-            code=code,
-            parent_step=parent_step,
-            metadata=metadata,
-            auth_headers=self._auth_headers,
-        )
+        try:
+            api.log_step(
+                run_id=self._run_id,
+                step=step,
+                status=status,
+                description=description,
+                metrics=metrics,
+                code=code,
+                parent_step=parent_step,
+                metadata=metadata,
+                auth_headers=self._auth_headers,
+            )
+        except api.ObserveError as e:
+            warnings.warn(f"weco observe: {e}", stacklevel=2)
 
 
 class WecoObserver:
@@ -88,15 +91,21 @@ class WecoObserver:
 
         Returns an ObserveRun handle, or None if creation failed.
         """
-        result = api.create_run(
-            source_code=source_code,
-            metric_name=primary_metric,
-            maximize=maximize,
-            name=name,
-            additional_instructions=additional_instructions,
-            metadata=metadata,
-            auth_headers=self._auth_headers,
-        )
-        if result is None:
+        try:
+            result = api.create_run(
+                source_code=source_code,
+                metric_name=primary_metric,
+                maximize=maximize,
+                name=name,
+                additional_instructions=additional_instructions,
+                metadata=metadata,
+                auth_headers=self._auth_headers,
+            )
+        except api.ObserveError as e:
+            warnings.warn(f"weco observe: {e}", stacklevel=2)
             return None
-        return ObserveRun(run_id=result["run_id"], auth_headers=self._auth_headers)
+        run_id = result.get("run_id")
+        if not run_id:
+            warnings.warn("weco observe: create run response carried no run_id", stacklevel=2)
+            return None
+        return ObserveRun(run_id=run_id, auth_headers=self._auth_headers)
