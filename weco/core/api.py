@@ -271,6 +271,7 @@ class WecoClient:
         log_dir: str = ".runs",
         api_keys: dict[str, str] | None = None,
         require_review: bool = False,
+        enable_web_search: bool = False,
         installation_id: str | None = None,
         invocation_id: str | None = None,
         invoked_via: str | None = None,
@@ -306,6 +307,7 @@ class WecoClient:
             "save_logs": save_logs,
             "log_dir": log_dir,
             "require_review": require_review,
+            "enable_web_search": enable_web_search,
             "metadata": metadata,
         }
         if api_keys:

@@ -105,6 +105,7 @@ class RunStartAttemptedEvent(BaseEvent):
 
     output_mode: str
     require_review: bool
+    enable_web_search: bool
     save_logs: bool
     steps: int
     model: str

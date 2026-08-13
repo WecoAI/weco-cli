@@ -1080,6 +1080,7 @@ def optimize(
     poll_interval: float = 2.0,
     apply_change: bool = False,
     require_review: bool = False,
+    enable_web_search: bool = False,
     output_mode: str = "rich",
     submit_timeout: Optional[int] = None,
     auto_resume_policy: Optional[AutoResumePolicy] = None,
@@ -1164,6 +1165,7 @@ def optimize(
         auth_headers=auth_headers,
         api_keys=api_keys,
         require_review=require_review,
+        enable_web_search=enable_web_search,
         installation_id=event_ctx.installation_id,
         invocation_id=event_ctx.invocation_id,
         invoked_via=event_ctx.invoked_via,
@@ -1176,6 +1178,9 @@ def optimize(
     run_id = run_response["run_id"]
     run_name = run_response["run_name"]
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
+
+    if enable_web_search:
+        console.print("[dim]Web search enabled — the agent will research this problem after the baseline evaluation.[/]")
 
     if daemon:
         # Print everything stdout-watchers (claude, cursor, the wrapper's find_run_ids)

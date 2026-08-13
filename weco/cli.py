@@ -134,6 +134,12 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="Require manual review and approval of each proposed change before execution",
     )
+    run_parser.add_argument(
+        "--enable-web-search",
+        action="store_true",
+        help="Research the problem on the web after the baseline evaluation and use the findings "
+        "to guide the optimization. Adds latency to the first step and costs credits.",
+    )
 
     default_api_keys = " ".join([f"{provider}=xxx" for provider, _ in DEFAULT_MODELS])
     supported_providers = ", ".join([provider for provider, _ in DEFAULT_MODELS])
@@ -606,6 +612,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         RunStartAttemptedEvent(
             output_mode=args.output,
             require_review=args.require_review,
+            enable_web_search=args.enable_web_search,
             save_logs=args.save_logs,
             steps=args.steps,
             model=model,
@@ -631,6 +638,7 @@ def execute_run_command(args: argparse.Namespace) -> None:
         api_keys=api_keys,
         apply_change=args.apply_change,
         require_review=args.require_review,
+        enable_web_search=args.enable_web_search,
         output_mode=args.output,
         submit_timeout=getattr(args, "submit_timeout", None),
         auto_resume_policy=auto_resume_policy,
