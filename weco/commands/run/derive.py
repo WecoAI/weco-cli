@@ -10,6 +10,7 @@ from rich.console import Console
 from rich.prompt import Confirm
 
 from ...auth import handle_authentication
+from ...api import report_termination
 from ...browser import open_browser
 from ...consumer_lock import consumer_lock
 from ...core.api import WecoClient, handle_api_error
@@ -136,10 +137,14 @@ def _attach_or_consume(
 
     * lock **held** — a consumer is already draining this lineage in this tree;
       it will pick up the new run on its next poll. Print the run id and return.
-    * lock **free** — become the lineage consumer and drain the lineage (this
-      run plus any other active members), one eval at a time.
+    * lock **free** — become the lineage consumer. At lineage K=1 this is the
+      unchanged serial loop; at K>1 it is the parallel scheduler over isolated
+      slots (which also gives a deferred zero-work child its fair /generate
+      turns). If no isolated slot can be provisioned, the fair scheduler uses
+      one in-place slot so a deferred child is never stranded.
     """
     new_run_id = run_info["id"]
+    lineage_k = int(run_info.get("parallelism") or 1)
 
     with consumer_lock() as acquired:
         if not acquired:
@@ -150,6 +155,88 @@ def _attach_or_consume(
                     f"[green]Derived run {new_run_id} created.[/] An active consumer in this directory will evaluate it."
                 )
             return True
+
+        if lineage_k > 1:
+            from ...slots import BEST_EFFORT_WARNING, SlotProvisionError, create_slot_provider
+
+            console.print(f"[cyan]This lineage runs at K={lineage_k}; provisioning isolated evaluation slots...[/]")
+            provider = None
+            try:
+                provider = create_slot_provider(pathlib.Path.cwd(), lineage_k, log_dir=run_info["log_dir"])
+                slots = provider.provision()
+            except SlotProvisionError as e:
+                console.print(f"[yellow]Slot provisioning failed: {e}[/]")
+                slots = []
+            if slots:
+                # Even a single slot uses the scheduler here: unlike the serial
+                # loop it polls /generate, which a deferred child needs.
+                if len(slots) < lineage_k:
+                    console.print(
+                        f"[yellow]Only {len(slots)} of {lineage_k} lineage slots provisioned locally; "
+                        f"evaluating with reduced local concurrency. Root K stays {lineage_k}.[/]"
+                    )
+                console.print(f"[yellow]{BEST_EFFORT_WARNING}[/]")
+                from ...optimizer import _run_parallel_and_finalize
+
+                try:
+                    return _run_parallel_and_finalize(
+                        lineage_id=lineage_id,
+                        run_id=new_run_id,
+                        auth_headers=auth_headers,
+                        slots=slots,
+                        lineage_k=lineage_k,
+                        originals=originals,
+                        eval_command=run_info["evaluation_command"],
+                        eval_timeout=run_info["eval_timeout"],
+                        save_logs=run_info["save_logs"],
+                        log_dir=run_info["log_dir"],
+                        api_keys=api_keys,
+                        submit_timeout=None,
+                        poll_interval=2.0,
+                    )
+                finally:
+                    provider.cleanup()
+            if os.name == "nt":
+                console.print(
+                    "[bold red]Parallel lineage consumption is unavailable on Windows because "
+                    "the working-tree consumer lock is not enforceable.[/]"
+                )
+                report_termination(
+                    run_id=new_run_id,
+                    status_update="terminated",
+                    reason="unsupported_platform",
+                    details="Parallel lineage consumption requires a POSIX working-tree lock.",
+                    auth_headers=auth_headers,
+                )
+                if provider is not None:
+                    provider.cleanup()
+                return False
+            console.print(
+                "[yellow]Could not provision an isolated slot; using the fair scheduler with one in-place evaluation slot.[/]"
+            )
+            from ...optimizer import _run_parallel_and_finalize
+            from ...slots import Slot
+
+            cwd = pathlib.Path.cwd().resolve()
+            try:
+                return _run_parallel_and_finalize(
+                    lineage_id=lineage_id,
+                    run_id=new_run_id,
+                    auth_headers=auth_headers,
+                    slots=[Slot(index=0, root=cwd, cwd=cwd)],
+                    lineage_k=lineage_k,
+                    originals=originals,
+                    eval_command=run_info["evaluation_command"],
+                    eval_timeout=run_info["eval_timeout"],
+                    save_logs=run_info["save_logs"],
+                    log_dir=run_info["log_dir"],
+                    api_keys=api_keys,
+                    submit_timeout=None,
+                    poll_interval=2.0,
+                )
+            finally:
+                if provider is not None:
+                    provider.cleanup()
 
         return run_lineage_loop(
             lineage_id=lineage_id,
@@ -199,8 +286,18 @@ def handle(
     # error format; the loop's own errors are reported separately by the loop.
     try:
         derive_from = _resolve_derive_from(client, run_id, from_step)
+        # Advertise the deferred-candidate capability unconditionally: this CLI
+        # runs the /generate-polling scheduler whenever the lineage K is above 1
+        # (see _attach_or_consume), which is exactly — and only — when the
+        # backend may act on the flag. At K=1 the backend keeps today's 409, so
+        # a deferred child can never land on a consumer that can't repair it.
         response = client.derive_run(
-            run_id, derive_from=derive_from, additional_instructions=additional_instructions, steps=steps, api_keys=api_keys
+            run_id,
+            derive_from=derive_from,
+            additional_instructions=additional_instructions,
+            steps=steps,
+            api_keys=api_keys,
+            allow_deferred_candidate=True,
         )
     except DeriveError as e:
         _report_error(console, output_mode, str(e))

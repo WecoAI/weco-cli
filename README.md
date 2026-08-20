@@ -381,6 +381,12 @@ The `exec_output.jsonl` file contains one JSON object per line with:
 - `output_file`: Relative path to the full output file
 - `output_length`: Total length of the output
 
+With `--parallel K`, artifacts are keyed by node UUID instead of step number
+(steps are allocated server-side and can complete out of order): code
+snapshots land under `nodes/<node-id>/`, outputs as
+`outputs/node_<node-id>.out.txt`, and `exec_output.jsonl` entries carry a
+`node_id` field in place of `step`.
+
 This is particularly useful for:
 - Debugging why certain optimizations fail
 - Analyzing patterns in evaluation results

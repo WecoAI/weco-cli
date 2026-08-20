@@ -96,12 +96,51 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         help="Specify 'maximize'/'max' to maximize the metric or 'minimize'/'min' to minimize it.",
     )
     run_parser.add_argument("-n", "--steps", type=int, default=100, help="Number of steps to run. Defaults to 100.")
+
+    def _parse_parallelism(value: str) -> int:
+        # Upper bound mirrors the server's per-lineage request validation
+        # (le=32): reject locally with a readable message instead of letting
+        # the API answer with a raw 422.
+        try:
+            k = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("--parallel must be an integer between 1 and 32") from exc
+        if not 1 <= k <= 32:
+            raise argparse.ArgumentTypeError("--parallel must be between 1 and 32 (the platform's per-lineage limit)")
+        return k
+
+    run_parser.add_argument(
+        "-p",
+        "--parallel",
+        type=_parse_parallelism,
+        default=1,
+        metavar="K",
+        help=(
+            "Keep up to K candidates in flight, each evaluated in its own isolated slot. "
+            "Git projects get a detached worktree per slot (uncommitted changes overlaid); "
+            "non-git projects get a filtered copy (excluding .git/.weco/logs). Defaults to 1 "
+            "(serial). The project's eval command must be safe to run concurrently (no fixed "
+            "ports, shared databases, or absolute-path writes); shared venv symlinks must be "
+            "treated as read-only."
+        ),
+    )
     run_parser.add_argument(
         "-M",
         "--model",
         type=str,
         default=None,
         help="Model to use for optimization. Defaults to `gemini-3-flash-preview` (or your provider's default when using --api-key). See full list at https://docs.weco.ai/cli/supported-models",
+    )
+    run_parser.add_argument(
+        "--reasoning-effort",
+        type=str,
+        choices=["low", "medium", "high"],
+        default=None,
+        help=(
+            "Reasoning effort for reasoning-capable models (Gemini thinking, Anthropic extended "
+            "thinking, OpenAI reasoning models). Applies to both code generation and the LLM "
+            "evaluator. Defaults to the model's own default."
+        ),
     )
     run_parser.add_argument(
         "-l", "--log-dir", type=str, default=".runs", help="Directory to store logs and results. Defaults to `.runs`."
@@ -644,6 +683,8 @@ def execute_run_command(args: argparse.Namespace) -> None:
         auto_resume_policy=auto_resume_policy,
         daemon=getattr(args, "daemon", False),
         no_open=getattr(args, "no_open", False),
+        parallelism=getattr(args, "parallel", 1),
+        reasoning_effort=getattr(args, "reasoning_effort", None),
     )
 
     exit_code = 0 if success else 1
@@ -760,6 +801,28 @@ def _main() -> None:
     )
     configure_observe_parser(observe_parser)
 
+    # --- Slots Command Parser Setup ---
+    slots_parser = subparsers.add_parser("slots", help="Verify and clean isolated parallel evaluation slots")
+    slots_subparsers = slots_parser.add_subparsers(dest="slots_command")
+    verify_parser = slots_subparsers.add_parser(
+        "verify", help="Provision slots and prove two (or more) evaluations can run concurrently"
+    )
+    verify_parser.add_argument(
+        "-c",
+        "--eval-command",
+        type=str,
+        required=True,
+        help="A FAST smoke variant of your eval command (runs once per slot, concurrently).",
+    )
+    verify_parser.add_argument(
+        "-p", "--parallel", type=int, default=2, metavar="K", help="How many slots to provision and run (default 2)."
+    )
+    verify_parser.add_argument(
+        "--eval-timeout", type=int, default=600, help="Per-evaluation timeout in seconds (default 600)."
+    )
+    clean_parser = slots_subparsers.add_parser("clean", help="Remove stale slot directories left by crashed runs")
+    clean_parser.add_argument("--dry-run", action="store_true", help="List what would be removed without removing it.")
+
     # --- Start Command Parser Setup ---
     from .commands.start import configure_start_parser
 
@@ -826,6 +889,20 @@ def _main() -> None:
     elif args.command == "observe":
         execute_observe_command(args)
         sys.exit(0)
+    elif args.command == "slots":
+        from .commands.slots import handle_clean, handle_verify
+
+        sub = getattr(args, "slots_command", None)
+        if sub == "verify":
+            ok = handle_verify(
+                eval_command=args.eval_command, parallel=args.parallel, eval_timeout=args.eval_timeout, console=console
+            )
+        elif sub == "clean":
+            ok = handle_clean(console=console, dry_run=args.dry_run)
+        else:
+            slots_parser.print_help()
+            ok = False
+        sys.exit(0 if ok else 1)
     elif args.command == "start":
         from .commands.start import handle_start_command
 

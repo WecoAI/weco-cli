@@ -276,8 +276,13 @@ class WecoClient:
         invocation_id: str | None = None,
         invoked_via: str | None = None,
         beta: bool = False,
+        parallelism: int = 1,
     ) -> dict:
         """``POST /runs/`` — start a new optimization run.
+
+        ``parallelism`` is the root run's K: the strict shared execution capacity
+        for the whole lineage. Sent inside ``optimizer`` only when above 1, so
+        the request body is byte-identical to older CLIs for serial runs.
 
         Raises:
             requests.exceptions.HTTPError: On non-2xx responses.
@@ -294,6 +299,8 @@ class WecoClient:
             "evaluator": evaluator_config,
             "search_policy": search_policy_config,
         }
+        if parallelism > 1:
+            optimizer_body["parallelism"] = parallelism
         if beta:
             optimizer_body["beta"] = True
 
@@ -394,8 +401,16 @@ class WecoClient:
         eval_timeout: int | None = None,
         require_review: bool | None = None,
         api_keys: dict[str, str] | None = None,
+        allow_deferred_candidate: bool = False,
     ) -> dict:
         """``POST /runs/{run_id}/derive`` — create a derived run.
+
+        ``allow_deferred_candidate`` is the M3a scheduler capability: at strict
+        lineage capacity the backend returns the child with ``candidate=null``
+        (running, inherited baseline only) instead of failing 409; the fair
+        /generate rotation later produces its first candidate. Sent only when
+        True so older backends see an unchanged request. K is never sent —
+        derived runs use the lineage root's pool.
 
         Raises:
             requests.exceptions.HTTPError: On non-2xx responses.
@@ -415,7 +430,32 @@ class WecoClient:
             body["require_review"] = require_review
         if api_keys:
             body["api_keys"] = api_keys
+        if allow_deferred_candidate:
+            body["allow_deferred_candidate"] = True
         resp = self._post(f"/runs/{run_id}/derive", json=body, timeout=(10, 3650))
+        resp.raise_for_status()
+        return resp.json()
+
+    def generate_candidate(self, run_id: str, *, api_keys: dict[str, str] | None = None) -> dict:
+        """``POST /runs/{run_id}/generate`` — admit ONE more in-flight candidate.
+
+        Idempotent admission endpoint for K>1 schedulers: returns
+        ``{"generated": true, ...candidate fields}`` when the database granted a
+        reservation and a candidate was produced, or ``{"generated": false,
+        "reason": ...}`` (at_capacity | out_of_budget | not_running |
+        no_dispatchable_work) as a normal no-op. Uses the LLM-length read
+        timeout — generation is one full server-side LLM call. Transport errors
+        propagate; the scheduler must poll lineage state before retrying so a
+        committed candidate isn't immediately duplicated (the database cap is
+        the final safety boundary either way).
+
+        Raises:
+            requests.exceptions.HTTPError: On non-2xx responses.
+        """
+        body: dict[str, Any] = {}
+        if api_keys:
+            body["api_keys"] = api_keys
+        resp = self._post(f"/runs/{run_id}/generate", json=body, timeout=(10, 3650))
         resp.raise_for_status()
         return resp.json()
 
@@ -494,6 +534,7 @@ class WecoClient:
         task_id: str | None = None,
         api_keys: dict[str, str] | None = None,
         timeout: tuple[int, int] | int | None = None,
+        skip_generation: bool = False,
     ) -> dict:
         """``POST /runs/{run_id}/suggest`` — submit execution output, get next candidate.
 
@@ -518,6 +559,12 @@ class WecoClient:
             body["task_id"] = task_id
         if api_keys:
             body["api_keys"] = api_keys
+        # Fair-scheduler capability: score only, no server-side replacement —
+        # the K>1 scheduler routes all generation through /generate instead.
+        # Sent only when set (and meaningful only with task_id) so serial
+        # clients' request bodies stay byte-identical.
+        if skip_generation and task_id:
+            body["skip_generation"] = True
 
         request_timeout = timeout if timeout is not None else (10, 3650)
 

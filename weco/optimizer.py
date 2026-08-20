@@ -118,13 +118,36 @@ def _classify_lineage_poll(read_ok: bool, has_ready: bool, active_run_count: Opt
     return _PollAction.DONE
 
 
-def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> bool:
-    """Flip a run back to 'running' without emitting any console output."""
+class _SilentResumeOutcome(Enum):
+    """Result of a background (no-console-output) resume attempt.
+
+    Distinguishes the three cases the auto-resume wrapper must act on
+    differently: the run was flipped back to ``running`` and has work to do
+    (``RESUMED``); the backend's resume repair pass found no runnable work and
+    already finalized the run ``completed`` (``ALREADY_COMPLETE``, signalled by
+    ``is_done`` in the resume response); or the resume call failed and should be
+    retried (``FAILED``).
+    """
+
+    RESUMED = "resumed"
+    ALREADY_COMPLETE = "already_complete"
+    FAILED = "failed"
+
+
+def _silent_resume(run_id: str, auth_headers: dict, api_keys: Optional[dict]) -> _SilentResumeOutcome:
+    """Flip a run back to 'running' without emitting any console output.
+
+    Reads ``is_done`` from the resume response defensively (absent → ``False``),
+    so an older backend that never sends the field is treated as a normal
+    ``RESUMED`` and legacy behavior is preserved.
+    """
     try:
-        WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
-        return True
+        resp = WecoClient(auth_headers).resume_run(run_id, api_keys=api_keys)
     except Exception:
-        return False
+        return _SilentResumeOutcome.FAILED
+    if isinstance(resp, dict) and resp.get("is_done", False):
+        return _SilentResumeOutcome.ALREADY_COMPLETE
+    return _SilentResumeOutcome.RESUMED
 
 
 def _run_loop_with_auto_resume(
@@ -161,7 +184,18 @@ def _run_loop_with_auto_resume(
             ui.on_reconnecting(attempts_used, policy.max_attempts, backoff)
             time.sleep(backoff)
 
-            if _silent_resume(run_id, auth_headers, api_keys):
+            outcome = _silent_resume(run_id, auth_headers, api_keys)
+            if outcome is _SilentResumeOutcome.ALREADY_COMPLETE:
+                # The backend's resume repair pass finalized the run 'completed'
+                # (no runnable work left). Re-entering the loop would only poll,
+                # observe run.status == 'completed', and misreport a stop. Treat
+                # it as terminal success — the same exit a normal is_done takes.
+                ui.on_reconnected()
+                ui.on_complete(result.final_step)
+                return OptimizationResult(
+                    success=True, final_step=result.final_step, status="completed", reason="completed_successfully"
+                )
+            if outcome is _SilentResumeOutcome.RESUMED:
                 ui.on_reconnected()
                 start_step = result.final_step
                 resumed = True
@@ -382,6 +416,23 @@ def run_optimization_loop(
                 ui.on_complete(step)
                 return OptimizationResult(success=True, final_step=step, status="completed", reason="completed_successfully")
 
+            if result.get("reason") == "out_of_credits":
+                # The result above WAS scored and saved; only the next candidate
+                # was denied (wallet below the dispatch floor). The server
+                # terminates the drained run itself — end this session with a
+                # clear billing message instead of polling into a bogus
+                # "stopped by user" / timeout exit.
+                balance = result.get("balance")
+                balance_note = f" (balance: ${balance:.2f})" if isinstance(balance, (int, float)) else ""
+                message = (
+                    f"Out of credits{balance_note}: every evaluated result is saved. "
+                    f"Top up with `weco credits topup`, then continue with `weco resume {run_id}`."
+                )
+                ui.on_error(message)
+                return OptimizationResult(
+                    success=False, final_step=step, status="terminated", reason="out_of_credits", details=message
+                )
+
     except KeyboardInterrupt:
         ui.on_interrupted()
         return OptimizationResult(success=False, final_step=step, status="terminated", reason="user_terminated_sigint")
@@ -491,6 +542,7 @@ def run_lineage_loop(
     """
     states: dict[str, dict] = {}
     fatal = False
+    insolvent = False
     # Consecutive non-PROCESS polls since work last flowed. Bounds the wait when
     # the backend is wedged (active runs that never produce a task) or the queue
     # read keeps failing — the only ways the loop can spin without progress.
@@ -598,6 +650,14 @@ def run_lineage_loop(
             if is_done:
                 ui.on_complete(st["step"])
                 st["done"] = True
+            elif result.get("reason") == "out_of_credits":
+                # Scored and saved, but no next candidate: wallet below the
+                # dispatch floor. The server terminates the drained member;
+                # retire it here so the consumer exits promptly once every
+                # member drains (credits are user-scoped — all will follow).
+                ui.on_error("Out of credits: results are saved. Top up with `weco credits topup`, then `weco resume`.")
+                st["done"] = True
+                insolvent = True
 
     except KeyboardInterrupt:
         for st in states.values():
@@ -607,6 +667,15 @@ def run_lineage_loop(
         heartbeat_thread.join(timeout=2)
 
     print(f"[lineage {lineage_id}] consumer finished.", flush=True)
+    if insolvent:
+        # Insolvency is not a successful completion: the caller's exit status
+        # must not claim the lineage finished its work.
+        print(
+            "Out of credits: the lineage wound down gracefully; every evaluated result is saved. "
+            "Top up with `weco credits topup`, then resume the affected run(s).",
+            flush=True,
+        )
+        return False
     return not fatal
 
 
@@ -648,6 +717,136 @@ def _drain_lineage_remainder(
         api_keys=api_keys,
         submit_timeout=submit_timeout,
     )
+
+
+def _run_parallel_and_finalize(
+    *,
+    lineage_id: str,
+    run_id: str,
+    auth_headers: dict,
+    slots: list,
+    lineage_k: int,
+    originals: dict[str, str],
+    eval_command: str,
+    eval_timeout: Optional[int],
+    save_logs: bool,
+    log_dir: str,
+    api_keys: Optional[dict],
+    submit_timeout: Optional[int],
+    poll_interval: float,
+) -> bool:
+    """Drive the K>1 scheduler, then reconcile the exit against authoritative state.
+
+    The scheduler reports account-level failure via its return value; success
+    or interruption is decided by re-reading the run's status — a stop/409 race
+    must never be shown as completion, and an interrupted run must be reported
+    terminated (and resumable) rather than silently abandoned.
+    """
+    from .parallel import run_parallel_lineage_loop
+
+    outcome = run_parallel_lineage_loop(
+        lineage_id,
+        auth_headers,
+        slots=slots,
+        lineage_k=lineage_k,
+        originals=originals,
+        eval_command=eval_command,
+        eval_timeout=eval_timeout,
+        save_logs=save_logs,
+        log_dir=log_dir,
+        dashboard_base=__dashboard_url__,
+        api_keys=api_keys,
+        submit_timeout=submit_timeout,
+        poll_interval=poll_interval,
+    )
+
+    # This single GET decides the session's exit and whether the termination
+    # sweep below runs, so it retries transient failures instead of letting
+    # one 502 fail a finished optimization. (The console-bound wrapper is
+    # unusable here: its error handlers dereference the console.)
+    final_status = None
+    for attempt in range(4):
+        try:
+            final_status = WecoClient(auth_headers).get_run_status(run_id, include_history=False).get("status")
+            break
+        except Exception:
+            if attempt < 3:
+                time.sleep(2.0)
+
+    if outcome == "out_of_credits":
+        # Report an honest termination for EVERY member still 'running' — not
+        # just the root. Once the scheduler latched out_of_credits it stopped
+        # polling /generate, which is exactly the path that triggers the
+        # server's drain-terminate backstop, so drained members (including
+        # derived children) can be left 'running'; without this sweep the
+        # heartbeat cron would later mislabel them 'heartbeat_timeout'.
+        details = "Wallet fell below the dispatch floor; run wound down after draining in-flight evaluations."
+        try:
+            members = WecoClient(auth_headers).get_lineage(lineage_id).get("members", [])
+        except Exception:
+            # With the lineage read down too, assume the root is still
+            # 'running' so the sweep still reports its termination —
+            # report_termination is guarded by the server's status CAS, so a
+            # wrong guess no-ops, while skipping the sweep is what lets
+            # drained members get mislabeled heartbeat_timeout later.
+            members = [{"id": run_id, "status": "running"}]
+        for member in members:
+            if member.get("status") != "running":
+                continue
+            try:
+                report_termination(
+                    run_id=member["id"],
+                    status_update="terminated",
+                    reason="out_of_credits",
+                    details=details,
+                    auth_headers=auth_headers,
+                )
+            except Exception:
+                pass
+        print(
+            "\nOut of credits: the run wound down gracefully and every evaluated result is saved.\n"
+            "Top up with `weco credits topup` (check with `weco credits balance`), then continue with: "
+            f"weco resume {run_id}\n",
+            flush=True,
+        )
+        return False
+
+    if final_status == "running":
+        # The scheduler exited with the run still live — report the
+        # termination so the backend doesn't wait out the heartbeat cron, and
+        # point at resume. The audit trail must distinguish a user interrupt
+        # from the scheduler's bounded-idle safety valve (a stall, not a ^C).
+        if outcome == "interrupted":
+            reason, details = "user_terminated_sigint", "Parallel scheduler interrupted with the run still active."
+        elif outcome == "fatal":
+            reason, details = "account_failure", "Parallel consumer aborted on an account-level failure (auth/credits)."
+        else:
+            reason, details = "scheduler_idle_timeout", "Parallel scheduler made no progress within its idle window."
+        try:
+            report_termination(
+                run_id=run_id, status_update="terminated", reason=reason, details=details, auth_headers=auth_headers
+            )
+        except Exception:
+            pass
+        print(f"\nTo resume this run, use: weco resume {run_id}\n", flush=True)
+        return False
+
+    if final_status is None:
+        # Every status attempt failed; the scheduler's own outcome is the only
+        # evidence left. Quiescent 'ok' means every step completed and settled
+        # — report success with a caveat rather than inventing a failure. (The
+        # stop-race guard below needs an OBSERVED terminal status; the narrow
+        # race window loses to the certainty that 'ok' saw the work finish.)
+        if outcome == "ok":
+            print(
+                f"\nRun finished, but its final status could not be confirmed (network). "
+                f"Verify on the dashboard: {__dashboard_url__}/runs/{run_id}\n",
+                flush=True,
+            )
+            return True
+        return False
+
+    return outcome == "ok" and final_status == "completed"
 
 
 def offer_apply_best_solution(
@@ -909,6 +1108,60 @@ def resume_optimization(
     dashboard_url = f"{__dashboard_url__}/runs/{run_id}"
     run_name = resume_resp.get("run_name", run_id)
 
+    # The backend's resume repair pass may have finalized the run itself: a
+    # scored-but-interrupted node was promoted, the step budget was met, and the
+    # run was flipped to 'completed' with no runnable work. It signals this with
+    # is_done=True (read defensively: an older backend omits the field, yielding
+    # False and the unchanged legacy behavior below). Entering the task-polling
+    # loop here would find no tasks / a completed run and misreport it as
+    # stopped, so short-circuit to a success exit that mirrors normal completion.
+    if bool(resume_resp.get("is_done", False)):
+        if daemon:
+            # Emit the identifiers stdout-watchers (claude, cursor, the wrapper's
+            # find_run_ids) rely on before we return — no fork needed, there is
+            # no long-running work to detach.
+            print(f"Run ID: {run_id}", flush=True)
+            print(f"Run name: {run_name}", flush=True)
+            print(f"Dashboard: {dashboard_url}", flush=True)
+        if output_mode == "plain":
+            print("")
+            print("=" * 60)
+            print("[COMPLETE] Run already complete")
+            print("=" * 60, flush=True)
+        else:
+            console.print("\n[bold green]Run already complete![/]")
+        # Offer/apply the best solution exactly as the normal completion path
+        # does, so a resume that finds the run already done still lands the
+        # winning code in the working tree (or reports where it was saved).
+        #
+        # offer_apply_best_solution writes candidate files into the working tree,
+        # so it MUST hold the consumer lock — same as the normal completion path,
+        # which applies under lock_handle and only releases afterwards. Without it,
+        # a consumer already draining this lineage in the same tree could be
+        # mid-eval (swapping files in/out) when we overwrite its files. If that
+        # consumer holds the lock, skip the apply with the same message the normal
+        # path gives on lock-unavailable; the run is still complete, so report
+        # success either way.
+        lock_handle = try_acquire()
+        if lock_handle is None:
+            console.print(
+                "[yellow]Another Weco optimization is already evaluating in this directory; "
+                "not starting a second consumer here.[/]"
+            )
+            return True
+        try:
+            offer_apply_best_solution(
+                console=console,
+                run_id=run_id,
+                source_code=source_code,
+                artifacts=RunArtifacts(log_dir=log_dir, run_id=run_id),
+                auth_headers=auth_headers,
+                apply_change=apply_change,
+            )
+        finally:
+            release(lock_handle)
+        return True
+
     if daemon:
         # Print everything stdout-watchers (claude, cursor, the wrapper's find_run_ids)
         # care about BEFORE forking — once we're detached, stdout is the log file.
@@ -941,6 +1194,115 @@ def resume_optimization(
         return False
 
     lineage_id = status.get("lineage_id") or run_id
+
+    # --- K>1 resume: the authoritative K comes from the resume response (the
+    # root run's setting; an older backend omits it → 1). A resume may operate
+    # with fewer local slots than K when provisioning fails — report the
+    # reduced concurrency clearly; root K itself is never rewritten. Even one
+    # usable slot stays on the fair scheduler: a K>1 lineage may contain a
+    # deferred zero-work child that the serial suggest-driven loop cannot serve.
+    lineage_k = int(resume_resp.get("parallelism") or 1)
+    if lineage_k > 1:
+        from .slots import BEST_EFFORT_WARNING, SlotProvisionError, create_slot_provider
+
+        console.print(f"[cyan]This lineage runs at K={lineage_k}; provisioning isolated evaluation slots...[/]")
+        slot_provider = None
+        try:
+            slot_provider = create_slot_provider(pathlib.Path.cwd(), lineage_k, log_dir=log_dir)
+            slots = slot_provider.provision()
+        except SlotProvisionError as e:
+            console.print(f"[yellow]Slot provisioning failed: {e}[/]")
+            slots = []
+        if slots:
+            if len(slots) < lineage_k:
+                console.print(
+                    f"[yellow]Only {len(slots)} of {lineage_k} lineage slots could be provisioned locally; "
+                    f"evaluating with reduced local concurrency ({len(slots)}). Root K stays {lineage_k}.[/]"
+                )
+            console.print(f"[yellow]{BEST_EFFORT_WARNING}[/]")
+            try:
+                success = _run_parallel_and_finalize(
+                    lineage_id=lineage_id,
+                    run_id=run_id,
+                    auth_headers=auth_headers,
+                    slots=slots,
+                    lineage_k=lineage_k,
+                    originals=source_code,
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    save_logs=save_logs,
+                    log_dir=log_dir,
+                    api_keys=api_keys,
+                    submit_timeout=submit_timeout,
+                    poll_interval=poll_interval,
+                )
+                offer_apply_best_solution(
+                    console=console,
+                    run_id=run_id,
+                    source_code=source_code,
+                    artifacts=artifacts,
+                    auth_headers=auth_headers,
+                    apply_change=apply_change,
+                )
+                return success
+            finally:
+                release(lock_handle)
+                slot_provider.cleanup()
+        else:
+            if os.name == "nt":
+                console.print(
+                    "[bold red]Parallel resume is unavailable on Windows because the "
+                    "working-tree consumer lock is not enforceable.[/]"
+                )
+                try:
+                    report_termination(
+                        run_id=run_id,
+                        status_update="terminated",
+                        reason="unsupported_platform",
+                        details="Parallel resume requires a POSIX working-tree lock.",
+                        auth_headers=auth_headers,
+                    )
+                finally:
+                    release(lock_handle)
+                    if slot_provider is not None:
+                        slot_provider.cleanup()
+                return False
+            console.print(
+                f"[yellow]Could not provision an isolated slot for this K={lineage_k} lineage; "
+                "using the fair scheduler with one in-place evaluation slot.[/]"
+            )
+            from .slots import Slot
+
+            cwd = pathlib.Path.cwd().resolve()
+            try:
+                success = _run_parallel_and_finalize(
+                    lineage_id=lineage_id,
+                    run_id=run_id,
+                    auth_headers=auth_headers,
+                    slots=[Slot(index=0, root=cwd, cwd=cwd)],
+                    lineage_k=lineage_k,
+                    originals=source_code,
+                    eval_command=eval_command,
+                    eval_timeout=eval_timeout,
+                    save_logs=save_logs,
+                    log_dir=log_dir,
+                    api_keys=api_keys,
+                    submit_timeout=submit_timeout,
+                    poll_interval=poll_interval,
+                )
+                offer_apply_best_solution(
+                    console=console,
+                    run_id=run_id,
+                    source_code=source_code,
+                    artifacts=artifacts,
+                    auth_headers=auth_headers,
+                    apply_change=apply_change,
+                )
+                return success
+            finally:
+                release(lock_handle)
+                if slot_provider is not None:
+                    slot_provider.cleanup()
 
     # Start heartbeat thread. Heartbeat the whole lineage (not just this run) so
     # that a run derived from this one mid-flight stays alive until our loop
@@ -1065,6 +1427,22 @@ def resume_optimization(
                 pass  # Best effort
 
 
+def _build_model_configs(model: str, reasoning_effort: Optional[str]) -> tuple[dict, dict]:
+    """Run-init model configs for code generation and evaluation.
+
+    reasoning_effort applies to BOTH: it controls drafting/improving and the
+    LLM judge that extracts the metric (the backend's config models are
+    Extra.allow and forward unknown kwargs to the model call, so no client
+    or server schema change is involved).
+    """
+    code_generator_config: dict = {"model": model}
+    evaluator_config: dict = {"model": model, "include_analysis": True}
+    if reasoning_effort:
+        code_generator_config["reasoning_effort"] = reasoning_effort
+        evaluator_config["reasoning_effort"] = reasoning_effort
+    return code_generator_config, evaluator_config
+
+
 def optimize(
     source: "str | list[str]",
     eval_command: str,
@@ -1086,6 +1464,8 @@ def optimize(
     auto_resume_policy: Optional[AutoResumePolicy] = None,
     daemon: bool = False,
     no_open: bool = False,
+    parallelism: int = 1,
+    reasoning_effort: Optional[str] = None,
 ) -> bool:
     """
     Simplified queue-based optimization loop.
@@ -1108,6 +1488,11 @@ def optimize(
         poll_interval: Seconds between polling attempts.
         apply_change: If True, automatically apply best solution; if False, prompt user.
         output_mode: "rich" for interactive terminal UI, "plain" for machine-readable output.
+        parallelism: Requested K — how many candidates to keep in flight, each
+            evaluated in its own isolated project copy. Defaults to 1 (the
+            serial in-place path, unchanged from today). The effective K never
+            exceeds the request and is clamped to the number of isolated slots
+            actually provisioned; below 2 the run falls back to serial.
 
     Returns:
         True if optimization completed successfully, False otherwise.
@@ -1132,8 +1517,7 @@ def optimize(
     # Always send as multi-file payload, even for a single source file.
     source_path_for_api: Optional[str] = None
 
-    code_generator_config = {"model": model}
-    evaluator_config = {"model": model, "include_analysis": True}
+    code_generator_config, evaluator_config = _build_model_configs(model, reasoning_effort)
     search_policy_config = {
         "num_drafts": max(1, math.ceil(0.15 * steps)),
         "debug_prob": 0.5,
@@ -1145,6 +1529,39 @@ def optimize(
 
     # Get event context for tracking
     event_ctx = get_event_context()
+
+    # K>1: provision isolated evaluation slots BEFORE creating the run. The
+    # effective K is the number of slots that actually provisioned (never above
+    # the request); below 2 there is nothing to parallelize, so warn and fall
+    # back to the unchanged serial in-place path with parallelism=1.
+    slot_provider = None
+    slots: list = []
+    effective_k = 1
+    if parallelism > 1:
+        from .slots import BEST_EFFORT_WARNING, SlotProvisionError, create_slot_provider
+
+        console.print(f"[cyan]Provisioning {parallelism} isolated evaluation slots...[/]")
+        slot_provider = None
+        try:
+            slot_provider = create_slot_provider(pathlib.Path.cwd(), parallelism, log_dir=log_dir)
+            slots = slot_provider.provision()
+        except SlotProvisionError as e:
+            console.print(f"[yellow]Slot provisioning failed: {e}[/]")
+            slots = []
+        if len(slots) >= 2:
+            effective_k = len(slots)
+            if effective_k < parallelism:
+                console.print(
+                    f"[yellow]Only {effective_k} of {parallelism} requested slots could be provisioned; "
+                    f"running with K={effective_k}.[/]"
+                )
+            console.print(f"[yellow]{BEST_EFFORT_WARNING}[/]")
+        else:
+            console.print("[yellow]Could not provision at least 2 isolated slots; running serially (K=1).[/]")
+            if slot_provider is not None:
+                slot_provider.cleanup()
+            slot_provider = None
+            slots = []
 
     # Start the run
     run_response = start_optimization_run(
@@ -1170,9 +1587,12 @@ def optimize(
         invocation_id=event_ctx.invocation_id,
         invoked_via=event_ctx.invoked_via,
         beta=beta,
+        parallelism=effective_k,
     )
 
     if run_response is None:
+        if slot_provider is not None:
+            slot_provider.cleanup()
         return False
 
     run_id = run_response["run_id"]
@@ -1211,11 +1631,53 @@ def optimize(
             "[yellow]Another Weco optimization is already evaluating in this directory; "
             "not starting a second consumer here.[/]"
         )
+        if slot_provider is not None:
+            slot_provider.cleanup()
         return False
 
     # A fresh run is its own lineage (lineage_id == run_id); runs derived from it
     # while it runs share this id and are drained by this same process on exit.
     lineage_id = run_id
+
+    # --- K>1: the parallel scheduler replaces the serial loop entirely. It owns
+    # its own lineage heartbeat and drains every lineage member concurrently in
+    # the isolated slots; the user's tree is only touched by the final apply,
+    # under the consumer lock we hold here.
+    if effective_k > 1:
+        try:
+            # Slots were provisioned before the run was created — and before a
+            # possible daemon fork. Re-stamp the registry with THIS process's
+            # pid so `weco slots clean` never mistakes the live daemon's slots
+            # for stale ones (the provisioning parent exits right after fork).
+            slot_provider.refresh_registry_meta()
+            success = _run_parallel_and_finalize(
+                lineage_id=lineage_id,
+                run_id=run_id,
+                auth_headers=auth_headers,
+                slots=slots,
+                lineage_k=effective_k,
+                originals=source_code,
+                eval_command=eval_command,
+                eval_timeout=eval_timeout,
+                save_logs=save_logs,
+                log_dir=log_dir,
+                api_keys=api_keys,
+                submit_timeout=submit_timeout,
+                poll_interval=poll_interval,
+            )
+            offer_apply_best_solution(
+                console=console,
+                run_id=run_id,
+                source_code=source_code,
+                artifacts=artifacts,
+                auth_headers=auth_headers,
+                apply_change=apply_change,
+            )
+            return success
+        finally:
+            release(lock_handle)
+            if slot_provider is not None:
+                slot_provider.cleanup()
 
     # Start heartbeat thread. Heartbeat the whole lineage (not just this run) so
     # that a run derived from this one mid-flight stays alive until our loop

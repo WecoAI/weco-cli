@@ -2,7 +2,13 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from weco.optimizer import AutoResumePolicy, OptimizationResult, _is_transient, _run_loop_with_auto_resume
+from weco.optimizer import (
+    AutoResumePolicy,
+    OptimizationResult,
+    _is_transient,
+    _run_loop_with_auto_resume,
+    _SilentResumeOutcome,
+)
 
 
 class FakeUI:
@@ -11,12 +17,16 @@ class FakeUI:
         self.reconnected: int = 0
         self.errors: list[str] = []
         self.warnings: list[str] = []
+        self.completed: list[int] = []
 
     def on_reconnecting(self, attempt: int, max_attempts: int, backoff_s: float) -> None:
         self.reconnecting.append((attempt, max_attempts, backoff_s))
 
     def on_reconnected(self) -> None:
         self.reconnected += 1
+
+    def on_complete(self, total_steps: int) -> None:
+        self.completed.append(total_steps)
 
     def on_error(self, message: str) -> None:
         self.errors.append(message)
@@ -40,12 +50,19 @@ def stub_sleep(monkeypatch):
 def stub_resume(monkeypatch):
     calls: list[str] = []
 
-    def _install(outcomes: list[bool]):
+    def _install(outcomes: list):
+        # Accept plain bools for readability (True -> RESUMED, False -> FAILED)
+        # as well as explicit _SilentResumeOutcome members (e.g. ALREADY_COMPLETE).
         iterator = iter(outcomes)
 
         def _fake(run_id, auth_headers, api_keys):
             calls.append(run_id)
-            return next(iterator)
+            value = next(iterator)
+            if value is True:
+                return _SilentResumeOutcome.RESUMED
+            if value is False:
+                return _SilentResumeOutcome.FAILED
+            return value
 
         monkeypatch.setattr("weco.optimizer._silent_resume", _fake)
         return calls
@@ -181,6 +198,41 @@ def test_silent_resume_exhaustion_without_reinvoking_loop(stub_sleep, stub_resum
     assert ui.reconnected == 0
     assert len(ui.errors) == 1
     assert "exhausted after 2" in ui.errors[0]
+
+
+def test_silent_resume_already_complete_exits_success_without_reinvoking_loop(stub_sleep, stub_resume):
+    # Backend's resume repair pass finalized the run itself (is_done). The wrapper
+    # must NOT re-enter the loop (which would poll a completed run and misreport a
+    # stop) — it returns a completed result and fires on_complete once.
+    resume_calls = stub_resume([_SilentResumeOutcome.ALREADY_COMPLETE])
+    transient = _make_result("transient_network_error", final_step=6)
+
+    returned, factory, ui = _drive([transient], policy=AutoResumePolicy(max_attempts=3))
+
+    assert returned.success is True
+    assert returned.status == "completed"
+    assert returned.reason == "completed_successfully"
+    assert returned.final_step == 6
+    assert factory.call_count == 1  # loop entered exactly once, never re-invoked
+    assert resume_calls == ["run-1"]
+    assert ui.reconnected == 1
+    assert ui.completed == [6]
+    assert ui.errors == []
+
+
+def test_silent_resume_retries_then_already_complete(stub_sleep, stub_resume):
+    # A failed attempt retries; a subsequent ALREADY_COMPLETE ends as success.
+    resume_calls = stub_resume([False, _SilentResumeOutcome.ALREADY_COMPLETE])
+    transient = _make_result("transient_network_error", final_step=3)
+
+    returned, factory, ui = _drive([transient], policy=AutoResumePolicy(max_attempts=4))
+
+    assert returned.success is True
+    assert returned.status == "completed"
+    assert factory.call_count == 1
+    assert len(resume_calls) == 2
+    assert ui.completed == [3]
+    assert ui.errors == []
 
 
 def test_backoff_is_exponential_and_capped(stub_sleep, stub_resume):

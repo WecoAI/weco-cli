@@ -55,6 +55,7 @@ def start_optimization_run(
     invocation_id: Optional[str] = None,
     invoked_via: Optional[str] = None,
     beta: bool = False,
+    parallelism: int = 1,
 ) -> Optional[Dict[str, Any]]:
     """Start the optimization run."""
     with console.status("[bold green]Starting Optimization..."):
@@ -80,6 +81,7 @@ def start_optimization_run(
                 invocation_id=invocation_id,
                 invoked_via=invoked_via,
                 beta=beta,
+                parallelism=parallelism,
             )
         except requests.exceptions.HTTPError as e:
             handle_api_error(e, console)
@@ -213,6 +215,7 @@ def submit_execution_result(
     auth_headers: dict = {},
     timeout: Optional[Union[int, Tuple[int, int]]] = None,
     api_keys: Optional[Dict[str, str]] = None,
+    skip_generation: bool = False,
 ) -> Dict[str, Any]:
     """Submit execution result for a task.
 
@@ -220,6 +223,9 @@ def submit_execution_result(
         timeout: Optional override for the HTTP ``(connect, read)`` timeout.
             ``None`` keeps the existing default of ``(10, 3650)`` so callers
             that don't opt in see no behavior change.
+        skip_generation: Fair-scheduler capability — score only; the caller
+            drives all candidate generation through ``/generate``. Serial
+            consumers must leave this False.
 
     Raises:
         requests.exceptions.HTTPError: On non-2xx responses (e.g. 402 insufficient
@@ -228,7 +234,14 @@ def submit_execution_result(
         requests.exceptions.RequestException: On network errors.
     """
     client = WecoClient(auth_headers)
-    return client.suggest(run_id, execution_output=execution_output, task_id=task_id, api_keys=api_keys, timeout=timeout)
+    return client.suggest(
+        run_id,
+        execution_output=execution_output,
+        task_id=task_id,
+        api_keys=api_keys,
+        timeout=timeout,
+        skip_generation=skip_generation,
+    )
 
 
 # --- Share API Functions ---

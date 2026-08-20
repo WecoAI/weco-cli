@@ -1,6 +1,7 @@
-from typing import Any, Dict, List, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 import io
 import json
+import os
 import shutil
 import time
 import subprocess
@@ -13,6 +14,9 @@ from rich.live import Live
 from rich.panel import Panel
 import pathlib
 from .constants import TRUNCATION_THRESHOLD, TRUNCATION_KEEP_LENGTH, SUPPORTED_FILE_EXTENSIONS, DEFAULT_MODELS
+
+if TYPE_CHECKING:
+    import threading
 
 
 class UnrecognizedAPIKeysError(Exception):
@@ -325,85 +329,182 @@ def run_evaluation_with_file_swap(
 
 
 def run_evaluation_with_files_swap(
-    file_map: dict[str, str], originals: dict[str, str], eval_command: str, timeout: int | None = None
+    file_map: dict[str, str],
+    originals: dict[str, str],
+    eval_command: str,
+    timeout: int | None = None,
+    cwd: "pathlib.Path | str | None" = None,
+    env: dict[str, str] | None = None,
 ) -> str:
     """
     Temporarily write multiple files, run evaluation, then restore all originals.
 
-    File paths in ``file_map`` and ``originals`` are relative to the current
-    working directory (project root). Parent directories are created as needed.
+    File paths in ``file_map`` and ``originals`` are relative to ``cwd`` (the
+    current working directory when omitted — the serial in-place path). Parent
+    directories are created as needed. ``cwd``/``env`` exist for isolated slot
+    evaluation (K>1): the candidate is written into and evaluated inside the
+    slot's own project copy, never the user's tree.
 
     Args:
         file_map: Dict mapping relative file paths to their new content.
         originals: Dict mapping relative file paths to their original content.
         eval_command: The shell command to run for evaluation.
         timeout: Optional timeout for the evaluation command.
+        cwd: Directory the paths resolve against and the command runs in.
+        env: Full environment for the command (``None`` inherits the caller's).
 
     Returns:
         The output from running the evaluation command.
     """
+    base = pathlib.Path(cwd) if cwd is not None else None
+
+    def _resolve(rel_path: str) -> pathlib.Path:
+        return (base / rel_path) if base is not None else pathlib.Path(rel_path)
+
     # Write all new files
     for rel_path, content in file_map.items():
-        fp = pathlib.Path(rel_path)
+        fp = _resolve(rel_path)
         fp.parent.mkdir(parents=True, exist_ok=True)
         write_to_path(fp=fp, content=content)
 
     try:
-        output = run_evaluation(eval_command=eval_command, timeout=timeout)
+        output = run_evaluation(eval_command=eval_command, timeout=timeout, cwd=cwd, env=env)
         return output
     finally:
         # Always restore all originals
         for rel_path, content in originals.items():
-            fp = pathlib.Path(rel_path)
+            fp = _resolve(rel_path)
             write_to_path(fp=fp, content=content)
 
 
-def run_evaluation(eval_command: str, timeout: int | None = None) -> str:
-    """Run the evaluation command on the code and return the output."""
-    process = subprocess.Popen(
-        eval_command, shell=True, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True
-    )
+class EvaluationCancelled(Exception):
+    """The evaluation was killed because its cancel event was set (run stopped)."""
+
+
+def _kill_process_tree(process: "subprocess.Popen") -> None:
+    """Terminate a shell command and everything it spawned.
+
+    Kills the whole process group first (catches daemonized/double-forked
+    children that escape the psutil parent walk — the eval runs with
+    ``start_new_session=True`` so the group is ours to kill), then walks the
+    remaining tree via psutil as a fallback for platforms without process
+    groups.
+    """
+    import signal as _signal
+
+    def _own_group() -> bool:
+        # Only ever signal a group the child LEADS (start_new_session path).
+        # A serial eval shares the CLI's group — killing that would kill us.
+        try:
+            return os.getpgid(process.pid) == process.pid
+        except (ProcessLookupError, OSError):
+            return False
+
+    if hasattr(os, "killpg") and _own_group():
+        try:
+            os.killpg(process.pid, _signal.SIGTERM)
+        except (ProcessLookupError, PermissionError, OSError):
+            pass
 
     try:
-        # NOTE: Process tree cleanup only happens on timeout. Normal completion relies on the OS/shell to clean up child processes, which works for typical evaluation scripts.
-        output, _ = process.communicate(timeout=timeout)
-        return output
+        parent = psutil.Process(process.pid)
+        children = parent.children(recursive=True)
 
-    except subprocess.TimeoutExpired:
-        # Kill process tree
-        try:
-            parent = psutil.Process(process.pid)
-            children = parent.children(recursive=True)
-
-            # Terminate gracefully
-            for child in children:
-                try:
-                    child.terminate()
-                except psutil.NoSuchProcess:
-                    pass
+        # Terminate gracefully
+        for child in children:
             try:
-                parent.terminate()
+                child.terminate()
             except psutil.NoSuchProcess:
                 pass
-
-            # Wait, then force kill survivors
-            _, alive = psutil.wait_procs(children + [parent], timeout=1)
-            for proc in alive:
-                try:
-                    proc.kill()
-                except psutil.NoSuchProcess:
-                    pass
-
+        try:
+            parent.terminate()
         except psutil.NoSuchProcess:
             pass
 
-        # Drain pipes
+        # Wait, then force kill survivors
+        _, alive = psutil.wait_procs(children + [parent], timeout=1)
+        for proc in alive:
+            try:
+                proc.kill()
+            except psutil.NoSuchProcess:
+                pass
+
+    except psutil.NoSuchProcess:
+        pass
+
+    if hasattr(os, "killpg") and _own_group():
         try:
-            process.communicate(timeout=1)
-        except (subprocess.TimeoutExpired, ValueError, OSError):
+            os.killpg(process.pid, _signal.SIGKILL)
+        except (ProcessLookupError, PermissionError, OSError):
             pass
 
-        return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
+    # Drain pipes
+    try:
+        process.communicate(timeout=1)
+    except (subprocess.TimeoutExpired, ValueError, OSError):
+        pass
+
+
+def run_evaluation(
+    eval_command: str,
+    timeout: int | None = None,
+    cwd: "pathlib.Path | str | None" = None,
+    env: dict[str, str] | None = None,
+    cancel_event: "threading.Event | None" = None,
+) -> str:
+    """Run the evaluation command on the code and return the output.
+
+    ``cwd`` and ``env`` default to the caller's own working directory and
+    environment (the serial behavior); slot-based evaluation passes the slot's
+    project copy and its per-slot environment overlay.
+
+    ``cancel_event`` makes the evaluation externally interruptible: when the
+    event is set (e.g. the run was stopped from the dashboard) the whole
+    process group is killed promptly and :class:`EvaluationCancelled` is
+    raised. Without it, behavior is unchanged — the process runs to completion
+    or timeout.
+    """
+    process = subprocess.Popen(
+        eval_command,
+        shell=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        cwd=str(cwd) if cwd is not None else None,
+        env=env,
+        # Cancellable (K>1 slot) evals get their own session/process group so
+        # cancellation and timeout can kill the entire tree, including children
+        # that re-parent themselves. Serial evals keep sharing the CLI's group —
+        # exactly the pre-parallelization behavior, so a terminal Ctrl-C still
+        # reaches the eval process directly.
+        start_new_session=cancel_event is not None and hasattr(os, "setsid"),
+    )
+
+    if cancel_event is None:
+        try:
+            # NOTE: Process tree cleanup only happens on timeout. Normal completion relies on the OS/shell to clean up child processes, which works for typical evaluation scripts.
+            output, _ = process.communicate(timeout=timeout)
+            return output
+        except subprocess.TimeoutExpired:
+            _kill_process_tree(process)
+            return f"Evaluation timed out after {'an unspecified duration' if timeout is None else f'{timeout} seconds'}."
+
+    # Cancellable path: wait in short beats so a stop lands within ~a second.
+    deadline = (time.monotonic() + timeout) if timeout is not None else None
+    while True:
+        if cancel_event.is_set():
+            _kill_process_tree(process)
+            raise EvaluationCancelled(eval_command)
+        remaining = None if deadline is None else deadline - time.monotonic()
+        if remaining is not None and remaining <= 0:
+            _kill_process_tree(process)
+            return f"Evaluation timed out after {timeout} seconds."
+        try:
+            output, _ = process.communicate(timeout=min(1.0, remaining) if remaining is not None else 1.0)
+            return output
+        except subprocess.TimeoutExpired:
+            continue
 
 
 def get_default_model(api_keys: dict[str, str] | None = None) -> str:
