@@ -431,36 +431,55 @@ class WorktreeSlotProvider(CopySlotProvider):
     def provision(self) -> list[Slot]:
         if not is_git_project(self.project_dir):
             raise SlotProvisionError(f"Not a git repository with a commit: {self.project_dir}")
+        # weco may be invoked from a SUBDIRECTORY of the repo. The worktree
+        # materializes the WHOLE repo, so two distinct roots matter from here
+        # on: git-reported paths are repo-root-relative, while the user's
+        # project (eval cwd, overlay declarations, .env) is invocation-
+        # relative. Conflating them runs evals at the slot's repo root, where
+        # the user's files may simply not exist.
+        top = _git(self.project_dir, "rev-parse", "--show-toplevel")
+        self.repo_root = pathlib.Path(top.stdout.strip()).resolve()
+        self.rel_cwd = self.project_dir.relative_to(self.repo_root)
         return super().provision()
 
     def _provision_one(self, slot_root: pathlib.Path, index: int, cuda_pool: list[str] | None) -> Slot:
-        cwd = slot_root / "project"
+        worktree_root = slot_root / "project"
         slot_root.mkdir(parents=True, exist_ok=True)
-        _git(self.project_dir, "worktree", "add", "--detach", str(cwd), "HEAD")
+        _git(self.project_dir, "worktree", "add", "--detach", str(worktree_root), "HEAD")
 
         # Overlay the complete uncommitted state: what the user runs is their
         # tree, not HEAD. Diff against HEAD so staged-only modifications are
         # included; add untracked non-ignored files separately. Disable rename
         # detection so a rename is represented as an old-path deletion plus a
         # new-path copy. NUL-separated throughout to survive any filename.
-        tracked_changed = _git(self.project_dir, "diff", "--name-only", "--no-renames", "--diff-filter=ACMRTUXB", "-z", "HEAD")
-        untracked = _git(self.project_dir, "ls-files", "--others", "--exclude-standard", "-z")
+        # Run the listings FROM the repo root: `diff` reports repo-relative
+        # paths regardless of cwd, but `ls-files` is cwd-scoped AND
+        # cwd-relative — from a subdirectory it would miss the rest of the
+        # repo's untracked files and mis-resolve its own. Sources resolve
+        # against repo_root and targets against worktree_root.
+        tracked_changed = _git(self.repo_root, "diff", "--name-only", "--no-renames", "--diff-filter=ACMRTUXB", "-z", "HEAD")
+        untracked = _git(self.repo_root, "ls-files", "--others", "--exclude-standard", "-z")
         changed = set(tracked_changed.stdout.split("\0")) | set(untracked.stdout.split("\0"))
         for rel in sorted(p for p in changed if p):
             if pathlib.PurePosixPath(rel).parts and pathlib.PurePosixPath(rel).parts[0] in self.excludes:
                 continue
-            source = self.project_dir / rel
+            source = self.repo_root / rel
             if not source.is_file():
                 continue
-            target = cwd / rel
+            target = worktree_root / rel
             target.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, target)
-        deleted = _git(self.project_dir, "diff", "--name-only", "--no-renames", "--diff-filter=D", "-z", "HEAD")
+        deleted = _git(self.repo_root, "diff", "--name-only", "--no-renames", "--diff-filter=D", "-z", "HEAD")
         for rel in [p for p in deleted.stdout.split("\0") if p]:
             try:
-                (cwd / rel).unlink(missing_ok=True)
+                (worktree_root / rel).unlink(missing_ok=True)
             except OSError:
                 pass
+
+        # Evaluations run in the user's directory, not the repo root: map the
+        # invocation subdir into the worktree (they coincide at the root).
+        cwd = worktree_root / self.rel_cwd
+        cwd.mkdir(parents=True, exist_ok=True)
 
         # Shared env dirs (gitignored, so absent from the worktree) — same
         # best-effort symlinks as the copy provider, then the declared overlay.
@@ -500,7 +519,9 @@ class WorktreeSlotProvider(CopySlotProvider):
 
     def cleanup(self) -> None:
         for slot in self.slots:
-            self._remove_worktree(slot.cwd)
+            # The registered worktree is the slot's repo root; slot.cwd may be
+            # a subdirectory of it when weco was invoked below the repo root.
+            self._remove_worktree(slot.root / "project")
         try:
             _git(self.project_dir, "worktree", "prune", check=False)
         except (OSError, subprocess.SubprocessError):

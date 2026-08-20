@@ -382,3 +382,31 @@ def test_incomplete_registry_marker_is_never_cleanup_authority(tmp_path, monkeyp
     assert find_stale_slot_dirs() == []
     assert clean_stale_slots() == []
     assert base.exists()
+
+
+def test_worktree_provision_from_repo_subdirectory(tmp_path, monkeypatch):
+    """weco run invoked from a SUBDIRECTORY of a git repo: the slot's eval cwd
+    must be that subdirectory's counterpart inside the worktree (with the
+    repo context around it), the uncommitted overlay must land at
+    repo-relative paths, and cleanup must remove the worktree root."""
+    repo = _dirty_repo(tmp_path, monkeypatch)
+    sub = repo / "sub"
+    (sub / "untracked_note.txt").write_text("local\n")
+
+    provider = create_slot_provider(sub, 2)
+    assert isinstance(provider, WorktreeSlotProvider)
+    slots_made = provider.provision()
+    try:
+        assert len(slots_made) == 2
+        for slot in slots_made:
+            # Evals run where the user invoked weco, not the repo root.
+            assert (slot.cwd / "b.py").read_text() == "B\n"
+            # Uncommitted state belonging to the subdir arrives IN the subdir.
+            assert (slot.cwd / "untracked_note.txt").read_text() == "local\n"
+            # The enclosing repo is present around it, with working-tree state.
+            assert (slot.cwd.parent / "a.py").read_text() == "A_MODIFIED\n"
+            assert not (slot.cwd.parent / "c.py").exists()
+    finally:
+        provider.cleanup()
+    # Worktrees removed even though cwd was the subdir, not the worktree root.
+    assert _worktree_paths(repo) == [str(repo)]
