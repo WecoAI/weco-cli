@@ -8,7 +8,7 @@ name = "weco"
 authors = [{ name = "Weco AI Team", email = "contact@weco.ai" }]
 description = "Production-grade autoresearch: an automated research loop that improves agent harnesses, prompts, ML models, and other performance-critical code against any metric you can measure."
 readme = "README.md"
-version = "0.3.41"
+version = "0.4.0"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
 dependencies = [
