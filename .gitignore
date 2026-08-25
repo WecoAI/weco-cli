@@ -74,6 +74,8 @@ etc/
 # AI generated files
 digest.txt
 .runs/
+# Run artifacts the CLI writes into the working tree (consumer.lock etc.)
+.weco/
 CLAUDE.md
 
 *.pyc
