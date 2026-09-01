@@ -301,7 +301,7 @@ weco run --model gpt-5 --source optimize.py [other options...]
 - `gemini-3.7-flash`, `gemini-3.6-flash`, `gemini-3.5-flash`, `gemini-3.5-flash-lite`, `gemini-3.1-flash-lite`, `gemini-3.1-flash-lite-preview`, `gemini-3.1-pro-preview`, `gemini-3-pro-preview`, `gemini-3-flash-preview`, `gemini-2.5-pro`, `gemini-2.5-flash`, `gemini-2.5-flash-lite`
 
 **Hosted open models (Concentrate AI gateway, also callable as `concentrate/<model>`):**
-- `kimi-k2-5`, `kimi-k2-6`, `minimax-m2-5`, `minimax-m2-7`, `minimax-m3`, `glm-5`, `glm-5.1`
+- `kimi-k3`, `glm-5.3`, `glm-5.3-flash`, `glm-5.2`, `deepseek-v4-pro`, `deepseek-v4-flash`, `kimi-k2-5`, `kimi-k2-6`, `minimax-m2-5`, `minimax-m2-7`, `minimax-m3`, `glm-5`, `glm-5.1`
 
 **Via Concentrate AI (prefix required):**
 - `concentrate/gpt-5.4`, `concentrate/gpt-5.4-mini`, `concentrate/gpt-5.4-nano`, `concentrate/gpt-4.1`, `concentrate/gpt-4.1-mini`, `concentrate/gpt-4o`, `concentrate/gpt-4o-mini`, `concentrate/o1`, `concentrate/claude-opus-4-6`, `concentrate/claude-sonnet-4-6`
