@@ -51,9 +51,9 @@ async def keep_stream_open_hook(input_data, tool_use_id, context):
 
 
 # Default model for `weco start claude` when the user doesn't pass `--model`.
-# Opus 4.7 is the strongest agent model; the Weco-billing proxy pins Claude
+# Opus 5 is the strongest agent model; the Weco-billing proxy pins Claude
 # traffic to the first-party Anthropic API, which serves this id.
-DEFAULT_MODEL = "claude-opus-4-7"
+DEFAULT_MODEL = "claude-opus-5"
 
 
 def peek_model(args: list[str]) -> Optional[str]:

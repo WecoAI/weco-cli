@@ -129,7 +129,7 @@ def configure_run_parser(run_parser: argparse.ArgumentParser) -> None:
         "--model",
         type=str,
         default=None,
-        help="Model to use for optimization. Defaults to `gemini-3-flash-preview` (or your provider's default when using --api-key). See full list at https://docs.weco.ai/cli/supported-models",
+        help="Model to use for optimization. Defaults to `gemini-3.8-flash` (or your provider's default when using --api-key). See full list at https://docs.weco.ai/cli/supported-models",
     )
     run_parser.add_argument(
         "--reasoning-effort",

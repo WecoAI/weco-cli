@@ -1448,7 +1448,7 @@ def optimize(
     eval_command: str,
     metric: str,
     goal: str = "maximize",
-    model: str = "o4-mini",
+    model: str = "gemini-3.8-flash",
     steps: int = 5,
     additional_instructions: Optional[str] = None,
     eval_timeout: Optional[int] = None,

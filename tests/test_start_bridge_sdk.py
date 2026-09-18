@@ -97,7 +97,7 @@ def test_envelope_for_assistant_message_emits_assistant_event():
 
     msg = AssistantMessage(
         content=[TextBlock(text="Hello!"), ToolUseBlock(id="tu_1", name="Bash", input={"command": "ls"})],
-        model="claude-opus-4-7",
+        model="claude-opus-5",
         parent_tool_use_id=None,
         error=None,
         usage=None,
@@ -111,7 +111,7 @@ def test_envelope_for_assistant_message_emits_assistant_event():
 
     assert env is not None
     assert env["type"] == "assistant"
-    assert env["model"] == "claude-opus-4-7"
+    assert env["model"] == "claude-opus-5"
     content = env["message"]["content"]
     assert content[0] == {"type": "text", "text": "Hello!"}
     assert content[1]["type"] == "tool_use"
@@ -124,7 +124,7 @@ def test_envelope_for_includes_thinking_blocks_for_reasoning_dashboard():
 
     msg = AssistantMessage(
         content=[ThinkingBlock(thinking="reasoning text", signature="sig")],
-        model="claude-opus-4-7",
+        model="claude-opus-5",
         parent_tool_use_id=None,
         error=None,
         usage=None,
