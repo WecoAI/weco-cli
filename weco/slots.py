@@ -209,7 +209,10 @@ def load_overlay_config(project_dir: pathlib.Path) -> SlotOverlayConfig:
     path = project_dir / CONFIG_PATH
     if not path.is_file():
         return SlotOverlayConfig()
-    import tomllib
+    try:
+        import tomllib
+    except ModuleNotFoundError:
+        import tomli as tomllib
 
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
