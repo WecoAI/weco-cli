@@ -31,7 +31,7 @@ weco run --source module.py \
 ### Explanation
 
 *   `--source module.py`: The initial PyTorch self-attention code to be optimized with CUDA.
-*   `--eval-command "python evaluate.py --path module.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `module.py` against a baseline, printing the `speedup`.
+*   `--eval-command "python evaluate.py --path module.py"`: Runs the evaluation script, which compiles (if necessary) and benchmarks the CUDA-enhanced code in `module.py` against a baseline, printing the `speedup`. The baseline runs in full FP32 (TF32 disabled), so a precision setting in `module.py` cannot change the reference it is checked and timed against.
 *   `--metric speedup`: The optimization target metric.
 *   `--goal maximize`: Weco aims to increase the speedup.
 *   `--steps 50`: The number of optimization iterations.

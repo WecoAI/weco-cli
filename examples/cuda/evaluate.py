@@ -1,4 +1,5 @@
 import sys
+import contextlib
 import os
 import shutil
 import pathlib
@@ -69,6 +70,37 @@ def load_module_from_path(module_path: str, add_to_sys_modules: bool = False):
     return mod
 
 
+@contextlib.contextmanager
+def fp32_reference():
+    """Run the baseline under pinned full-FP32 matmul/conv precision.
+
+    The candidate is exec'd in this process, so any global TF32 / matmul-precision
+    flag it sets would otherwise also apply to the baseline's reference output and
+    timing, hiding TF32-level error from the correctness check and skewing speedup.
+    """
+    if hasattr(torch.backends.cuda.matmul, "fp32_precision"):
+        # PyTorch >= 2.9: once the candidate sets TF32 through this API, reading the legacy flags below raises.
+        backends = (torch.backends.cuda.matmul, torch.backends.cudnn.conv, torch.backends.cudnn.rnn)
+        saved = [backend.fp32_precision for backend in backends]
+        for backend in backends:
+            backend.fp32_precision = "ieee"
+        try:
+            yield
+        finally:
+            for backend, precision in zip(backends, saved):
+                backend.fp32_precision = precision
+        return
+    saved = (torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32, torch.get_float32_matmul_precision())
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    torch.set_float32_matmul_precision("highest")
+    try:
+        yield
+    finally:
+        torch.backends.cuda.matmul.allow_tf32, torch.backends.cudnn.allow_tf32 = saved[0], saved[1]
+        torch.set_float32_matmul_precision(saved[2])
+
+
 def get_inputs(batch_size, seq_len, n_embd, device):
     return torch.randn(batch_size, seq_len, n_embd, device=device, dtype=torch.float32)
 
@@ -131,7 +163,8 @@ if __name__ == "__main__":
                 print("Incorrect solution: NaN detected in optimized model output")
             if torch.isinf(optimized_output).any():
                 print("Incorrect solution: Inf detected in optimized model output")
-            baseline_output = baseline_model(inputs)
+            with fp32_reference():
+                baseline_output = baseline_model(inputs)
             max_diff_avg += torch.max(torch.abs(optimized_output - baseline_output))
     max_diff_avg /= n_correctness_trials
     print(f"max float diff between values of baseline and optimized model: {max_diff_avg}")
@@ -140,7 +173,8 @@ if __name__ == "__main__":
 
     # measure performance
     inputs = get_inputs(batch_size=batch_size, seq_len=seq_len, n_embd=n_embd, device="cuda")
-    t_avg_baseline = do_bench(lambda: baseline_model(inputs), warmup=warmup_ms, rep=rep_ms)
+    with fp32_reference():
+        t_avg_baseline = do_bench(lambda: baseline_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"baseline time: {t_avg_baseline:.2f}ms")
     t_avg_optimized = do_bench(lambda: solution_model(inputs), warmup=warmup_ms, rep=rep_ms)
     print(f"optimized time: {t_avg_optimized:.2f}ms")

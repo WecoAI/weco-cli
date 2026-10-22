@@ -28,7 +28,7 @@ weco run --source module.py \
 ### Explanation
 
 *   `--source module.py`: Specifies the PyTorch Swish activation implementation (`module.py`) that Weco will optimize.
-*   `--eval-command "python evaluate.py --path module.py"`: Defines the command to execute the evaluation script. This script benchmarks the generated solution in `module.py` against a baseline and outputs the `speedup`.
+*   `--eval-command "python evaluate.py --path module.py"`: Defines the command to execute the evaluation script. This script benchmarks the generated solution in `module.py` against a baseline and outputs the `speedup`. The baseline runs in full FP32 (TF32 disabled), so a precision setting in `module.py` cannot change the reference it is checked and timed against.
 *   `--metric speedup`: Sets the metric Weco should focus on improving during optimization.
 *   `--goal maximize`: Instructs Weco to aim for the highest possible speedup value.
 *   `--steps 15`: Determines the number of optimization iterations Weco will perform.
