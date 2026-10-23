@@ -22,7 +22,7 @@ dependencies = [
     "langsmith>=0.8.18",
     "jupyter>=1.1.1",
     "realtime>=2.29.0",
-    "claude-agent-sdk>=0.2.87",
+    "claude-agent-sdk>=0.2.121",
     # pip upgrades do not consume the monorepo lock; enforce patched versions
     # of the existing Jupyter, MCP, and gitingest runtime dependencies.
     "jupyterlab>=4.5.11",
