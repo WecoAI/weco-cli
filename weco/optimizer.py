@@ -1035,12 +1035,18 @@ def resume_optimization(
         )
         return False
 
+    optimizer = status.get("optimizer")
+    if not optimizer:
+        console.print(
+            "[bold red]Cannot resume run: optimizer configuration is missing. External runs do not support resume.[/]"
+        )
+        return False
+
     objective = status.get("objective", {})
     metric_name = objective.get("metric_name", "metric")
     maximize = bool(objective.get("maximize", True))
     eval_command = objective.get("evaluation_command", "")
 
-    optimizer = status.get("optimizer", {})
     total_steps = optimizer.get("steps", 0)
     current_step = int(status.get("current_step", 0))
     steps_remaining = int(total_steps) - current_step

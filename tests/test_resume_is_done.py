@@ -56,6 +56,7 @@ def common_mocks(monkeypatch):
         "resume": MagicMock(),
         "loop": MagicMock(),
         "apply": MagicMock(),
+        "confirm": MagicMock(return_value=True),
     }
     monkeypatch.setattr(optimizer, "handle_authentication", mocks["auth"])
     monkeypatch.setattr(optimizer, "get_optimization_run_status", mocks["status"])
@@ -63,7 +64,7 @@ def common_mocks(monkeypatch):
     monkeypatch.setattr(optimizer, "_run_loop_with_auto_resume", mocks["loop"])
     monkeypatch.setattr(optimizer, "offer_apply_best_solution", mocks["apply"])
     # Confirm.ask ("kept files unchanged?") -> yes
-    monkeypatch.setattr(optimizer.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    monkeypatch.setattr(optimizer.Confirm, "ask", staticmethod(mocks["confirm"]))
     # Never touch the real filesystem lock / heartbeat / drain / termination.
     monkeypatch.setattr(optimizer, "try_acquire", MagicMock(return_value=object()))
     monkeypatch.setattr(optimizer, "release", MagicMock())
@@ -151,3 +152,66 @@ def test_is_done_lock_unavailable_skips_apply_still_success(common_mocks, monkey
     # Lock was unavailable -> no apply, and nothing to release.
     common_mocks["apply"].assert_not_called()
     optimizer.release.assert_not_called()
+
+
+@pytest.mark.parametrize("optimizer_field", ["null", "missing", "empty"])
+@pytest.mark.parametrize(
+    ("run_status", "additional_steps"),
+    [("error", None), ("error", 3), ("terminated", None), ("terminated", 3), ("completed", 3)],
+)
+def test_missing_optimizer_rejects_resume_before_confirmation(
+    common_mocks, capsys, optimizer_field, run_status, additional_steps
+):
+    status = _status(
+        status=run_status,
+        run_name=None,
+        objective={"metric_name": "val_bpb", "maximize": False, "evaluation_command": None},
+        optimizer=None,
+        current_step=0,
+    )
+    if optimizer_field == "missing":
+        del status["optimizer"]
+    elif optimizer_field == "empty":
+        status["optimizer"] = {}
+    common_mocks["status"].return_value = status
+
+    result = resume_optimization("run-1", additional_steps=additional_steps, output_mode="plain", no_open=True)
+
+    assert result is False
+    for name in ("confirm", "resume", "loop", "apply"):
+        common_mocks[name].assert_not_called()
+    for action in (
+        optimizer.try_acquire,
+        optimizer.release,
+        optimizer._drain_lineage_remainder,
+        optimizer.report_termination,
+        optimizer.LineageHeartbeatSender,
+    ):
+        action.assert_not_called()
+    assert "optimizer configuration is missing" in capsys.readouterr().out
+
+
+def test_completed_without_additional_steps_does_not_start_resume(common_mocks, capsys):
+    common_mocks["status"].return_value = _status(status="completed", optimizer=None)
+
+    result = resume_optimization("run-1", output_mode="plain", no_open=True)
+
+    assert result is False
+    for name in ("confirm", "resume", "loop", "apply"):
+        common_mocks[name].assert_not_called()
+    assert "already complete" in capsys.readouterr().out
+
+
+def test_completed_weco_run_with_additional_steps_preserves_resume(common_mocks):
+    common_mocks["status"].return_value = _status(status="completed")
+    common_mocks["resume"].return_value = _resume_resp(steps=7, is_done=False)
+    common_mocks["loop"].return_value = OptimizationResult(
+        success=True, final_step=7, status="completed", reason="completed_successfully"
+    )
+
+    result = resume_optimization("run-1", additional_steps=3, output_mode="plain", no_open=True)
+
+    assert result is True
+    common_mocks["resume"].assert_called_once()
+    assert common_mocks["resume"].call_args.kwargs["steps"] == 3
+    common_mocks["loop"].assert_called_once()
